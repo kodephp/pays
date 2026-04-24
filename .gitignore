@@ -8,3 +8,7 @@
 /coverage/
 *.log
 .DS_Store
+
+# 本地开发配置和日志，不上传到远程仓库
+/.trae/
+/CHANGELOG.md
