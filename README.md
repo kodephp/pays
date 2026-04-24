@@ -1,10 +1,10 @@
 # Kode Pays SDK
 
-Kode Pays 是一个面向 PHP 8.2+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、PayPal、Stripe、Square、Adyen 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
+Kode Pays 是一个面向 PHP 8.2+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、PayPal、Stripe、Square、Adyen、Apple Pay、Google Pay 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
 
 ## 特性
 
-- **多平台支持**：微信、支付宝、云闪付、抖音支付、美团支付、PayPal、Stripe、Square、Adyen、聚合支付
+- **多平台支持**：微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、PayPal、Stripe、Square、Adyen、Apple Pay、Google Pay、聚合支付
 - **统一接口**：所有网关实现同一接口，切换渠道对业务代码完全无感知
 - **聚合路由**：支持多渠道配置，自动优先级路由和失败切换
 - **门面模式**：`Pay::wechat($config)` 一行代码创建网关
@@ -246,6 +246,95 @@ $result = $meituan->createOrder([
 $payUrl = $result['pay_url'] ?? '';
 ```
 
+### 京东支付
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$jd = Pay::jd([
+    'merchant_no' => 'JD123456',
+    'des_key'     => 'your-des-key',
+    'md5_key'     => 'your-md5-key',
+]);
+
+$result = $jd->createOrder([
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_amount' => '10.00',
+    'subject'      => '京东商品',
+    'notify_url'   => 'https://your-domain.com/notify/jd',
+    'trade_type'   => 'APP',
+]);
+```
+
+### 快手支付
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$kuaishou = Pay::kuaishou([
+    'app_id'      => 'ks123456',
+    'app_secret'  => 'your-app-secret',
+    'merchant_id' => 'M123456',
+]);
+
+$result = $kuaishou->createOrder([
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_amount' => 100,
+    'subject'      => '快手小店商品',
+    'notify_url'   => 'https://your-domain.com/notify/kuaishou',
+    'trade_type'   => 'MINI_PROGRAM',
+]);
+```
+
+### Apple Pay
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$apple = Pay::apple([
+    'merchant_identifier'      => 'merchant.com.yourdomain',
+    'merchant_certificate'     => file_get_contents('/path/to/cert.pem'),
+    'merchant_certificate_key' => file_get_contents('/path/to/key.pem'),
+    'apple_pay_merchant_id'    => 'your_apple_merchant_id',
+    'domain_name'              => 'your-domain.com',
+]);
+
+$result = $apple->createOrder([
+    'out_trade_no'  => 'ORDER_' . date('YmdHis'),
+    'total_amount'  => '10.00',
+    'currency'      => 'CNY',
+    'payment_token' => $frontendPaymentToken,
+]);
+```
+
+### Google Pay
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$google = Pay::google([
+    'merchant_id'         => 'BCR2DN4T7ZTLKJ3H',
+    'merchant_name'       => 'Your Store Name',
+    'gateway_merchant_id' => 'your_gateway_merchant_id',
+    'environment'         => 'TEST',
+]);
+
+$result = $google->createOrder([
+    'out_trade_no'  => 'ORDER_' . date('YmdHis'),
+    'total_amount'  => '10.00',
+    'currency'      => 'USD',
+    'payment_token' => $frontendPaymentToken,
+]);
+```
+
 ### 聚合支付（多渠道自动切换）
 
 ```php
@@ -434,10 +523,14 @@ try {
 | 云闪付 | `unionpay` | App、H5、小程序、二维码 |
 | 抖音支付 | `douyin` | App、小程序 |
 | 美团支付 | `meituan` | App、外卖、小程序 |
+| 京东支付 | `jd` | App、网页、白条 |
+| 快手支付 | `kuaishou` | App、小程序 |
 | PayPal | `paypal` | Checkout、订阅 |
 | Stripe | `stripe` | PaymentIntent、Checkout Session、退款 |
 | Square | `square` | 在线支付、订单管理 |
 | Adyen | `adyen` | 全球 200+ 国家、250+ 支付方式 |
+| Apple Pay | `apple` | iOS App、网页、手表 |
+| Google Pay | `google` | Android App、网页 |
 | 聚合支付 | `aggregate` | 多渠道自动路由、失败切换 |
 
 ## 架构设计

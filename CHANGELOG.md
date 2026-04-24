@@ -2,6 +2,26 @@
 
 所有版本更新均遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-04-25
+
+### 新增
+
+- **电商支付网关**
+  - 京东支付（App、网页、京东白条）
+
+- **短视频支付网关**
+  - 快手支付（App、小程序）
+
+- **国际钱包支付网关**
+  - Apple Pay（iOS App、网页、手表）
+  - Google Pay（Android App、网页）
+
+- **文档**
+  - `docs/jd.md` 京东支付接入文档
+  - `docs/kuaishou.md` 快手支付接入文档
+  - `docs/apple.md` Apple Pay 接入文档
+  - `docs/google.md` Google Pay 接入文档
+
 ## [1.2.0] - 2026-04-25
 
 ### 新增

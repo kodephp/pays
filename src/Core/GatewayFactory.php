@@ -42,6 +42,16 @@ class GatewayFactory
         // 生活服务支付
         'meituan' => \Kode\Pays\Gateway\Meituan\MeituanGateway::class,
 
+        // 电商支付
+        'jd' => \Kode\Pays\Gateway\Jd\JdGateway::class,
+
+        // 短视频支付
+        'kuaishou' => \Kode\Pays\Gateway\Kuaishou\KuaishouGateway::class,
+
+        // 国际钱包支付
+        'apple' => \Kode\Pays\Gateway\Apple\AppleGateway::class,
+        'google' => \Kode\Pays\Gateway\Google\GoogleGateway::class,
+
         // 聚合支付（多家渠道聚合）
         'aggregate' => \Kode\Pays\Gateway\Aggregate\AggregateGateway::class,
     ];
@@ -64,6 +74,10 @@ class GatewayFactory
         'square' => \Kode\Pays\Gateway\Square\SquareConfig::class,
         'adyen' => \Kode\Pays\Gateway\Adyen\AdyenConfig::class,
         'meituan' => \Kode\Pays\Gateway\Meituan\MeituanConfig::class,
+        'jd' => \Kode\Pays\Gateway\Jd\JdConfig::class,
+        'kuaishou' => \Kode\Pays\Gateway\Kuaishou\KuaishouConfig::class,
+        'apple' => \Kode\Pays\Gateway\Apple\AppleConfig::class,
+        'google' => \Kode\Pays\Gateway\Google\GoogleConfig::class,
     ];
 
     /**

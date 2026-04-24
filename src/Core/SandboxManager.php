@@ -70,6 +70,22 @@ class SandboxManager
             'prod' => 'https://open-api.meituan.com/',
             'sandbox' => 'https://open-api-test.meituan.com/',
         ],
+        'jd' => [
+            'prod' => 'https://wg.jd.com/',
+            'sandbox' => 'https://uat-wg.jd.com/',
+        ],
+        'kuaishou' => [
+            'prod' => 'https://pay-api.gifshow.com/',
+            'sandbox' => 'https://pay-api-test.gifshow.com/',
+        ],
+        'apple' => [
+            'prod' => 'https://apple-pay-gateway.apple.com/',
+            'sandbox' => 'https://apple-pay-gateway-cert.apple.com/',
+        ],
+        'google' => [
+            'prod' => 'https://payments.googleapis.com/',
+            'sandbox' => 'https://payments.googleapis.com/',
+        ],
     ];
 
     /**
