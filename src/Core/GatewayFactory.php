@@ -52,6 +52,13 @@ class GatewayFactory
         'apple' => \Kode\Pays\Gateway\Apple\AppleGateway::class,
         'google' => \Kode\Pays\Gateway\Google\GoogleGateway::class,
 
+        // 国际电商支付
+        'amazon' => \Kode\Pays\Gateway\Amazon\AmazonGateway::class,
+        'klarna' => \Kode\Pays\Gateway\Klarna\KlarnaGateway::class,
+
+        // 跨境支付
+        'alipay_global' => \Kode\Pays\Gateway\AlipayGlobal\AlipayGlobalGateway::class,
+
         // 聚合支付（多家渠道聚合）
         'aggregate' => \Kode\Pays\Gateway\Aggregate\AggregateGateway::class,
     ];
@@ -78,6 +85,9 @@ class GatewayFactory
         'kuaishou' => \Kode\Pays\Gateway\Kuaishou\KuaishouConfig::class,
         'apple' => \Kode\Pays\Gateway\Apple\AppleConfig::class,
         'google' => \Kode\Pays\Gateway\Google\GoogleConfig::class,
+        'amazon' => \Kode\Pays\Gateway\Amazon\AmazonConfig::class,
+        'klarna' => \Kode\Pays\Gateway\Klarna\KlarnaConfig::class,
+        'alipay_global' => \Kode\Pays\Gateway\AlipayGlobal\AlipayGlobalConfig::class,
     ];
 
     /**

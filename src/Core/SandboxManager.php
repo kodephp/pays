@@ -86,6 +86,18 @@ class SandboxManager
             'prod' => 'https://payments.googleapis.com/',
             'sandbox' => 'https://payments.googleapis.com/',
         ],
+        'amazon' => [
+            'prod' => 'https://pay-api.amazon.com/',
+            'sandbox' => 'https://pay-api.amazon.com/',
+        ],
+        'klarna' => [
+            'prod' => 'https://api.klarna.com/',
+            'sandbox' => 'https://api.playground.klarna.com/',
+        ],
+        'alipay_global' => [
+            'prod' => 'https://globalmapi.alipay.com/',
+            'sandbox' => 'https://globalmapi.alipay.com/',
+        ],
     ];
 
     /**
