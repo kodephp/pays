@@ -1,0 +1,77 @@
+{
+    "name": "kode/pays",
+    "description": "Kode Pays - 企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、PayPal、Stripe、Square、Adyen 等国内外主流支付渠道",
+    "type": "library",
+    "version": "1.1.0",
+    "keywords": [
+        "pay",
+        "payment",
+        "wechat",
+        "alipay",
+        "unionpay",
+        "paypal",
+        "stripe",
+        "square",
+        "adyen",
+        "aggregate-pay",
+        "sdk",
+        "qr-code",
+        "sandbox",
+        "kode"
+    ],
+    "homepage": "https://github.com/kodephp/pays",
+    "license": "Apache-2.0",
+    "authors": [
+        {
+            "name": "Kode Team",
+            "email": "team@kodephp.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "guzzlehttp/guzzle": "^7.8",
+        "psr/log": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpstan/phpstan": "^1.10",
+        "squizlabs/php_codesniffer": "^3.9"
+    },
+    "suggest": {
+        "kode/tools": "用于生成支付二维码、图片处理等工具功能",
+        "kode/di": "用于依赖注入容器管理",
+        "kode/cache": "用于支付订单缓存和分布式锁",
+        "kode/database": "用于支付订单持久化和分库分表",
+        "kode/exception": "用于企业级异常处理",
+        "kode/facade": "用于门面模式支持",
+        "kode/process": "用于多进程异步处理",
+        "kode/parallel": "用于多线程并行处理",
+        "kode/fibers": "用于协程异步处理",
+        "kode/limiting": "用于支付接口限流保护（令牌桶/漏桶/滑动窗口）",
+        "kode/event": "用于增强事件总线能力",
+        "monolog/monolog": "用于支付日志记录"
+    },
+    "autoload": {
+        "psr-4": {
+            "Kode\\Pays\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Kode\\Pays\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "phpstan": "phpstan analyse src --level=8",
+        "phpcs": "phpcs src --standard=PSR12",
+        "phpcbf": "phpcbf src --standard=PSR12"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
