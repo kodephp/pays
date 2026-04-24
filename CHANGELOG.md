@@ -2,6 +2,28 @@
 
 所有版本更新均遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-04-25
+
+### 新增
+
+- **核心架构增强**
+  - `HttpClient` 增强：支持重试策略（`setRetry`）、请求日志（`setLogger`）、超时配置链式设置
+  - `ConfigLoader` 配置加载器：支持环境变量、JSON/PHP 文件、多环境配置自动加载
+  - `IdempotencyGuard` 订单幂等性保护器：分布式锁 + 结果缓存，防止重复支付
+  - `PaymentPoller` 支付结果轮询器：支持同步/异步轮询，自动提取状态
+
+- **门面 Pay 增强**
+  - `batchCreate()` 批量创建多网关订单
+  - `poller()` 快速创建支付轮询器
+  - `guard()` 快速创建幂等性保护器
+  - `fromEnv()` / `fromFile()` / `fromEnvConfig()` 多来源配置加载
+
+- **kode 生态集成**
+  - `KodeCacheAdapter` 缓存集成适配器：支持缓存读写、分布式锁（对接 kode/cache）
+
+- **接口完善**
+  - `GatewayInterface` 新增 `setDispatcher()` 和 `setHttpClient()` 声明
+
 ## [1.1.0] - 2026-04-25
 
 ### 新增

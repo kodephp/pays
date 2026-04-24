@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Facade;
 
+use Kode\Pays\Config\ConfigLoader;
 use Kode\Pays\Contract\ConfigInterface;
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Core\GatewayFactory;
+use Kode\Pays\Core\IdempotencyGuard;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Core\PaymentPoller;
 use Kode\Pays\Event\EventDispatcher;
 use Kode\Pays\Support\HttpClient;
 
@@ -274,5 +277,114 @@ class Pay
     public static function has(string $gateway): bool
     {
         return GatewayFactory::has($gateway);
+    }
+
+    /**
+     * 批量创建支付订单
+     *
+     * 同时向多个网关发起支付请求，返回各网关结果。
+     *
+     * @param array<string, array<string, mixed>> $orders 网关 => 订单参数映射
+     * @return array<string, array<string, mixed>> 网关 => 结果映射
+     */
+    public static function batchCreate(array $orders): array
+    {
+        $results = [];
+
+        foreach ($orders as $gateway => $params) {
+            try {
+                $instance = self::__callStatic($gateway, []);
+                $results[$gateway] = [
+                    'success' => true,
+                    'data' => $instance->createOrder($params),
+                ];
+            } catch (PayException $e) {
+                $results[$gateway] = [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                ];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * 创建支付结果轮询器
+     *
+     * @param string $gateway 网关标识
+     * @param int $interval 轮询间隔（秒）
+     * @param int $maxAttempts 最大轮询次数
+     * @param int $timeout 总超时时间（秒）
+     * @return PaymentPoller
+     */
+    public static function poller(
+        string $gateway,
+        int $interval = 3,
+        int $maxAttempts = 20,
+        int $timeout = 60,
+    ): PaymentPoller {
+        $instance = self::__callStatic($gateway, []);
+
+        return new PaymentPoller($instance, $interval, $maxAttempts, $timeout);
+    }
+
+    /**
+     * 创建幂等性保护器
+     *
+     * @param int $lockTtl 锁过期时间（秒）
+     * @param int $resultTtl 结果缓存时间（秒）
+     * @return IdempotencyGuard
+     */
+    public static function guard(int $lockTtl = 60, int $resultTtl = 86400): IdempotencyGuard
+    {
+        return new IdempotencyGuard($lockTtl, $resultTtl);
+    }
+
+    /**
+     * 从环境变量加载并创建网关
+     *
+     * @param string $gateway 网关标识
+     * @param string $envPrefix 环境变量前缀
+     * @return GatewayInterface
+     * @throws PayException
+     */
+    public static function fromEnv(string $gateway, string $envPrefix): GatewayInterface
+    {
+        $config = ConfigLoader::fromEnv($envPrefix);
+
+        return self::create($gateway, $config);
+    }
+
+    /**
+     * 从配置文件加载并创建网关
+     *
+     * @param string $gateway 网关标识
+     * @param string $path 配置文件路径
+     * @return GatewayInterface
+     * @throws PayException
+     */
+    public static function fromFile(string $gateway, string $path): GatewayInterface
+    {
+        $config = ConfigLoader::fromFile($path);
+
+        return self::create($gateway, $config);
+    }
+
+    /**
+     * 从多环境配置加载并创建网关
+     *
+     * @param string $gateway 网关标识
+     * @param string $basePath 配置目录
+     * @param string|null $env 环境名称
+     * @return GatewayInterface
+     * @throws PayException
+     */
+    public static function fromEnvConfig(string $gateway, string $basePath, ?string $env = null): GatewayInterface
+    {
+        $config = ConfigLoader::loadForEnv($basePath, $gateway, $env);
+
+        return self::create($gateway, $config);
     }
 }

@@ -72,4 +72,20 @@ interface GatewayInterface
      * @return string 网关标识，如 wechat、alipay
      */
     public static function getName(): string;
+
+    /**
+     * 设置事件分发器
+     *
+     * @param \Kode\Pays\Event\EventDispatcher $dispatcher
+     * @return void
+     */
+    public function setDispatcher(\Kode\Pays\Event\EventDispatcher $dispatcher): void;
+
+    /**
+     * 设置 HTTP 客户端
+     *
+     * @param \Kode\Pays\Support\HttpClient $httpClient
+     * @return void
+     */
+    public function setHttpClient(\Kode\Pays\Support\HttpClient $httpClient): void;
 }
