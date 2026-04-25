@@ -66,6 +66,12 @@ class GatewayFactory
         // 数字银行支付
         'revolut' => \Kode\Pays\Gateway\Revolut\RevolutGateway::class,
 
+        // 加密货币支付
+        'coinbase' => \Kode\Pays\Gateway\Coinbase\CoinbaseGateway::class,
+
+        // 先买后付
+        'afterpay' => \Kode\Pays\Gateway\Afterpay\AfterpayGateway::class,
+
         // 聚合支付（多家渠道聚合）
         'aggregate' => \Kode\Pays\Gateway\Aggregate\AggregateGateway::class,
     ];
@@ -98,6 +104,8 @@ class GatewayFactory
         'wise' => \Kode\Pays\Gateway\Wise\WiseConfig::class,
         'payoneer' => \Kode\Pays\Gateway\Payoneer\PayoneerConfig::class,
         'revolut' => \Kode\Pays\Gateway\Revolut\RevolutConfig::class,
+        'coinbase' => \Kode\Pays\Gateway\Coinbase\CoinbaseConfig::class,
+        'afterpay' => \Kode\Pays\Gateway\Afterpay\AfterpayConfig::class,
     ];
 
     /**

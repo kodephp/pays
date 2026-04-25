@@ -110,6 +110,14 @@ class SandboxManager
             'prod' => 'https://merchant.revolut.com/',
             'sandbox' => 'https://sandbox-merchant.revolut.com/',
         ],
+        'coinbase' => [
+            'prod' => 'https://api.commerce.coinbase.com/',
+            'sandbox' => 'https://api.commerce.coinbase.com/',
+        ],
+        'afterpay' => [
+            'prod' => 'https://api.us.afterpay.com/',
+            'sandbox' => 'https://api.us.sandbox.afterpay.com/',
+        ],
     ];
 
     /**

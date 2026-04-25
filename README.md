@@ -1058,6 +1058,8 @@ try {
 | Wise | `wise` | 跨境汇款、50+ 货币 |
 | Revolut | `revolut` | 数字银行支付、卡支付、Apple Pay、Google Pay |
 | Payoneer | `payoneer` | 跨境 B2B 支付、200+ 国家 |
+| Coinbase Commerce | `coinbase` | 加密货币支付（BTC/ETH/USDT/USDC 等） |
+| Afterpay/Clearpay | `afterpay` | 先买后付（BNPL）、4 期免息 |
 | 聚合支付 | `aggregate` | 多渠道自动路由、失败切换 |
 
 ## 架构设计
