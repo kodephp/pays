@@ -98,6 +98,18 @@ class SandboxManager
             'prod' => 'https://globalmapi.alipay.com/',
             'sandbox' => 'https://globalmapi.alipay.com/',
         ],
+        'wise' => [
+            'prod' => 'https://api.transferwise.com/',
+            'sandbox' => 'https://api.sandbox.transferwise.tech/',
+        ],
+        'payoneer' => [
+            'prod' => 'https://api.payoneer.com/v4/',
+            'sandbox' => 'https://api.sandbox.payoneer.com/v4/',
+        ],
+        'revolut' => [
+            'prod' => 'https://merchant.revolut.com/',
+            'sandbox' => 'https://sandbox-merchant.revolut.com/',
+        ],
     ];
 
     /**

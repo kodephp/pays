@@ -59,6 +59,13 @@ class GatewayFactory
         // 跨境支付
         'alipay_global' => \Kode\Pays\Gateway\AlipayGlobal\AlipayGlobalGateway::class,
 
+        // 跨境汇款
+        'wise' => \Kode\Pays\Gateway\Wise\WiseGateway::class,
+        'payoneer' => \Kode\Pays\Gateway\Payoneer\PayoneerGateway::class,
+
+        // 数字银行支付
+        'revolut' => \Kode\Pays\Gateway\Revolut\RevolutGateway::class,
+
         // 聚合支付（多家渠道聚合）
         'aggregate' => \Kode\Pays\Gateway\Aggregate\AggregateGateway::class,
     ];
@@ -88,6 +95,9 @@ class GatewayFactory
         'amazon' => \Kode\Pays\Gateway\Amazon\AmazonConfig::class,
         'klarna' => \Kode\Pays\Gateway\Klarna\KlarnaConfig::class,
         'alipay_global' => \Kode\Pays\Gateway\AlipayGlobal\AlipayGlobalConfig::class,
+        'wise' => \Kode\Pays\Gateway\Wise\WiseConfig::class,
+        'payoneer' => \Kode\Pays\Gateway\Payoneer\PayoneerConfig::class,
+        'revolut' => \Kode\Pays\Gateway\Revolut\RevolutConfig::class,
     ];
 
     /**
