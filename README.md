@@ -711,6 +711,201 @@ $plugin->resumeSubscription($subscription['id']);
 $plugin->cancelSubscription($subscription['id']);
 ```
 
+## 转账插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\TransferPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new TransferPlugin($wechat);
+
+// 单笔转账到零钱
+$result = $plugin->single([
+    'out_biz_no'  => 'TRANSFER_' . date('YmdHis'),
+    'amount'      => 100,
+    'recipient'   => ['type' => 'openid', 'account' => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o', 'name' => '张三'],
+    'description' => '佣金提现',
+]);
+
+// 批量转账
+$result = $plugin->batch([
+    'out_biz_no' => 'BATCH_' . date('YmdHis'),
+    'transfer_detail_list' => [
+        ['out_detail_no' => 'D001', 'amount' => 100, 'recipient' => ['account' => 'openid1', 'name' => '张三'], 'remark' => '佣金'],
+        ['out_detail_no' => 'D002', 'amount' => 200, 'recipient' => ['account' => 'openid2', 'name' => '李四'], 'remark' => '奖励'],
+    ],
+]);
+
+// 查询转账结果
+$result = $plugin->query('TRANSFER_20240425000001');
+
+// 获取电子回单
+$result = $plugin->receipt('TRANSFER_20240425000001');
+```
+
+## 对账插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\ReconciliationPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new ReconciliationPlugin($wechat);
+
+// 下载交易对账单
+$bill = $plugin->downloadBill([
+    'bill_date' => '20240425',
+    'bill_type' => 'ALL',
+]);
+
+// 下载资金账单
+$fundFlow = $plugin->downloadFundFlow([
+    'bill_date' => '20240425',
+    'account_type' => 'Basic',
+]);
+
+// 解析对账单
+$records = $plugin->parseBill($rawCsvData);
+
+// 系统订单与对账单差异比对
+$diff = $plugin->diff($systemOrders, $records);
+if ($diff['is_consistent']) {
+    echo '对账一致';
+} else {
+    print_r($diff['only_in_system']);
+    print_r($diff['amount_mismatch']);
+}
+```
+
+## 退款插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\RefundPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new RefundPlugin($wechat);
+
+// 申请退款
+$result = $plugin->apply([
+    'out_trade_no'  => 'ORDER_001',
+    'out_refund_no' => 'REFUND_001',
+    'total_fee'     => 100,
+    'refund_fee'    => 50,
+    'refund_desc'   => '商品质量问题',
+]);
+
+// 查询退款
+$result = $plugin->query('REFUND_001');
+```
+
+## 红包插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\RedPacketPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new RedPacketPlugin($wechat);
+
+// 发放普通红包
+$result = $plugin->send([
+    'mch_billno'   => 'REDPACK_' . date('YmdHis'),
+    'send_name'    => '某某公司',
+    're_openid'    => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o',
+    'total_amount' => 100,
+    'total_num'    => 1,
+    'wishing'      => '恭喜发财',
+    'act_name'     => '新年活动',
+    'remark'       => '参与活动领取红包',
+]);
+
+// 发放裂变红包
+$result = $plugin->group([
+    'mch_billno'   => 'GROUP_' . date('YmdHis'),
+    'send_name'    => '某某公司',
+    're_openid'    => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o',
+    'total_amount' => 300,
+    'total_num'    => 3,
+    'wishing'      => '裂变红包',
+    'act_name'     => '分享活动',
+    'remark'       => '分享给好友领取',
+]);
+
+// 查询红包记录
+$result = $plugin->query('REDPACK_20240425000001');
+```
+
+## 个人收款插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\PersonalReceivePlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new PersonalReceivePlugin($wechat);
+
+// 生成个人收款码
+$result = $plugin->createQrCode([
+    'amount'      => 100,
+    'description' => '商品付款',
+    'attach'      => ['product_id' => '123'],
+]);
+
+// 查询收款记录
+$records = $plugin->queryRecords([
+    'start_time' => '2024-04-01 00:00:00',
+    'end_time'   => '2024-04-25 23:59:59',
+]);
+
+// 提现到银行卡
+$result = $plugin->withdraw([
+    'amount'       => 5000,
+    'bank_card_no' => '622202************',
+    'real_name'    => '张三',
+    'out_biz_no'   => 'WITHDRAW_' . date('YmdHis'),
+]);
+
+// 查询提现结果
+$result = $plugin->queryWithdraw('WITHDRAW_20240425000001');
+```
+
 ## 异常处理
 
 ```php
