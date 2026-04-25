@@ -17,42 +17,42 @@ class PayException extends Exception
     /**
      * 错误码：通用未知错误
      */
-    public const int ERROR_UNKNOWN = 1000;
+    public const ERROR_UNKNOWN = 1000;
 
     /**
      * 错误码：配置错误
      */
-    public const int ERROR_CONFIG = 1001;
+    public const ERROR_CONFIG = 1001;
 
     /**
      * 错误码：网络请求失败
      */
-    public const int ERROR_NETWORK = 1002;
+    public const ERROR_NETWORK = 1002;
 
     /**
      * 错误码：签名验证失败
      */
-    public const int ERROR_SIGN = 1003;
+    public const ERROR_SIGN = 1003;
 
     /**
      * 错误码：业务参数错误
      */
-    public const int ERROR_PARAM = 1004;
+    public const ERROR_PARAM = 1004;
 
     /**
      * 错误码：网关返回业务错误
      */
-    public const int ERROR_GATEWAY = 1005;
+    public const ERROR_GATEWAY = 1005;
 
     /**
      * 错误码：订单不存在
      */
-    public const int ERROR_ORDER_NOT_FOUND = 1006;
+    public const ERROR_ORDER_NOT_FOUND = 1006;
 
     /**
      * 错误码：退款失败
      */
-    public const int ERROR_REFUND = 1007;
+    public const ERROR_REFUND = 1007;
 
     /**
      * 错误码列表
@@ -150,6 +150,14 @@ class PayException extends Exception
      * 快速创建参数错误异常
      */
     public static function paramError(string $message, ?Throwable $previous = null): self
+    {
+        return new self($message, self::ERROR_PARAM, $previous);
+    }
+
+    /**
+     * 快速创建无效参数异常
+     */
+    public static function invalidArgument(string $message, ?Throwable $previous = null): self
     {
         return new self($message, self::ERROR_PARAM, $previous);
     }

@@ -2,7 +2,7 @@
     "name": "kode/pays",
     "description": "Kode Pays - 企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay 等国内外主流支付渠道",
     "type": "library",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "keywords": [
         "pay",
         "payment",

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Core\FundConstraintValidator;
 use Kode\Pays\Core\PayException;
 
 /**
@@ -48,13 +49,20 @@ class TransferPlugin
     protected GatewayInterface $gateway;
 
     /**
+     * 资金约束验证器
+     */
+    protected ?FundConstraintValidator $validator;
+
+    /**
      * 构造函数
      *
      * @param GatewayInterface $gateway 支付网关
+     * @param FundConstraintValidator|null $validator 资金约束验证器
      */
-    public function __construct(GatewayInterface $gateway)
+    public function __construct(GatewayInterface $gateway, ?FundConstraintValidator $validator = null)
     {
         $this->gateway = $gateway;
+        $this->validator = $validator;
     }
 
     /**
@@ -74,6 +82,19 @@ class TransferPlugin
     public function single(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
+
+        // 约束验证
+        if ($this->validator !== null) {
+            $recipient = $params['recipient']['account'] ?? '';
+            $check = $this->validator->validateTransfer([
+                'amount' => (int) $params['amount'],
+                'user_id' => $params['user_id'] ?? '',
+                'recipient_account' => $recipient,
+            ]);
+            if (!$check['valid']) {
+                throw PayException::invalidArgument($check['message']);
+            }
+        }
 
         return match ($this->gateway::getName()) {
             'wechat' => $this->singleWechatTransfer($params),

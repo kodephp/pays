@@ -906,6 +906,107 @@ $result = $plugin->withdraw([
 $result = $plugin->queryWithdraw('WITHDRAW_20240425000001');
 ```
 
+## 自动结算插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Core\WalletManager;
+use Kode\Pays\Plugin\AutoSettlementPlugin;
+
+$walletManager = new WalletManager();
+
+// 绑定微信零钱账户（自动结算）
+$walletManager->bind('user_001', 'wechat_wallet', [
+    'account' => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o',
+    'real_name' => '张三',
+    'auto_settlement' => true,
+    'min_amount' => 100,
+    'settlement_type' => 'realtime',
+]);
+
+// 绑定银行卡（备用结算方式）
+$walletManager->bind('user_001', 'bank_card', [
+    'account' => '622202************',
+    'real_name' => '张三',
+    'bank_code' => 'ICBC',
+    'auto_settlement' => true,
+    'min_amount' => 5000,
+    'settlement_type' => 'daily',
+    'settlement_time' => '02:00',
+]);
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new AutoSettlementPlugin($wechat, $walletManager);
+
+// 支付成功后自动触发结算
+$order = $wechat->createOrder([
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_fee'    => 1000,
+    'body'         => '商品购买',
+]);
+
+$result = $plugin->settle('user_001', [
+    'transaction_id' => $order['transaction_id'],
+    'amount'         => $order['total_fee'],
+    'out_biz_no'     => 'SETTLE_' . date('YmdHis'),
+    'description'    => '订单自动结算',
+]);
+
+// 批量结算
+$results = $plugin->settleBatch([
+    ['user_id' => 'user_001', 'transaction_id' => 'T001', 'amount' => 1000, 'out_biz_no' => 'S001'],
+    ['user_id' => 'user_002', 'transaction_id' => 'T002', 'amount' => 2000, 'out_biz_no' => 'S002'],
+]);
+```
+
+## 资金操作约束验证
+
+```php
+<?php
+
+use Kode\Pays\Core\FundConstraintValidator;
+use Kode\Pays\Plugin\TransferPlugin;
+
+$validator = new FundConstraintValidator();
+
+// 配置转账约束
+$validator->setTransferConstraints([
+    'min_amount' => 100,
+    'max_amount' => 200000,
+    'daily_limit' => 1000000,
+    'daily_count_limit' => 100,
+    'allowed_hours' => [9, 22],
+    'blacklist' => ['blocked_user_001'],
+]);
+
+// 配置红包约束
+$validator->setRedPacketConstraints([
+    'min_amount' => 100,
+    'max_amount' => 200000,
+    'max_total_num' => 100,
+    'daily_limit' => 500000,
+    'daily_count_limit' => 50,
+]);
+
+// 创建带约束验证的转账插件
+$transferPlugin = new TransferPlugin($wechatGateway, $validator);
+
+// 以下转账将触发约束验证
+$result = $transferPlugin->single([
+    'out_biz_no'  => 'TRANSFER_001',
+    'amount'      => 50000,
+    'recipient'   => ['account' => 'openid_xxx', 'name' => '张三'],
+    'user_id'     => 'user_001',
+]);
+```
+
 ## 异常处理
 
 ```php
