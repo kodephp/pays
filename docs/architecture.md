@@ -1,11 +1,14 @@
-# Kode Pays SDK 架构说明
+# Kode Pays SDK 架构详解
 
-## 整体架构
+## 1. 架构总览
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      开发者调用层                             │
-│              Pay::create('wechat')->createOrder()            │
+│         Pay::wechat($config)->createOrder()                  │
+├─────────────────────────────────────────────────────────────┤
+│                      门面层 (Facade)                          │
+│                      Pay 静态类                               │
 ├─────────────────────────────────────────────────────────────┤
 │                      网关工厂层                               │
 │                   GatewayFactory::create()                   │
@@ -13,118 +16,200 @@
 │   接口层        │   抽象层         │   具体网关实现            │
 │ GatewayInterface │ AbstractGateway │ Wechat/Alipay/Union...  │
 ├─────────────────────────────────────────────────────────────┤
+│   扩展层：事件系统 / 管道中间件 / 配置DTO / 异常子类 / 沙箱管理  │
+├─────────────────────────────────────────────────────────────┤
 │   支持层：HTTP客户端 / 签名器 / 加密器 / 工具类               │
 ├─────────────────────────────────────────────────────────────┤
 │   插件层：支付 / 退款 / 分账 / 对账 / 转账 / 订阅             │
+├─────────────────────────────────────────────────────────────┤
+│   管理层：钱包管理器 / 资金约束验证器 / 自动结算               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 核心模块说明
+## 2. 分层说明
 
-### 1. 接口层 (Contract)
+### 2.1 开发者调用层
 
-定义所有网关必须遵守的契约：
-
-- `GatewayInterface`：支付网关核心接口，包含创建订单、查询、退款、通知验证等方法
-- `PluginInterface`：插件接口，用于扩展分账、对账等功能
-- `ConfigInterface`：配置接口，规范配置类结构
-
-### 2. 核心层 (Core)
-
-提供基础能力和通用逻辑：
-
-- `AbstractGateway`：抽象网关基类，封装 HTTP 请求、配置读取、参数验证等通用能力
-- `GatewayFactory`：网关工厂，负责根据标识自动实例化对应网关，支持动态注册
-- `PayException`：统一异常类，包含错误码、网关原始错误信息，便于调用方统一处理
-
-### 3. 网关层 (Gateway)
-
-各支付平台的具体实现：
-
-| 目录 | 说明 | 支持场景 |
-|------|------|----------|
-| `Wechat/` | 微信支付 | JSAPI、Native、App、H5、小程序 |
-| `Alipay/` | 支付宝 | 电脑网站、手机网站、App、小程序、当面付 |
-| `UnionPay/` | 云闪付 | App、H5、小程序、二维码 |
-| `Douyin/` | 抖音支付 | App、小程序 |
-| `Paypal/` | PayPal | Checkout、订阅 |
-| `Aggregate/` | 聚合支付 | 多渠道自动路由、失败切换 |
-
-### 4. 支持层 (Support)
-
-通用工具类：
-
-- `HttpClient`：基于 Guzzle 的 HTTP 封装，支持超时、SSL、JSON/表单等
-- `Signer`：签名工具，支持 MD5、RSA、RSA2、HMAC-SHA256
-
-### 5. 插件层 (Plugin)
-
-扩展功能（预留）：
-
-- 分账（Profit Sharing）
-- 对账（Reconciliation）
-- 转账（Transfer）
-- 订阅（Subscription）
-
-## 设计原则
-
-### 面向接口编程
-
-所有网关必须实现 `GatewayInterface`，确保调用方无感知切换渠道。
-
-### 开闭原则
-
-新增网关只需：
-1. 在 `src/Gateway/` 下新建目录和类
-2. 继承 `AbstractGateway` 实现 `GatewayInterface`
-3. 在 `GatewayFactory::$gateways` 中注册
-
-无需修改任何已有代码。
-
-### 依赖注入
-
-HTTP 客户端、配置均通过构造函数注入，便于单元测试时 Mock。
-
-### 异常隔离
-
-所有网关内部异常统一转换为 `PayException`，保留原始错误信息便于排查。
-
-### 类型安全
-
-严格使用 PHP 8.2+ 类型特性：
-- `readonly` 属性用于不可变配置
-- `nullsafe` 运算符
-- Union Types
-- `enum`（后续扩展）
-
-## 扩展指南
-
-### 新增支付网关
-
-参考 `.trae/skills/pay-sdk-dev/SKILL.md` 中的详细步骤。
-
-### 新增插件
-
-实现 `PluginInterface`：
+开发者通过门面类 `Pay` 的静态方法快速创建网关实例：
 
 ```php
-class ProfitSharingPlugin implements PluginInterface
-{
-    public function getName(): string
-    {
-        return 'profit_sharing';
-    }
+use Kode\Pays\Facade\Pay;
 
-    public function handle(GatewayInterface $gateway, array $params): array
-    {
-        // 调用网关分账 API
-    }
+// 一行代码创建微信支付网关
+$wechat = Pay::wechat(['app_id' => '...', 'mch_id' => '...', 'api_key' => '...']);
+
+// 直接使用网关方法
+$result = $wechat->createOrder($params);
+```
+
+### 2.2 门面层 (Facade)
+
+`Pay` 门面类职责：
+- 提供各网关的静态工厂方法
+- 管理全局 HTTP 客户端和事件分发器
+- 提供快捷工具方法（批量创建、轮询、配置加载）
+
+### 2.3 网关工厂层
+
+`GatewayFactory` 职责：
+- 维护网关类名到类路径的映射
+- 维护配置类名到类路径的映射
+- 统一创建网关实例，注入依赖
+
+```php
+$gateway = GatewayFactory::create('wechat', $config);
+```
+
+### 2.4 接口层
+
+`GatewayInterface` 定义所有网关必须实现的方法：
+
+```php
+interface GatewayInterface
+{
+    public function createOrder(array $params): array;
+    public function queryOrder(string $orderId): array;
+    public function refund(array $params): array;
+    public function queryRefund(string $refundId): array;
+    public function verifyNotify(array $data): bool;
+    public function closeOrder(string $orderId): array;
+    public static function getName(): string;
 }
 ```
 
-## 安全规范
+### 2.5 抽象层
 
-1. **密钥管理**：所有密钥通过配置注入，禁止硬编码
-2. **敏感信息**：密钥、证书等禁止输出到日志
-3. **签名验证**：所有通知必须验证签名
-4. **HTTPS 强制**：生产环境强制校验 SSL 证书
+`AbstractGateway` 提供通用实现：
+- HTTP 请求封装（get/post）
+- 响应解析
+- 必填参数验证
+- 沙箱 URL 自动切换
+- 请求头处理
+
+### 2.6 扩展层
+
+| 组件 | 职责 |
+|------|------|
+| EventDispatcher | 支付生命周期事件分发 |
+| Pipeline | 请求参数中间件处理 |
+| Config DTO | 类型安全的只读配置 |
+| 异常子类 | 精细化异常分类 |
+| SandboxManager | 沙箱/生产环境统一管理 |
+
+### 2.7 支持层
+
+| 组件 | 职责 |
+|------|------|
+| HttpClient | PSR-18 兼容的 HTTP 客户端 |
+| Signer | MD5/RSA/HMAC 签名工具 |
+| Encryptor | 敏感数据加密 |
+| Validator | 参数验证工具 |
+
+### 2.8 插件层
+
+插件基于 `PluginInterface` 接口，通过组合网关实现扩展功能：
+
+```php
+interface PluginInterface
+{
+    public function setGateway(GatewayInterface $gateway): void;
+}
+```
+
+### 2.9 管理层
+
+| 组件 | 职责 |
+|------|------|
+| WalletManager | 多账户钱包绑定与管理 |
+| FundConstraintValidator | 资金操作限额与风控验证 |
+| AutoSettlementPlugin | 支付后自动结算到钱包 |
+
+## 3. 核心设计模式
+
+### 3.1 门面模式
+
+简化复杂子系统的使用，提供统一入口。
+
+### 3.2 工厂模式
+
+`GatewayFactory` 根据标识符创建对应网关实例，新增网关无需修改调用代码。
+
+### 3.3 策略模式
+
+各网关实现相同的 `GatewayInterface`，可互换使用。插件通过 `match` 表达式根据网关名称选择对应实现。
+
+### 3.4 观察者模式
+
+`EventDispatcher` 实现事件驱动，支付生命周期关键节点触发事件，解耦日志、监控、业务通知。
+
+### 3.5 管道模式
+
+`Pipeline` 将请求参数依次通过多个中间件处理，支持签名、日志、加密、限流等横切关注点。
+
+### 3.6 依赖注入
+
+配置 DTO、HTTP 客户端、Logger、EventDispatcher 均通过构造注入，便于测试和扩展。
+
+## 4. 请求生命周期
+
+```
+1. 开发者调用
+   Pay::wechat($config)->createOrder($params)
+
+2. 门面创建网关
+   GatewayFactory::create('wechat', $config)
+
+3. 网关初始化
+   AbstractGateway::__construct()
+   └── initialize() 验证配置
+
+4. 参数处理
+   createOrder($params)
+   └── validateRequired() 验证必填
+
+5. 管道处理（可选）
+   Pipeline::send($params)->through([SignMiddleware, LogMiddleware])
+
+6. HTTP 请求
+   HttpClient::post($url, $params)
+
+7. 响应解析
+   parseResponse($rawResponse)
+
+8. 事件触发
+   EventDispatcher::emit(Events::PAYMENT_SUCCESS, $result)
+
+9. 返回结果
+   return $result
+```
+
+## 5. 扩展点
+
+### 5.1 新增支付网关
+
+1. 创建 `src/Gateway/Example/` 目录
+2. 实现 `ExampleConfig.php`（readonly DTO）
+3. 实现 `ExampleGateway.php`（继承 AbstractGateway）
+4. 注册到 `GatewayFactory::$gateways`
+5. 注册沙箱 URL 到 `SandboxManager`
+6. 创建 `docs/example.md` 文档
+
+### 5.2 新增插件
+
+1. 创建 `src/Plugin/ExamplePlugin.php`
+2. 通过构造函数接收 `GatewayInterface`
+3. 使用 `match` 根据网关名称实现多网关支持
+4. 在 `README.md` 添加使用示例
+
+### 5.3 新增中间件
+
+1. 实现 `Pipeline\Middleware\MiddlewareInterface`
+2. 在 `Pipeline::through()` 中使用
+
+## 6. 安全设计
+
+- 密钥绝不硬编码，通过配置注入
+- 敏感信息（密钥、证书）禁止日志输出（LogMiddleware 自动脱敏）
+- 签名验证必须强制开启
+- HTTPS 强制校验证书
+- 资金操作通过 FundConstraintValidator 进行限额风控

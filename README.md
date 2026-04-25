@@ -1120,6 +1120,17 @@ Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
 | `kode/event` | 事件总线增强 | 增强事件分发能力 |
 | `monolog/monolog` | PSR-3 日志 | 支付日志记录 |
 
+## 文档导航
+
+完整文档请访问 `docs/` 目录：
+
+| 文档 | 说明 |
+|------|------|
+| [docs/index.md](docs/index.md) | 文档总览与导航 |
+| [docs/architecture.md](docs/architecture.md) | 架构详解与设计模式 |
+| [docs/development.md](docs/development.md) | 开发指南（新增网关/插件） |
+| [docs/plugins.md](docs/plugins.md) | 插件体系总览 |
+
 ## License
 
 Apache-2.0 License
