@@ -629,6 +629,88 @@ $results = $handler->handleConcurrent($tasks, function ($data) {
 });
 ```
 
+## 分账插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\ProfitSharingPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new ProfitSharingPlugin($wechat);
+
+// 添加分账接收方
+$plugin->addReceiver([
+    'type'    => 'MERCHANT_ID',
+    'account' => '1234567890',
+    'name'    => '供应商A',
+]);
+
+// 创建分账
+$result = $plugin->create([
+    'transaction_id' => '4200000000000000',
+    'out_order_no'   => 'SHARE_' . date('YmdHis'),
+    'receivers'      => [
+        ['type' => 'MERCHANT_ID', 'account' => '1234567890', 'amount' => 100, 'description' => '供应商分账'],
+        ['type' => 'PERSONAL_OPENID', 'account' => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o', 'amount' => 50, 'description' => '推广者分账'],
+    ],
+]);
+
+// 查询分账结果
+$result = $plugin->query('SHARE_20240425000001');
+
+// 分账回退
+$result = $plugin->return([
+    'out_order_no'  => 'SHARE_20240425000001',
+    'out_return_no' => 'RETURN_' . date('YmdHis'),
+    'return_amount' => 100,
+]);
+
+// 解冻剩余资金
+$result = $plugin->unfreeze('4200000000000000');
+```
+
+## 订阅支付插件
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\SubscriptionPlugin;
+
+$stripe = Pay::stripe(['secret_key' => 'sk_test_...']);
+$plugin = new SubscriptionPlugin($stripe);
+
+// 创建订阅计划
+$plan = $plugin->createPlan([
+    'name'     => '月度会员',
+    'amount'   => 9900,
+    'currency' => 'usd',
+    'interval' => 'month',
+]);
+
+// 创建订阅
+$subscription = $plugin->createSubscription([
+    'customer_id' => 'cus_xxx',
+    'plan_id'     => $plan['id'],
+]);
+
+// 暂停订阅
+$plugin->pauseSubscription($subscription['id']);
+
+// 恢复订阅
+$plugin->resumeSubscription($subscription['id']);
+
+// 取消订阅
+$plugin->cancelSubscription($subscription['id']);
+```
+
 ## 异常处理
 
 ```php
