@@ -118,6 +118,10 @@ class SandboxManager
             'prod' => 'https://api.us.afterpay.com/',
             'sandbox' => 'https://api.us.sandbox.afterpay.com/',
         ],
+        'qq' => [
+            'prod' => 'https://api.qpay.qq.com/',
+            'sandbox' => 'https://sandbox.api.qpay.qq.com/',
+        ],
     ];
 
     /**

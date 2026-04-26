@@ -1,10 +1,10 @@
 # Kode Pays SDK
 
-Kode Pays 是一个面向 PHP 8.2+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
+Kode Pays 是一个面向 PHP 8.2+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、QQ 支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
 
 ## 特性
 
-- **多平台支持**：微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay、聚合支付
+- **多平台支持**：微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、QQ 支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay、聚合支付
 - **统一接口**：所有网关实现同一接口，切换渠道对业务代码完全无感知
 - **聚合路由**：支持多渠道配置，自动优先级路由和失败切换
 - **门面模式**：`Pay::wechat($config)` 一行代码创建网关
@@ -1046,6 +1046,7 @@ try {
 | 美团支付 | `meituan` | App、外卖、小程序 |
 | 京东支付 | `jd` | App、网页、白条 |
 | 快手支付 | `kuaishou` | App、小程序 |
+| QQ 支付 | `qq` | QQ 钱包、扫码支付、JSAPI 支付 |
 | 支付宝国际版 | `alipay_global` | 跨境支付、Alipay+ |
 | PayPal | `paypal` | Checkout、订阅 |
 | Stripe | `stripe` | PaymentIntent、Checkout Session、退款 |

@@ -47,8 +47,9 @@ class GatewayFactory
 
         // 短视频支付
         'kuaishou' => \Kode\Pays\Gateway\Kuaishou\KuaishouGateway::class,
+        'qq' => \Kode\Pays\Gateway\QQ\QQGateway::class,
 
-        // 国际钱包支付
+        // 国际支付国际钱包支付
         'apple' => \Kode\Pays\Gateway\Apple\AppleGateway::class,
         'google' => \Kode\Pays\Gateway\Google\GoogleGateway::class,
 
@@ -96,6 +97,7 @@ class GatewayFactory
         'meituan' => \Kode\Pays\Gateway\Meituan\MeituanConfig::class,
         'jd' => \Kode\Pays\Gateway\Jd\JdConfig::class,
         'kuaishou' => \Kode\Pays\Gateway\Kuaishou\KuaishouConfig::class,
+        'qq' => \Kode\Pays\Gateway\QQ\QQConfig::class,
         'apple' => \Kode\Pays\Gateway\Apple\AppleConfig::class,
         'google' => \Kode\Pays\Gateway\Google\GoogleConfig::class,
         'amazon' => \Kode\Pays\Gateway\Amazon\AmazonConfig::class,
