@@ -4,13 +4,21 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Support;
 
+use Endroid\QrCode\Color\Color;
+use Endroid\QrCode\Encoding\Encoding;
+use Endroid\QrCode\ErrorCorrectionLevel\ErrorCorrectionLevelLow;
+use Endroid\QrCode\QrCode;
+use Endroid\QrCode\RoundBlockSizeMode\RoundBlockSizeModeMargin;
+use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\Writer\SvgWriter;
+use Endroid\QrCode\Writer\WriterInterface;
 use Kode\Pays\Core\PayException;
 
 /**
  * 二维码生成器
  *
  * 为支付场景提供二维码生成能力，支持微信支付 Native、支付宝当面付等场景。
- * 优先使用 kode/tools 扩展包（如果已安装），否则提供基础实现或抛出异常提示安装。
+ * 默认使用 endroid/qr-code（已内置），如果安装了 kode/tools 则优先使用其高级能力。
  *
  * 使用示例：
  * ```php
@@ -47,14 +55,8 @@ class QrCodeGenerator
             return self::generateWithKode($content, $size, $format);
         }
 
-        // 如果安装了 endroid/qr-code，使用其能力
-        if (class_exists(\Endroid\QrCode\QrCode::class)) {
-            return self::generateWithEndroid($content, $size, $format);
-        }
-
-        throw PayException::configError(
-            '生成二维码需要安装扩展包，请执行：composer require kode/tools 或 endroid/qr-code',
-        );
+        // 使用内置的 endroid/qr-code
+        return self::generateWithEndroid($content, $size, $format);
     }
 
     /**
@@ -69,20 +71,11 @@ class QrCodeGenerator
     public static function generateWithLogo(string $content, string $logoPath, int $size = self::DEFAULT_SIZE): string
     {
         if (class_exists(\Kode\Tools\QrCode\QrCode::class)) {
-            try {
-                $qrCode = new \Kode\Tools\QrCode\QrCode($content);
-                $qrCode->setSize($size);
-                $qrCode->setLogo($logoPath);
-
-                return $qrCode->render();
-            } catch (\Throwable $e) {
-                throw PayException::configError('生成带 Logo 二维码失败：' . $e->getMessage(), $e);
-            }
+            return self::generateWithKodeLogo($content, $logoPath, $size);
         }
 
-        throw PayException::configError(
-            '生成带 Logo 二维码需要安装 kode/tools：composer require kode/tools',
-        );
+        // 使用 endroid/qr-code 内置的 Logo 支持
+        return self::generateWithEndroidLogo($content, $logoPath, $size);
     }
 
     /**
@@ -130,6 +123,28 @@ class QrCodeGenerator
     }
 
     /**
+     * 使用 kode/tools 生成带 Logo 的二维码
+     *
+     * @param string $content 二维码内容
+     * @param string $logoPath Logo 路径
+     * @param int $size 尺寸
+     * @return string 图片数据
+     * @throws PayException
+     */
+    protected static function generateWithKodeLogo(string $content, string $logoPath, int $size): string
+    {
+        try {
+            $qrCode = new \Kode\Tools\QrCode\QrCode($content);
+            $qrCode->setSize($size);
+            $qrCode->setLogo($logoPath);
+
+            return $qrCode->render();
+        } catch (\Throwable $e) {
+            throw PayException::configError('kode/tools 带 Logo 二维码生成失败：' . $e->getMessage(), $e);
+        }
+    }
+
+    /**
      * 使用 endroid/qr-code 生成二维码
      *
      * @param string $content 二维码内容
@@ -141,13 +156,18 @@ class QrCodeGenerator
     protected static function generateWithEndroid(string $content, int $size, string $format): string
     {
         try {
-            $qrCode = new \Endroid\QrCode\QrCode($content);
-            $qrCode->setSize($size);
+            $writer = self::createEndroidWriter($format);
 
-            $writer = match ($format) {
-                'svg' => new \Endroid\QrCode\Writer\SvgWriter(),
-                default => new \Endroid\QrCode\Writer\PngWriter(),
-            };
+            $qrCode = new QrCode(
+                encoding: new Encoding('UTF-8'),
+                errorCorrectionLevel: new ErrorCorrectionLevelLow(),
+                size: $size,
+                margin: 10,
+                roundBlockSizeMode: new RoundBlockSizeModeMargin(),
+                foregroundColor: new Color(0, 0, 0),
+                backgroundColor: new Color(255, 255, 255),
+                data: $content,
+            );
 
             $result = $writer->write($qrCode);
 
@@ -155,5 +175,55 @@ class QrCodeGenerator
         } catch (\Throwable $e) {
             throw PayException::configError('endroid/qr-code 生成失败：' . $e->getMessage(), $e);
         }
+    }
+
+    /**
+     * 使用 endroid/qr-code 生成带 Logo 的二维码
+     *
+     * @param string $content 二维码内容
+     * @param string $logoPath Logo 路径
+     * @param int $size 尺寸
+     * @return string 图片数据
+     * @throws PayException
+     */
+    protected static function generateWithEndroidLogo(string $content, string $logoPath, int $size): string
+    {
+        try {
+            $writer = new PngWriter();
+
+            $qrCode = new QrCode(
+                encoding: new Encoding('UTF-8'),
+                errorCorrectionLevel: new ErrorCorrectionLevelLow(),
+                size: $size,
+                margin: 10,
+                roundBlockSizeMode: new RoundBlockSizeModeMargin(),
+                foregroundColor: new Color(0, 0, 0),
+                backgroundColor: new Color(255, 255, 255),
+                data: $content,
+            );
+
+            // endroid/qr-code v5 通过 LogoOptions 添加 Logo
+            $logoOptions = new \Endroid\QrCode\Logo\Logo($logoPath);
+
+            $result = $writer->write($qrCode, $logoOptions);
+
+            return $result->getString();
+        } catch (\Throwable $e) {
+            throw PayException::configError('endroid/qr-code 带 Logo 二维码生成失败：' . $e->getMessage(), $e);
+        }
+    }
+
+    /**
+     * 创建 endroid Writer 实例
+     *
+     * @param string $format 格式
+     * @return WriterInterface
+     */
+    protected static function createEndroidWriter(string $format): WriterInterface
+    {
+        return match ($format) {
+            'svg' => new SvgWriter(),
+            default => new PngWriter(),
+        };
     }
 }
