@@ -19,12 +19,12 @@ class WiseGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://api.sandbox.transferwise.tech/';
+    protected const TEST_BASE_URL = 'https://api.sandbox.transferwise.tech/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://api.transferwise.com/';
+    protected const PROD_BASE_URL = 'https://api.transferwise.com/';
 
     /**
      * 初始化

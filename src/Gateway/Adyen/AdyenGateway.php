@@ -18,12 +18,12 @@ class AdyenGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://pal-test.adyen.com/';
+    protected const TEST_BASE_URL = 'https://pal-test.adyen.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://pal-live.adyen.com/';
+    protected const PROD_BASE_URL = 'https://pal-live.adyen.com/';
 
     /**
      * 初始化

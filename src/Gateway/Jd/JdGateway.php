@@ -21,12 +21,12 @@ class JdGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://uat-wg.jd.com/';
+    protected const TEST_BASE_URL = 'https://uat-wg.jd.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://wg.jd.com/';
+    protected const PROD_BASE_URL = 'https://wg.jd.com/';
 
     /**
      * 初始化

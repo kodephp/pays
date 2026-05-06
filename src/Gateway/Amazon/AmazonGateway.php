@@ -19,7 +19,7 @@ class AmazonGateway extends AbstractGateway
     /**
      * 区域基础 URL 映射
      */
-    protected const array REGION_URLS = [
+    protected const REGION_URLS = [
         'na' => [
             'prod' => 'https://pay-api.amazon.com/',
             'sandbox' => 'https://pay-api.amazon.com/',

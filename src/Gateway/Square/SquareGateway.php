@@ -17,12 +17,12 @@ class SquareGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://connect.squareupsandbox.com/';
+    protected const TEST_BASE_URL = 'https://connect.squareupsandbox.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://connect.squareup.com/';
+    protected const PROD_BASE_URL = 'https://connect.squareup.com/';
 
     /**
      * 初始化

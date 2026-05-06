@@ -19,12 +19,12 @@ class WechatPayV3Gateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://api.mch.weixin.qq.com/v3/';
+    protected const TEST_BASE_URL = 'https://api.mch.weixin.qq.com/v3/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://api.mch.weixin.qq.com/v3/';
+    protected const PROD_BASE_URL = 'https://api.mch.weixin.qq.com/v3/';
 
     /**
      * 平台证书（用于响应加密）

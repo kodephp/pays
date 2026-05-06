@@ -37,7 +37,7 @@ class IdempotencyGuard
     /**
      * 锁前缀
      */
-    protected const string LOCK_PREFIX = 'kode_pays_idem:';
+    protected const LOCK_PREFIX = 'kode_pays_idem:';
 
     /**
      * 锁默认过期时间（秒）

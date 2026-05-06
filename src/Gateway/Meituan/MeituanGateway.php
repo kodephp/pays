@@ -20,12 +20,12 @@ class MeituanGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://open-api-test.meituan.com/';
+    protected const TEST_BASE_URL = 'https://open-api-test.meituan.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://open-api.meituan.com/';
+    protected const PROD_BASE_URL = 'https://open-api.meituan.com/';
 
     /**
      * 初始化

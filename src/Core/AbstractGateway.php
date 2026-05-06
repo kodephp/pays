@@ -75,13 +75,22 @@ abstract class AbstractGateway implements GatewayInterface
      * 设置事件分发器
      *
      * @param EventDispatcher $dispatcher
-     * @return self
+     * @return void
      */
-    public function setDispatcher(EventDispatcher $dispatcher): self
+    public function setDispatcher(EventDispatcher $dispatcher): void
     {
         $this->dispatcher = $dispatcher;
+    }
 
-        return $this;
+    /**
+     * 设置 HTTP 客户端
+     *
+     * @param HttpClient $httpClient
+     * @return void
+     */
+    public function setHttpClient(HttpClient $httpClient): void
+    {
+        $this->httpClient = $httpClient;
     }
 
     /**

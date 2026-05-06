@@ -18,12 +18,12 @@ class KuaishouGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://pay-api-test.gifshow.com/';
+    protected const TEST_BASE_URL = 'https://pay-api-test.gifshow.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://pay-api.gifshow.com/';
+    protected const PROD_BASE_URL = 'https://pay-api.gifshow.com/';
 
     /**
      * 初始化

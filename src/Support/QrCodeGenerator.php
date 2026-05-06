@@ -29,7 +29,7 @@ class QrCodeGenerator
     /**
      * 二维码默认尺寸（像素）
      */
-    protected const int DEFAULT_SIZE = 300;
+    protected const DEFAULT_SIZE = 300;
 
     /**
      * 生成二维码图片数据

@@ -122,6 +122,14 @@ class SandboxManager
             'prod' => 'https://api.qpay.qq.com/',
             'sandbox' => 'https://sandbox.api.qpay.qq.com/',
         ],
+        'hitpay' => [
+            'prod' => 'https://api.hit-pay.com/',
+            'sandbox' => 'https://api.sandbox.hit-pay.com/',
+        ],
+        'xendit' => [
+            'prod' => 'https://api.xendit.co/',
+            'sandbox' => 'https://api.xendit.co/',
+        ],
     ];
 
     /**

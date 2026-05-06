@@ -18,12 +18,12 @@ class WechatPayGateway extends AbstractGateway
     /**
      * 沙箱环境基础 URL
      */
-    protected const string SANDBOX_BASE_URL = 'https://api.mch.weixin.qq.com/sandboxnew/';
+    protected const SANDBOX_BASE_URL = 'https://api.mch.weixin.qq.com/sandboxnew/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://api.mch.weixin.qq.com/';
+    protected const PROD_BASE_URL = 'https://api.mch.weixin.qq.com/';
 
     /**
      * 初始化

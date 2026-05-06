@@ -17,12 +17,12 @@ class PaypalGateway extends AbstractGateway
     /**
      * 沙箱环境基础 URL
      */
-    protected const string SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com/';
+    protected const SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://api-m.paypal.com/';
+    protected const PROD_BASE_URL = 'https://api-m.paypal.com/';
 
     /**
      * 访问令牌

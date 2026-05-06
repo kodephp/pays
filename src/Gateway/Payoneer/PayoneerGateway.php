@@ -19,12 +19,12 @@ class PayoneerGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://api.sandbox.payoneer.com/v4/';
+    protected const TEST_BASE_URL = 'https://api.sandbox.payoneer.com/v4/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://api.payoneer.com/v4/';
+    protected const PROD_BASE_URL = 'https://api.payoneer.com/v4/';
 
     /**
      * 初始化

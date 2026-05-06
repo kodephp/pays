@@ -19,12 +19,12 @@ class AppleGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://apple-pay-gateway-cert.apple.com/';
+    protected const TEST_BASE_URL = 'https://apple-pay-gateway-cert.apple.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://apple-pay-gateway.apple.com/';
+    protected const PROD_BASE_URL = 'https://apple-pay-gateway.apple.com/';
 
     /**
      * 初始化

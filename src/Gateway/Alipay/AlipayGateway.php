@@ -18,12 +18,12 @@ class AlipayGateway extends AbstractGateway
     /**
      * 沙箱环境基础 URL
      */
-    protected const string SANDBOX_BASE_URL = 'https://openapi.alipaydev.com/gateway.do';
+    protected const SANDBOX_BASE_URL = 'https://openapi.alipaydev.com/gateway.do';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://openapi.alipay.com/gateway.do';
+    protected const PROD_BASE_URL = 'https://openapi.alipay.com/gateway.do';
 
     /**
      * 初始化

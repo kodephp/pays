@@ -19,7 +19,7 @@ class KlarnaGateway extends AbstractGateway
     /**
      * 区域基础 URL 映射
      */
-    protected const array REGION_URLS = [
+    protected const REGION_URLS = [
         'eu' => [
             'prod' => 'https://api.klarna.com/',
             'sandbox' => 'https://api.playground.klarna.com/',

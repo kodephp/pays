@@ -73,6 +73,10 @@ class GatewayFactory
         // 先买后付
         'afterpay' => \Kode\Pays\Gateway\Afterpay\AfterpayGateway::class,
 
+        // 东南亚区域支付
+        'hitpay' => \Kode\Pays\Gateway\HitPay\HitPayGateway::class,
+        'xendit' => \Kode\Pays\Gateway\Xendit\XenditGateway::class,
+
         // 聚合支付（多家渠道聚合）
         'aggregate' => \Kode\Pays\Gateway\Aggregate\AggregateGateway::class,
     ];
@@ -108,6 +112,8 @@ class GatewayFactory
         'revolut' => \Kode\Pays\Gateway\Revolut\RevolutConfig::class,
         'coinbase' => \Kode\Pays\Gateway\Coinbase\CoinbaseConfig::class,
         'afterpay' => \Kode\Pays\Gateway\Afterpay\AfterpayConfig::class,
+        'hitpay' => \Kode\Pays\Gateway\HitPay\HitPayConfig::class,
+        'xendit' => \Kode\Pays\Gateway\Xendit\XenditConfig::class,
     ];
 
     /**

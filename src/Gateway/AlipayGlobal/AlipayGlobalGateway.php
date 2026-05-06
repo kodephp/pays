@@ -20,7 +20,7 @@ class AlipayGlobalGateway extends AbstractGateway
     /**
      * 测试环境网关地址
      */
-    protected const string TEST_GATEWAY_URL = 'https://globalmapi.alipay.com/gateway.do';
+    protected const TEST_GATEWAY_URL = 'https://globalmapi.alipay.com/gateway.do';
 
     /**
      * 初始化

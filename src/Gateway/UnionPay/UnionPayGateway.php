@@ -17,12 +17,12 @@ class UnionPayGateway extends AbstractGateway
     /**
      * 测试环境基础 URL
      */
-    protected const string TEST_BASE_URL = 'https://gateway.test.95516.com/';
+    protected const TEST_BASE_URL = 'https://gateway.test.95516.com/';
 
     /**
      * 生产环境基础 URL
      */
-    protected const string PROD_BASE_URL = 'https://gateway.95516.com/';
+    protected const PROD_BASE_URL = 'https://gateway.95516.com/';
 
     /**
      * 初始化
