@@ -6,9 +6,10 @@ namespace Kode\Pays\Support;
 
 use Endroid\QrCode\Color\Color;
 use Endroid\QrCode\Encoding\Encoding;
-use Endroid\QrCode\ErrorCorrectionLevel\ErrorCorrectionLevelLow;
+use Endroid\QrCode\ErrorCorrectionLevel;
+use Endroid\QrCode\Logo\Logo;
 use Endroid\QrCode\QrCode;
-use Endroid\QrCode\RoundBlockSizeMode\RoundBlockSizeModeMargin;
+use Endroid\QrCode\RoundBlockSizeMode;
 use Endroid\QrCode\Writer\PngWriter;
 use Endroid\QrCode\Writer\SvgWriter;
 use Endroid\QrCode\Writer\WriterInterface;
@@ -28,7 +29,7 @@ use Kode\Pays\Core\PayException;
  * $qrCode = QrCodeGenerator::generate('weixin://wxpay/bizpayurl?pr=xxx');
  * file_put_contents('wechat_pay.png', $qrCode);
  *
- * // 生成带 Logo 的二维码（需安装 kode/tools）
+ * // 生成带 Logo 的二维码
  * $qrCode = QrCodeGenerator::generateWithLogo($url, '/path/to/logo.png');
  * ```
  */
@@ -159,14 +160,14 @@ class QrCodeGenerator
             $writer = self::createEndroidWriter($format);
 
             $qrCode = new QrCode(
+                data: $content,
                 encoding: new Encoding('UTF-8'),
-                errorCorrectionLevel: new ErrorCorrectionLevelLow(),
+                errorCorrectionLevel: ErrorCorrectionLevel::Low,
                 size: $size,
                 margin: 10,
-                roundBlockSizeMode: new RoundBlockSizeModeMargin(),
+                roundBlockSizeMode: RoundBlockSizeMode::Margin,
                 foregroundColor: new Color(0, 0, 0),
                 backgroundColor: new Color(255, 255, 255),
-                data: $content,
             );
 
             $result = $writer->write($qrCode);
@@ -192,20 +193,20 @@ class QrCodeGenerator
             $writer = new PngWriter();
 
             $qrCode = new QrCode(
+                data: $content,
                 encoding: new Encoding('UTF-8'),
-                errorCorrectionLevel: new ErrorCorrectionLevelLow(),
+                errorCorrectionLevel: ErrorCorrectionLevel::Low,
                 size: $size,
                 margin: 10,
-                roundBlockSizeMode: new RoundBlockSizeModeMargin(),
+                roundBlockSizeMode: RoundBlockSizeMode::Margin,
                 foregroundColor: new Color(0, 0, 0),
                 backgroundColor: new Color(255, 255, 255),
-                data: $content,
             );
 
-            // endroid/qr-code v5 通过 LogoOptions 添加 Logo
-            $logoOptions = new \Endroid\QrCode\Logo\Logo($logoPath);
+            // endroid/qr-code v5 通过 Logo 类添加 Logo
+            $logo = new Logo($logoPath);
 
-            $result = $writer->write($qrCode, $logoOptions);
+            $result = $writer->write($qrCode, $logo);
 
             return $result->getString();
         } catch (\Throwable $e) {
