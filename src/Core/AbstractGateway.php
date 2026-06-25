@@ -128,7 +128,8 @@ abstract class AbstractGateway implements GatewayInterface
     /**
      * 发送 POST 请求并解析响应
      *
-     * 自动触发 REQUEST_SENDING 和 REQUEST_SENT 事件
+     * 自动触发 REQUEST_SENDING 和 REQUEST_SENT 事件。
+     * 声明为 public 以便插件（RefundPlugin/TransferPlugin 等）复用网关的 HTTP 通道。
      *
      * @param string $endpoint API 端点
      * @param array<string, mixed> $data 请求数据
@@ -136,7 +137,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
-    protected function post(string $endpoint, array $data = [], array $headers = []): array
+    public function post(string $endpoint, array $data = [], array $headers = []): array
     {
         return $this->request('post', $endpoint, $data, $headers);
     }
@@ -150,7 +151,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
-    protected function postRaw(string $endpoint, string $body, array $headers = []): array
+    public function postRaw(string $endpoint, string $body, array $headers = []): array
     {
         $url = $this->getBaseUrl() . $endpoint;
 
@@ -185,7 +186,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
-    protected function get(string $endpoint, array $query = [], array $headers = []): array
+    public function get(string $endpoint, array $query = [], array $headers = []): array
     {
         return $this->request('get', $endpoint, $query, $headers);
     }
@@ -199,7 +200,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
-    protected function put(string $endpoint, array $data = [], array $headers = []): array
+    public function put(string $endpoint, array $data = [], array $headers = []): array
     {
         return $this->request('put', $endpoint, $data, $headers);
     }
@@ -213,7 +214,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
-    protected function delete(string $endpoint, array $query = [], array $headers = []): array
+    public function delete(string $endpoint, array $query = [], array $headers = []): array
     {
         return $this->request('delete', $endpoint, $query, $headers);
     }

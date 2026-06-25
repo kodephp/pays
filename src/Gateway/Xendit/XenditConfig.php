@@ -27,9 +27,9 @@ readonly class XenditConfig implements ConfigInterface
     ) {
     }
 
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             secretKey: $config['secret_key'] ?? '',
             publicKey: $config['public_key'] ?? '',
             callbackToken: $config['callback_token'] ?? '',

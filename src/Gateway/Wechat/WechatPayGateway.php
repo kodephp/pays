@@ -60,7 +60,7 @@ class WechatPayGateway extends AbstractGateway
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('pay/unifiedorder', $xml, ['Content-Type' => 'text/xml']);
 
-        return $this->parseResponse($response);
+        return $response;
     }
 
     /**
@@ -90,7 +90,7 @@ class WechatPayGateway extends AbstractGateway
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('pay/orderquery', $xml, ['Content-Type' => 'text/xml']);
 
-        return $this->parseResponse($response);
+        return $response;
     }
 
     /**
@@ -112,7 +112,7 @@ class WechatPayGateway extends AbstractGateway
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('secapi/pay/refund', $xml, ['Content-Type' => 'text/xml']);
 
-        return $this->parseResponse($response);
+        return $response;
     }
 
     /**
@@ -136,7 +136,7 @@ class WechatPayGateway extends AbstractGateway
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('pay/refundquery', $xml, ['Content-Type' => 'text/xml']);
 
-        return $this->parseResponse($response);
+        return $response;
     }
 
     /**
@@ -175,7 +175,7 @@ class WechatPayGateway extends AbstractGateway
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('pay/closeorder', $xml, ['Content-Type' => 'text/xml']);
 
-        return $this->parseResponse($response);
+        return $response;
     }
 
     /**

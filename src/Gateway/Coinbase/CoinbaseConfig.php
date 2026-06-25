@@ -22,9 +22,9 @@ readonly class CoinbaseConfig implements ConfigInterface
     ) {
     }
 
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             apiKey: $config['api_key'] ?? '',
             webhookSecret: $config['webhook_secret'] ?? '',
             sandbox: $config['sandbox'] ?? false,

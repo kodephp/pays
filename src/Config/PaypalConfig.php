@@ -27,11 +27,11 @@ readonly class PaypalConfig implements ConfigInterface
      * 从数组创建配置对象
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             clientId: $config['client_id'] ?? '',
             clientSecret: $config['client_secret'] ?? '',
             sandbox: $config['sandbox'] ?? false,

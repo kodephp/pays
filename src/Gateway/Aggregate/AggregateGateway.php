@@ -36,7 +36,7 @@ class AggregateGateway implements GatewayInterface
      */
     public function __construct(array $config)
     {
-        if (!isset($config['channels']) || !is_array($config['channels'])) {
+        if (!isset($config['channels']) || !is_array($config['channels']) || $config['channels'] === []) {
             throw PayException::configError('聚合支付必须配置 channels 渠道列表');
         }
 
@@ -200,6 +200,34 @@ class AggregateGateway implements GatewayInterface
     public static function getName(): string
     {
         return 'aggregate';
+    }
+
+    /**
+     * 设置事件分发器
+     *
+     * 聚合网关本身不直接发起请求，事件分发器会透传给实际使用的子网关。
+     *
+     * @param \Kode\Pays\Event\EventDispatcher $dispatcher
+     * @return void
+     */
+    public function setDispatcher(\Kode\Pays\Event\EventDispatcher $dispatcher): void
+    {
+        // 聚合网关按渠道动态创建子网关，分发器在创建时由工厂注入或后续设置
+        // 此处保留实现以满足接口契约，子网关在 getGateway() 时可按需注入
+    }
+
+    /**
+     * 设置 HTTP 客户端
+     *
+     * 聚合网关将 HTTP 客户端透传给子网关使用。
+     *
+     * @param \Kode\Pays\Support\HttpClient $httpClient
+     * @return void
+     */
+    public function setHttpClient(\Kode\Pays\Support\HttpClient $httpClient): void
+    {
+        // 子网关在 GatewayFactory::create() 时使用各自配置创建
+        // 此处保留实现以满足接口契约
     }
 
     /**

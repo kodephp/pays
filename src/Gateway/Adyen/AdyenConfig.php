@@ -29,11 +29,11 @@ readonly class AdyenConfig implements ConfigInterface
      * 从数组创建配置对象
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             apiKey: $config['api_key'] ?? '',
             merchantAccount: $config['merchant_account'] ?? '',
             clientKey: $config['client_key'] ?? null,

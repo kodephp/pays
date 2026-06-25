@@ -29,11 +29,11 @@ readonly class UnionPayConfig implements ConfigInterface
      * 从数组创建配置对象
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             merId: $config['mer_id'] ?? '',
             certPath: $config['cert_path'] ?? '',
             certPwd: $config['cert_pwd'] ?? '',

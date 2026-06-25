@@ -33,11 +33,11 @@ readonly class KlarnaConfig implements ConfigInterface
      * 从数组创建配置实例
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             username: $config['username'] ?? '',
             password: $config['password'] ?? '',
             region: $config['region'] ?? 'eu',

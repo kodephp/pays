@@ -24,9 +24,9 @@ readonly class AfterpayConfig implements ConfigInterface
     ) {
     }
 
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             merchantId: $config['merchant_id'] ?? '',
             secretKey: $config['secret_key'] ?? '',
             region: $config['region'] ?? 'US',

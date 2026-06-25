@@ -37,11 +37,11 @@ readonly class AmazonConfig implements ConfigInterface
      * 从数组创建配置实例
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             merchantId: $config['merchant_id'] ?? '',
             accessKey: $config['access_key'] ?? '',
             secretKey: $config['secret_key'] ?? '',

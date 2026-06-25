@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace Kode\Pays\Tests;
 
 use Kode\Pays\Contract\HttpClientInterface;
+use Kode\Pays\Support\HttpClient;
 
 /**
  * Mock HTTP 客户端
  *
  * 用于单元测试，根据预设 URL 返回对应响应，不发起真实网络请求。
+ *
+ * 注意：继承自 HttpClient 以满足 AbstractGateway 中 `protected HttpClient $httpClient`
+ * 这一类型化属性的注入要求（PHP 8.x 反射无法绕过类型化属性的类型校验）。
+ * 构造函数刻意不调用父类构造，避免实例化真实 Guzzle 客户端。
  */
-class MockHttpClient implements HttpClientInterface
+class MockHttpClient extends HttpClient implements HttpClientInterface
 {
     /**
      * 预设响应映射
@@ -30,10 +35,13 @@ class MockHttpClient implements HttpClientInterface
     /**
      * 构造函数
      *
+     * 刻意不调用 parent::__construct()，避免创建真实 Guzzle 客户端。
+     *
      * @param array<string, string> $responses 预设响应映射 [url_pattern => response_body]
      */
     public function __construct(array $responses = [])
     {
+        // 不调用父类构造函数，避免实例化 Guzzle 客户端
         $this->responses = $responses;
     }
 

@@ -37,11 +37,11 @@ readonly class AppleConfig implements ConfigInterface
      * 从数组创建配置实例
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             merchantIdentifier: $config['merchant_identifier'] ?? '',
             merchantCertificate: $config['merchant_certificate'] ?? '',
             merchantCertificateKey: $config['merchant_certificate_key'] ?? '',

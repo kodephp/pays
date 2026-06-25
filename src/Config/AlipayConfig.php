@@ -31,11 +31,11 @@ readonly class AlipayConfig implements ConfigInterface
      * 从数组创建配置对象
      *
      * @param array<string, mixed> $config
-     * @return self
+     * @return static
      */
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             appId: $config['app_id'] ?? '',
             privateKey: $config['private_key'] ?? '',
             publicKey: $config['public_key'] ?? '',

@@ -26,9 +26,9 @@ readonly class QQConfig implements ConfigInterface
     ) {
     }
 
-    public static function fromArray(array $config): self
+    public static function fromArray(array $config): static
     {
-        return new self(
+        return new static(
             appId: $config['app_id'] ?? '',
             mchId: $config['mch_id'] ?? '',
             apiKey: $config['api_key'] ?? '',
