@@ -173,4 +173,20 @@ class PayException extends Exception
     ): self {
         return new self($message, self::ERROR_GATEWAY, $previous, $gatewayCode, $gatewayMessage);
     }
+
+    /**
+     * 快速创建订单不存在异常
+     */
+    public static function orderNotFound(string $message): static
+    {
+        return new self($message, self::ERROR_ORDER_NOT_FOUND);
+    }
+
+    /**
+     * 快速创建退款失败异常
+     */
+    public static function refundError(string $message): static
+    {
+        return new self($message, self::ERROR_REFUND);
+    }
 }

@@ -112,6 +112,75 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+## 完整使用示例
+
+### 查询订单
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$alipay = Pay::alipay([
+    'app_id'      => '2024XXXXXXXXXXXX',
+    'private_key' => file_get_contents('/path/to/private_key.pem'),
+    'public_key'  => file_get_contents('/path/to/public_key.pem'),
+]);
+
+// 通过商户订单号查询
+$result = $alipay->queryOrder('ORDER_202404250001');
+
+$tradeStatus = $result['trade_status'] ?? '';
+if ($tradeStatus === 'TRADE_SUCCESS') {
+    echo '订单已支付，交易号：' . ($result['trade_no'] ?? '') . PHP_EOL;
+} elseif ($tradeStatus === 'WAIT_BUYER_PAY') {
+    echo '订单待支付' . PHP_EOL;
+} elseif ($tradeStatus === 'TRADE_CLOSED') {
+    echo '订单已关闭' . PHP_EOL;
+}
+```
+
+### 关闭订单
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$alipay = Pay::alipay([
+    'app_id'      => '2024XXXXXXXXXXXX',
+    'private_key' => file_get_contents('/path/to/private_key.pem'),
+    'public_key'  => file_get_contents('/path/to/public_key.pem'),
+]);
+
+// 用户超时未支付时关闭订单
+$result = $alipay->closeOrder('ORDER_202404250001');
+```
+
+### 申请退款
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$alipay = Pay::alipay([
+    'app_id'      => '2024XXXXXXXXXXXX',
+    'private_key' => file_get_contents('/path/to/private_key.pem'),
+    'public_key'  => file_get_contents('/path/to/public_key.pem'),
+]);
+
+$result = $alipay->refund([
+    'out_trade_no'  => 'ORDER_202404250001',
+    'out_request_no' => 'REFUND_' . date('YmdHis'),
+    'refund_amount' => '0.50',
+    'refund_reason' => '商品质量问题',
+]);
+
+echo '退款状态：' . ($result['fund_change'] ?? '') . PHP_EOL;
+echo '买家付款金额：' . ($result['buyer_pay_amount'] ?? '') . PHP_EOL;
+```
+
 ## 异步通知处理
 
 ```php

@@ -178,14 +178,23 @@ class AlipayGlobalGateway extends AbstractGateway
      */
     public function verifyNotify(array $data): bool
     {
-        if (!isset($data['sign'])) {
+        $sign = $data['sign'] ?? '';
+        if ($sign === '') {
+            return false;
+        }
+        unset($data['sign'], $data['sign_type']);
+
+        // 异步通知用支付宝公钥验签（不能复用 sign()，sign() 使用私钥重签）
+        $publicKey = $this->getConfig('public_key', '');
+        if ($publicKey === '') {
             return false;
         }
 
-        $sign = $data['sign'];
-        unset($data['sign'], $data['sign_type']);
+        // 根据签名类型选择算法：RSA2 -> SHA256，RSA -> SHA1
+        $signType = $this->getConfig('sign_type') ?? 'RSA2';
+        $algo = $signType === 'RSA2' ? 'SHA256' : 'SHA1';
 
-        return $this->sign($data) === $sign;
+        return Signer::verifyRsa($data, $publicKey, $sign, false, $algo);
     }
 
     /**

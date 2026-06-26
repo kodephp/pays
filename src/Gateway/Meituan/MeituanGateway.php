@@ -7,7 +7,6 @@ namespace Kode\Pays\Gateway\Meituan;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
-use Kode\Pays\Support\Signer;
 
 /**
  * 美团支付网关

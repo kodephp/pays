@@ -140,17 +140,47 @@ class StripeGateway extends AbstractGateway
      */
     public function verifyNotify(array $data): bool
     {
-        if (!isset($data['payload'], $data['sig_header'], $this->config['webhook_secret'])) {
+        // Stripe webhook 头格式：Stripe-Signature: t=xxx,v1=yyy[,v1=zzz]
+        $sigHeader = $data['sig_header'] ?? '';
+        $payload = $data['payload'] ?? '';
+        $secret = $this->getConfig('webhook_secret', $this->getConfig('secret_key', ''));
+        if ($sigHeader === '' || $payload === '' || $secret === '') {
             return false;
         }
 
-        $payload = $data['payload'];
-        $sigHeader = $data['sig_header'];
-        $secret = $this->config['webhook_secret'];
+        // 解析签名头中的 t（时间戳）和 v1（签名）元素
+        $elements = explode(',', $sigHeader);
+        $timestamp = null;
+        $signatures = [];
+        foreach ($elements as $element) {
+            $parts = explode('=', $element, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            if ($parts[0] === 't') {
+                $timestamp = $parts[1];
+            } elseif ($parts[0] === 'v1') {
+                $signatures[] = $parts[1];
+            }
+        }
+        if ($timestamp === null || $signatures === []) {
+            return false;
+        }
 
-        $expectedSig = hash_hmac('sha256', $payload, $secret);
+        // 时间戳容差 5 分钟，防止重放攻击
+        if (abs(time() - (int) $timestamp) > 300) {
+            return false;
+        }
 
-        return hash_equals($expectedSig, $sigHeader);
+        // 计算期望签名：HMAC-SHA256("{timestamp}.{payload}", secret)
+        $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
+        foreach ($signatures as $signature) {
+            if (hash_equals($expected, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

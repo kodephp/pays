@@ -59,6 +59,19 @@ class KlarnaGateway extends AbstractGateway
     }
 
     /**
+     * 构建鉴权请求头（Klarna 使用 Basic Auth）
+     *
+     * @return array<string, string>
+     */
+    protected function buildAuthHeaders(): array
+    {
+        return [
+            'Authorization' => 'Basic ' . base64_encode($this->getConfig('username') . ':' . $this->getConfig('password')),
+            'Content-Type' => 'application/json',
+        ];
+    }
+
+    /**
      * 创建支付会话
      *
      * @param array<string, mixed> $params 订单参数
@@ -85,9 +98,7 @@ class KlarnaGateway extends AbstractGateway
             $requestData['customer'] = $params['customer'];
         }
 
-        return $this->post('payments/v1/sessions', $requestData, [
-            'Content-Type' => 'application/json',
-        ]);
+        return $this->post('payments/v1/sessions', $requestData, $this->buildAuthHeaders());
     }
 
     /**
@@ -124,7 +135,7 @@ class KlarnaGateway extends AbstractGateway
      */
     public function queryOrder(string $orderId): array
     {
-        return $this->get("ordermanagement/v1/orders/{$orderId}");
+        return $this->get("ordermanagement/v1/orders/{$orderId}", [], $this->buildAuthHeaders());
     }
 
     /**
@@ -146,9 +157,7 @@ class KlarnaGateway extends AbstractGateway
             $requestData['description'] = $params['description'];
         }
 
-        return $this->post("ordermanagement/v1/orders/{$params['order_id']}/refunds", $requestData, [
-            'Content-Type' => 'application/json',
-        ]);
+        return $this->post("ordermanagement/v1/orders/{$params['order_id']}/refunds", $requestData, $this->buildAuthHeaders());
     }
 
     /**
@@ -160,7 +169,7 @@ class KlarnaGateway extends AbstractGateway
      */
     public function queryRefund(string $refundId): array
     {
-        return $this->get("ordermanagement/v1/refunds/{$refundId}");
+        return $this->get("ordermanagement/v1/refunds/{$refundId}", [], $this->buildAuthHeaders());
     }
 
     /**
@@ -184,9 +193,7 @@ class KlarnaGateway extends AbstractGateway
      */
     public function closeOrder(string $orderId): array
     {
-        return $this->post("ordermanagement/v1/orders/{$orderId}/cancel", [], [
-            'Content-Type' => 'application/json',
-        ]);
+        return $this->post("ordermanagement/v1/orders/{$orderId}/cancel", [], $this->buildAuthHeaders());
     }
 
     /**

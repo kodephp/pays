@@ -7,7 +7,6 @@ namespace Kode\Pays\Gateway\Jd;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
-use Kode\Pays\Support\Encryptor;
 use Kode\Pays\Support\Signer;
 
 /**

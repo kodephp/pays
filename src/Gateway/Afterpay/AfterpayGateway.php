@@ -98,7 +98,7 @@ class AfterpayGateway extends AbstractGateway
         // 移除 null 值
         $requestData = array_filter($requestData, fn ($v) => $v !== null);
 
-        $response = $this->post('v2/checkouts', $requestData);
+        $response = $this->post('v2/checkouts', $requestData, $this->resolveHeader());
 
         return [
             'out_trade_no' => $params['out_trade_no'],
@@ -111,7 +111,7 @@ class AfterpayGateway extends AbstractGateway
 
     public function queryOrder(string $orderId): array
     {
-        $response = $this->get("v2/payments/{$orderId}");
+        $response = $this->get("v2/payments/{$orderId}", [], $this->resolveHeader());
 
         return [
             'token' => $response['token'] ?? '',
@@ -144,17 +144,17 @@ class AfterpayGateway extends AbstractGateway
             'merchantReference' => $params['out_refund_no'] ?? '',
         ];
 
-        return $this->post('v2/payments/refund', $requestData);
+        return $this->post('v2/payments/refund', $requestData, $this->resolveHeader());
     }
 
     public function queryRefund(string $refundId): array
     {
-        return $this->get("v2/payments/{$refundId}");
+        return $this->get("v2/payments/{$refundId}", [], $this->resolveHeader());
     }
 
     public function closeOrder(string $orderId): array
     {
-        return $this->post("v2/payments/{$orderId}/void", []);
+        return $this->post("v2/payments/{$orderId}/void", [], $this->resolveHeader());
     }
 
     public function verifyNotify(array $data): bool

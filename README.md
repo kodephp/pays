@@ -1130,9 +1130,15 @@ Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
 | 文档 | 说明 |
 |------|------|
 | [docs/index.md](docs/index.md) | 文档总览与导航 |
+| [docs/quickstart.md](docs/quickstart.md) | 快速开始（5 分钟接入） |
 | [docs/architecture.md](docs/architecture.md) | 架构详解与设计模式 |
-| [docs/development.md](docs/development.md) | 开发指南（新增网关/插件） |
+| [docs/development.md](docs/development.md) | 开发指南（新增网关/插件/测试） |
 | [docs/plugins.md](docs/plugins.md) | 插件体系总览 |
+| [docs/wechat.md](docs/wechat.md) | 微信支付接入文档 |
+| [docs/alipay.md](docs/alipay.md) | 支付宝接入文档 |
+| [docs/aggregate.md](docs/aggregate.md) | 聚合支付接入文档 |
+
+各网关接入文档完整列表见 [docs/index.md](docs/index.md)。
 
 ## License
 

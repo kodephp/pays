@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\Wechat;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Support\Encryptor;
+use Kode\Pays\Support\StrUtil;
 
 /**
  * 微信支付 V3 网关
@@ -90,7 +91,7 @@ class WechatPayV3Gateway extends AbstractGateway
             default => $requestData,
         };
 
-        $headers = $this->buildV3Headers('POST', 'pay/transactions/' . ($params['trade_type'] ?? 'native'));
+        $headers = $this->buildV3Headers('POST', 'pay/transactions/' . ($params['trade_type'] ?? 'native'), json_encode($requestData));
 
         return $this->post('pay/transactions/' . ($params['trade_type'] ?? 'native'), $requestData, $headers);
     }
@@ -118,11 +119,13 @@ class WechatPayV3Gateway extends AbstractGateway
      */
     public function closeOrder(string $orderId): array
     {
-        $headers = $this->buildV3Headers('POST', "pay/transactions/out-trade-no/{$orderId}/close");
-
-        return $this->post("pay/transactions/out-trade-no/{$orderId}/close", [
+        $requestData = [
             'mchid' => $this->getConfig('mch_id'),
-        ], $headers);
+        ];
+
+        $headers = $this->buildV3Headers('POST', "pay/transactions/out-trade-no/{$orderId}/close", json_encode($requestData));
+
+        return $this->post("pay/transactions/out-trade-no/{$orderId}/close", $requestData, $headers);
     }
 
     /**
@@ -148,7 +151,7 @@ class WechatPayV3Gateway extends AbstractGateway
             ],
         ];
 
-        $headers = $this->buildV3Headers('POST', 'refund/domestic/refunds');
+        $headers = $this->buildV3Headers('POST', 'refund/domestic/refunds', json_encode($requestData));
 
         return $this->post('refund/domestic/refunds', $requestData, $headers);
     }
@@ -223,14 +226,14 @@ class WechatPayV3Gateway extends AbstractGateway
      *
      * @param string $method HTTP 方法
      * @param string $url 请求路径
+     * @param string $body 请求体（GET 请求传空字符串）
      * @return array<string, string>
      * @throws PayException
      */
-    protected function buildV3Headers(string $method, string $url): array
+    protected function buildV3Headers(string $method, string $url, string $body = ''): array
     {
         $timestamp = (string) time();
         $nonce = StrUtil::random(32);
-        $body = '';
         $serialNo = $this->getConfig('serial_no');
 
         $message = $method . "\n" . $url . "\n" . $timestamp . "\n" . $nonce . "\n" . $body . "\n";

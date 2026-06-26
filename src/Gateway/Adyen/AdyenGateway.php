@@ -152,14 +152,19 @@ class AdyenGateway extends AbstractGateway
      */
     public function verifyNotify(array $data): bool
     {
-        if (!isset($data['hmacSignature'], $data['payload'])) {
+        // Adyen 通知签名：对通知内容做 HMAC-SHA256，使用独立的 HMAC 密钥（非 api_key）
+        $hmacKey = $this->getConfig('hmac_key', '');
+        $sig = $data['hmacSignature'] ?? '';
+        $payload = $data['payload'] ?? '';
+        if ($hmacKey === '' || $sig === '' || $payload === '') {
             return false;
         }
 
-        // Adyen HMAC 签名验证
-        $expectedHmac = base64_encode(hash_hmac('sha256', $data['payload'], $this->getConfig('api_key'), true));
+        // Adyen HMAC key 为十六进制字符串，需先做 hex-to-binary 转换得到原始字节密钥
+        $keyBytes = pack('H*', $hmacKey);
+        $expected = hash_hmac('sha256', $payload, $keyBytes);
 
-        return hash_equals($expectedHmac, $data['hmacSignature']);
+        return hash_equals($expected, strtolower($sig));
     }
 
     /**

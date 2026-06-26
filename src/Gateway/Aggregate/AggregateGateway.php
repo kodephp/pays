@@ -24,11 +24,6 @@ class AggregateGateway implements GatewayInterface
     protected array $channels = [];
 
     /**
-     * 当前使用的网关实例
-     */
-    protected ?GatewayInterface $currentGateway = null;
-
-    /**
      * 构造函数
      *
      * @param array<string, mixed> $config 聚合配置

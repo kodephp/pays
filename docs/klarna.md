@@ -168,3 +168,26 @@ use Kode\Pays\Core\SandboxManager;
 
 SandboxManager::enable('klarna');
 ```
+
+### 4. 事件监听
+
+```php
+use Kode\Pays\Event\Events;
+use Kode\Pays\Facade\Pay;
+
+Pay::on(Events::PAYMENT_SUCCESS, function (array $payload) {
+    // 支付成功后处理业务
+});
+```
+
+### 5. 使用 PayResponse 包装结果
+
+```php
+use Kode\Pays\Core\PayResponse;
+
+$response = new PayResponse($klarna->createOrder($params));
+
+if ($response->isSuccess()) {
+    $sessionId = $response->get('session_id');
+}
+```

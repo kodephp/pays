@@ -37,6 +37,8 @@ use Kode\Pays\Exception\SignException;
  */
 class QQGateway extends AbstractGateway
 {
+    // TODO: 实现 QQ Pay V3 签名头（WECHATPAY2-SHA256-RSA2048），当前所有请求缺鉴权头
+
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['app_id', 'mch_id', 'api_key']);
@@ -164,9 +166,8 @@ class QQGateway extends AbstractGateway
 
         return [
             'out_trade_no' => $orderId,
-            'result' => 'SUCCESS',
-            'message' => '订单已关闭',
-        ];
+            'result' => $response['result_code'] ?? $response['return_code'] ?? 'SUCCESS',
+        ] + $response;
     }
 
     public function verifyNotify(array $data): bool
@@ -217,11 +218,4 @@ class QQGateway extends AbstractGateway
         return $data;
     }
 
-    protected function resolveHeader(): array
-    {
-        return [
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
-    }
 }

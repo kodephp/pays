@@ -236,7 +236,7 @@ class XenditGateway extends AbstractGateway
             throw new GatewayException('Xendit 响应格式异常');
         }
 
-        if (isset($data['error_code']) || isset($data['message'])) {
+        if (isset($data['error_code'])) {
             throw new GatewayException(
                 $data['message'] ?? 'Xendit 业务失败',
                 $data['error_code'] ?? 'XENDIT_ERROR',

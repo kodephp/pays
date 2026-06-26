@@ -104,7 +104,7 @@ class CoinbaseGateway extends AbstractGateway
             $requestData['cancel_url'] = $params['cancel_url'];
         }
 
-        $response = $this->post('v2/charges', $requestData);
+        $response = $this->post('v2/charges', $requestData, $this->resolveHeader());
 
         return $this->formatChargeResponse($response, $params['out_trade_no']);
     }
@@ -155,7 +155,7 @@ class CoinbaseGateway extends AbstractGateway
             $requestData['cancel_url'] = $params['cancel_url'];
         }
 
-        $response = $this->post('v2/charges', $requestData);
+        $response = $this->post('v2/charges', $requestData, $this->resolveHeader());
 
         return $this->formatChargeResponse($response, $params['out_trade_no']);
     }
@@ -170,7 +170,7 @@ class CoinbaseGateway extends AbstractGateway
      */
     public function getPaymentAddresses(string $chargeId): array
     {
-        $response = $this->get("v2/charges/{$chargeId}");
+        $response = $this->get("v2/charges/{$chargeId}", [], $this->resolveHeader());
         $data = $response['data'] ?? [];
         $addresses = [];
 
@@ -193,7 +193,7 @@ class CoinbaseGateway extends AbstractGateway
      */
     public function getConfirmations(string $chargeId): array
     {
-        $response = $this->get("v2/charges/{$chargeId}");
+        $response = $this->get("v2/charges/{$chargeId}", [], $this->resolveHeader());
         $data = $response['data'] ?? [];
         $confirmations = [];
 
@@ -238,7 +238,7 @@ class CoinbaseGateway extends AbstractGateway
 
     public function queryOrder(string $orderId): array
     {
-        $response = $this->get("v2/charges/{$orderId}");
+        $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
         $data = $response['data'] ?? [];
 
         return [
@@ -270,7 +270,7 @@ class CoinbaseGateway extends AbstractGateway
         return $this->post('v2/charges/' . $params['charge_id'] . '/refund', [
             'currency' => $params['currency'] ?? 'USD',
             'amount' => isset($params['refund_fee']) ? number_format($params['refund_fee'] / 100, 2) : null,
-        ]);
+        ], $this->resolveHeader());
     }
 
     public function queryRefund(string $refundId): array

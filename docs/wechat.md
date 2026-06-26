@@ -136,6 +136,77 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+## 完整使用示例
+
+### 查询订单
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+// 通过商户订单号查询
+$result = $wechat->queryOrder('ORDER_202404250001');
+
+// 判断订单状态
+$state = $result['trade_state'] ?? '';
+if ($state === 'SUCCESS') {
+    echo '订单已支付，交易号：' . ($result['transaction_id'] ?? '') . PHP_EOL;
+} elseif ($state === 'NOTPAY') {
+    echo '订单未支付' . PHP_EOL;
+} elseif ($state === 'CLOSED') {
+    echo '订单已关闭' . PHP_EOL;
+}
+```
+
+### 关闭订单
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+// 用户超时未支付时关闭订单
+$result = $wechat->closeOrder('ORDER_202404250001');
+```
+
+### 申请退款
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$result = $wechat->refund([
+    'out_trade_no'  => 'ORDER_202404250001',
+    'out_refund_no' => 'REFUND_' . date('YmdHis'),
+    'total_fee'     => 100,
+    'refund_fee'    => 50,
+    'refund_desc'   => '商品质量问题',
+]);
+
+echo '退款单号：' . ($result['refund_id'] ?? '') . PHP_EOL;
+echo '退款状态：' . ($result['refund_status'] ?? '') . PHP_EOL;
+```
+
 ## 异步通知处理
 
 ```php

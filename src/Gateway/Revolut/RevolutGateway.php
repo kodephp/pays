@@ -153,7 +153,8 @@ class RevolutGateway extends AbstractGateway
      */
     public function queryRefund(string $refundId): array
     {
-        return $this->get("api/orders/{$refundId}", [], [
+        // TODO: Revolut 退款查询端点，使用独立的 refunds 端点而非 orders 端点
+        return $this->get("refunds/{$refundId}", [], [
             'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
         ]);
     }
