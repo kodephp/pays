@@ -167,6 +167,43 @@ class OrderMonitorDaemon
     }
 
     /**
+     * 获取监控统计摘要（用于监控面板/健康检查）
+     *
+     * @return array{total: int, running: bool, channels: array<string, int>, total_attempts: int}
+     */
+    public function getStats(): array
+    {
+        $channels = [];
+        $totalAttempts = 0;
+
+        foreach ($this->monitors as $monitor) {
+            $channel = (string) $monitor['channel'];
+            $channels[$channel] = ($channels[$channel] ?? 0) + 1;
+            $totalAttempts += (int) $monitor['attempts'];
+        }
+
+        return [
+            'total' => count($this->monitors),
+            'running' => $this->state === self::STATE_RUNNING,
+            'channels' => $channels,
+            'total_attempts' => $totalAttempts,
+        ];
+    }
+
+    /**
+     * 清空所有监控任务（用于优雅停机/重启）
+     *
+     * @return int 清空前的任务数量
+     */
+    public function clear(): int
+    {
+        $count = count($this->monitors);
+        $this->monitors = [];
+
+        return $count;
+    }
+
+    /**
      * 获取单笔订单的监控状态
      *
      * @param string $routerId

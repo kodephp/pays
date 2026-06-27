@@ -2,7 +2,7 @@
 
 ## 环境要求
 
-- PHP >= 8.2
+- PHP >= 8.3
 - ext-openssl
 - ext-json
 - ext-mbstring

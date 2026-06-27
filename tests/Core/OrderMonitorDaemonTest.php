@@ -373,6 +373,41 @@ class OrderMonitorDaemonTest extends TestCase
     }
 
     /**
+     * 测试 getStats：返回监控统计摘要
+     */
+    public function testGetStats(): void
+    {
+        $gateway = $this->createMockGateway();
+        $daemon = $this->createDaemon(['wechat' => $gateway, 'alipay' => $gateway]);
+
+        $daemon->register('R1', 'wechat', ['out_trade_no' => 'O1']);
+        $daemon->register('R2', 'wechat', ['out_trade_no' => 'O2']);
+        $daemon->register('R3', 'alipay', ['out_trade_no' => 'O3']);
+
+        $stats = $daemon->getStats();
+
+        $this->assertSame(3, $stats['total']);
+        $this->assertFalse($stats['running']);
+        $this->assertSame(['wechat' => 2, 'alipay' => 1], $stats['channels']);
+        $this->assertSame(0, $stats['total_attempts']);
+    }
+
+    /**
+     * 测试 clear：清空所有监控任务
+     */
+    public function testClear(): void
+    {
+        $daemon = $this->createDaemon();
+        $daemon->register('R1', 'wechat', ['out_trade_no' => 'O1']);
+        $daemon->register('R2', 'wechat', ['out_trade_no' => 'O2']);
+
+        $count = $daemon->clear();
+
+        $this->assertSame(2, $count);
+        $this->assertSame([], $daemon->getMonitors());
+    }
+
+    /**
      * 测试 run：所有任务完成后退出循环
      */
     public function testRunExitsWhenAllMonitorsDone(): void

@@ -13,7 +13,7 @@ cd pays
 composer install
 
 # 验证环境
-php -v          # 需要 PHP >= 8.2
+php -v          # 需要 PHP >= 8.3
 composer -V     # 需要 Composer 2.x
 ```
 
@@ -572,17 +572,16 @@ git commit -m "chore: upgrade PHPUnit to 10.5"
 
 ```bash
 git add composer.json README.md
-git commit -m "release: bump version to 1.16.0"
+git commit -m "release: bump version to 1.18.0"
 git push origin main
 
 # 创建带注释的标签
-git tag -a v1.16.0 -m "Release v1.16.0
+git tag -a v1.18.0 -m "Release v1.18.0
 
-- 新增 Example 网关支持
-- 修复退款插件 Stripe 分支签名问题
+- 新增统一收款码路由器与订单监控守护进程
 - 完善文档导航"
 
-git push origin v1.16.0
+git push origin v1.18.0
 ```
 
 4. 在 GitHub 创建 Release，附上 Release Notes（参考 Git 提交历史）

@@ -4,7 +4,7 @@ Coinbase Commerce 是 Coinbase 推出的加密货币支付解决方案，支持 
 
 ## 环境要求
 
-- PHP 8.2+
+- PHP 8.3+
 - 有效的 Coinbase Commerce 账户
 - API Key
 
