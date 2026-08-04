@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Gateway\Coinbase\CoinbaseGateway;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 加密货币通用插件
@@ -46,8 +49,12 @@ use Kode\Pays\Core\PayException;
  */
 class CryptoPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
@@ -58,6 +65,8 @@ class CryptoPlugin
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -99,10 +108,11 @@ class CryptoPlugin
      */
     public function createCryptoOrder(array $params): array
     {
-        return match ($this->gateway::getName()) {
-            'coinbase' => $this->gateway->createCryptoOrder($params),
-            default => throw PayException::invalidArgument('当前网关不支持指定加密货币收款'),
-        };
+        if (!$this->gateway instanceof CoinbaseGateway) {
+            throw PayException::invalidArgument('当前网关不支持指定加密货币收款');
+        }
+
+        return $this->gateway->createCryptoOrder($params);
     }
 
     /**
@@ -116,10 +126,11 @@ class CryptoPlugin
      */
     public function getPaymentAddresses(string $orderId): array
     {
-        return match ($this->gateway::getName()) {
-            'coinbase' => $this->gateway->getPaymentAddresses($orderId),
-            default => throw PayException::invalidArgument('当前网关不支持获取支付地址'),
-        };
+        if (!$this->gateway instanceof CoinbaseGateway) {
+            throw PayException::invalidArgument('当前网关不支持获取支付地址');
+        }
+
+        return $this->gateway->getPaymentAddresses($orderId);
     }
 
     /**
@@ -133,10 +144,11 @@ class CryptoPlugin
      */
     public function getOnChainStatus(string $orderId): array
     {
-        return match ($this->gateway::getName()) {
-            'coinbase' => $this->gateway->getConfirmations($orderId),
-            default => throw PayException::invalidArgument('当前网关不支持链上确认查询'),
-        };
+        if (!$this->gateway instanceof CoinbaseGateway) {
+            throw PayException::invalidArgument('当前网关不支持链上确认查询');
+        }
+
+        return $this->gateway->getConfirmations($orderId);
     }
 
     /**
@@ -149,10 +161,11 @@ class CryptoPlugin
      */
     public function getExchangeRate(string $cryptoCurrency, string $fiatCurrency = 'USD'): array
     {
-        return match ($this->gateway::getName()) {
-            'coinbase' => $this->gateway->getExchangeRate($cryptoCurrency, $fiatCurrency),
-            default => throw PayException::invalidArgument('当前网关不支持汇率查询'),
-        };
+        if (!$this->gateway instanceof CoinbaseGateway) {
+            throw PayException::invalidArgument('当前网关不支持汇率查询');
+        }
+
+        return $this->gateway->getExchangeRate($cryptoCurrency, $fiatCurrency);
     }
 
     /**

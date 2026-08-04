@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * 微信支付配置对象
  *
  * 使用 readonly 属性确保配置不可变，增强类型安全。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class WechatConfig implements ConfigInterface
 {

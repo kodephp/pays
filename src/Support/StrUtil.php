@@ -20,8 +20,13 @@ class StrUtil
      */
     public static function random(int $length = 16, string $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'): string
     {
-        $result = '';
         $maxIndex = strlen($chars) - 1;
+
+        if ($maxIndex < 0 || $length <= 0) {
+            return '';
+        }
+
+        $result = '';
 
         for ($i = 0; $i < $length; $i++) {
             $result .= $chars[random_int(0, $maxIndex)];

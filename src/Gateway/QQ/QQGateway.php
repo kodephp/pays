@@ -210,12 +210,11 @@ class QQGateway extends AbstractGateway
 
         if (isset($data['code']) && $data['code'] !== 'SUCCESS') {
             throw new GatewayException(
-                $data['message'] ?? '业务失败',
-                $data['code'] ?? '',
+                is_string($data['message'] ?? null) ? $data['message'] : '业务失败',
+                (string) $data['code'],
             );
         }
 
         return $data;
     }
-
 }

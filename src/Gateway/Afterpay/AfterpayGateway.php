@@ -124,6 +124,12 @@ class AfterpayGateway extends AbstractGateway
         ];
     }
 
+    /**
+     * 捕获（扣款）已授权的订单
+     *
+     * @param string $token 授权令牌
+     * @return array<string, mixed> 捕获结果
+     */
     public function capture(string $token): array
     {
         return $this->post('v2/payments/capture', [
@@ -186,21 +192,26 @@ class AfterpayGateway extends AbstractGateway
 
         if (isset($data['errorCode'])) {
             throw new GatewayException(
-                $data['message'] ?? '业务失败',
-                $data['errorCode'] ?? '',
+                is_string($data['message'] ?? null) ? $data['message'] : '业务失败',
+                (string) $data['errorCode'],
             );
         }
 
         if (isset($data['httpStatusCode']) && $data['httpStatusCode'] >= 400) {
             throw new GatewayException(
-                $data['message'] ?? '请求失败',
-                (string) ($data['httpStatusCode'] ?? ''),
+                is_string($data['message'] ?? null) ? $data['message'] : '请求失败',
+                (string) $data['httpStatusCode'],
             );
         }
 
         return $data;
     }
 
+    /**
+     * 构建请求头
+     *
+     * @return array<string, string> 请求头
+     */
     protected function resolveHeader(): array
     {
         $credentials = base64_encode($this->config['merchant_id'] . ':' . $this->config['secret_key']);

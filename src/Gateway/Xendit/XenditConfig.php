@@ -16,6 +16,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * @param string $publicKey 公钥（可选，用于前端）
  * @param string $callbackToken Webhook 验证令牌
  * @param bool $sandbox 是否沙箱模式
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class XenditConfig implements ConfigInterface
 {

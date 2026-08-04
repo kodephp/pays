@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * 美团支付配置 DTO
  *
  * 封装美团支付所需的全部配置项，使用 readonly 属性确保不可变性。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class MeituanConfig implements ConfigInterface
 {

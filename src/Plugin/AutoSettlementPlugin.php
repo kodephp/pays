@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\WalletManager;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 自动结算插件
@@ -39,8 +41,12 @@ use Kode\Pays\Core\WalletManager;
  */
 class AutoSettlementPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
@@ -66,11 +72,13 @@ class AutoSettlementPlugin
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      * @param WalletManager $walletManager 钱包管理器
      */
     public function __construct(GatewayInterface $gateway, WalletManager $walletManager)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
         $this->walletManager = $walletManager;
     }
@@ -222,6 +230,10 @@ class AutoSettlementPlugin
 
     /**
      * 结算到微信零钱
+     *
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function settleToWechatWallet(array $target, array $params): array
     {
@@ -241,6 +253,10 @@ class AutoSettlementPlugin
 
     /**
      * 结算到支付宝余额
+     *
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function settleToAlipayBalance(array $target, array $params): array
     {
@@ -260,6 +276,10 @@ class AutoSettlementPlugin
 
     /**
      * 结算到银行卡
+     *
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function settleToBankCard(array $target, array $params): array
     {
@@ -296,6 +316,10 @@ class AutoSettlementPlugin
 
     /**
      * 结算到 Stripe Connect 账户
+     *
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function settleToStripeConnect(array $target, array $params): array
     {
@@ -314,6 +338,10 @@ class AutoSettlementPlugin
 
     /**
      * 结算到 PayPal 钱包
+     *
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function settleToPaypalWallet(array $target, array $params): array
     {
@@ -367,7 +395,7 @@ class AutoSettlementPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }

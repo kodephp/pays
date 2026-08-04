@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 订阅支付插件
@@ -34,18 +36,24 @@ use Kode\Pays\Core\PayException;
  */
 class SubscriptionPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -280,7 +288,7 @@ class SubscriptionPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }

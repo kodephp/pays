@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Core;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Event\EventDispatcher;
 use Kode\Pays\Event\Events;
 use Kode\Pays\Pipeline\Pipeline;
@@ -15,8 +16,10 @@ use Kode\Pays\Support\HttpClient;
  *
  * 所有具体支付网关应继承此类，复用通用 HTTP 请求、事件触发、管道中间件等能力。
  * 子类只需关注业务逻辑，无需处理底层通信和横切关注点。
+ *
+ * 同时实现 {@see HttpCapableInterface}，使插件可安全复用网关的 HTTP 通道。
  */
-abstract class AbstractGateway implements GatewayInterface
+abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
 {
     /**
      * HTTP 客户端
@@ -77,6 +80,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @param EventDispatcher $dispatcher
      * @return void
      */
+    #[\Override]
     public function setDispatcher(EventDispatcher $dispatcher): void
     {
         $this->dispatcher = $dispatcher;
@@ -88,6 +92,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @param HttpClient $httpClient
      * @return void
      */
+    #[\Override]
     public function setHttpClient(HttpClient $httpClient): void
     {
         $this->httpClient = $httpClient;
@@ -137,6 +142,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
+    #[\Override]
     public function post(string $endpoint, array $data = [], array $headers = []): array
     {
         return $this->request('post', $endpoint, $data, $headers);
@@ -151,6 +157,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
+    #[\Override]
     public function postRaw(string $endpoint, string $body, array $headers = []): array
     {
         $url = $this->getBaseUrl() . $endpoint;
@@ -186,6 +193,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
+    #[\Override]
     public function get(string $endpoint, array $query = [], array $headers = []): array
     {
         return $this->request('get', $endpoint, $query, $headers);
@@ -200,6 +208,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
+    #[\Override]
     public function put(string $endpoint, array $data = [], array $headers = []): array
     {
         return $this->request('put', $endpoint, $data, $headers);
@@ -214,6 +223,7 @@ abstract class AbstractGateway implements GatewayInterface
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
+    #[\Override]
     public function delete(string $endpoint, array $query = [], array $headers = []): array
     {
         return $this->request('delete', $endpoint, $query, $headers);
@@ -311,7 +321,7 @@ abstract class AbstractGateway implements GatewayInterface
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }

@@ -153,7 +153,7 @@ class ArrayUtil
      */
     protected static function camelToSnake(string $input): string
     {
-        return strtolower(preg_replace('/([a-z])([A-Z])/', '$1_$2', $input));
+        return strtolower(preg_replace('/([a-z])([A-Z])/', '$1_$2', $input) ?? $input);
     }
 
     /**

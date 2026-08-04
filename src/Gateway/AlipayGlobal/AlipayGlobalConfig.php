@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * 支付宝国际版配置 DTO
  *
  * 封装支付宝国际版（Alipay+、Alipay Global）所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class AlipayGlobalConfig implements ConfigInterface
 {

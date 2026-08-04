@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * Stripe 配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class StripeConfig implements ConfigInterface
 {

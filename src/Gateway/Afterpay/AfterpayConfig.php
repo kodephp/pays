@@ -13,6 +13,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * @param string $secretKey API Secret Key
  * @param string $region 区域（AU/US/UK/EU）
  * @param bool $sandbox 是否沙箱模式
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class AfterpayConfig implements ConfigInterface
 {

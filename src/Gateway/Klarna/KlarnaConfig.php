@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Klarna 配置 DTO
  *
  * 封装 Klarna（先买后付）所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class KlarnaConfig implements ConfigInterface
 {

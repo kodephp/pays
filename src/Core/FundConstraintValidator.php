@@ -37,6 +37,8 @@ class FundConstraintValidator
 {
     /**
      * 转账约束配置
+     *
+     * @var array<string, mixed>
      */
     protected array $transferConstraints = [
         'min_amount' => 1,
@@ -50,6 +52,8 @@ class FundConstraintValidator
 
     /**
      * 分账约束配置
+     *
+     * @var array<string, mixed>
      */
     protected array $sharingConstraints = [
         'min_amount' => 1,
@@ -62,6 +66,8 @@ class FundConstraintValidator
 
     /**
      * 红包约束配置
+     *
+     * @var array<string, mixed>
      */
     protected array $redPacketConstraints = [
         'min_amount' => 100,
@@ -74,6 +80,8 @@ class FundConstraintValidator
 
     /**
      * 退款约束配置
+     *
+     * @var array<string, mixed>
      */
     protected array $refundConstraints = [
         'min_amount' => 1,
@@ -340,6 +348,8 @@ class FundConstraintValidator
 
     /**
      * 验证金额范围
+     *
+     * @return array<string, mixed>
      */
     protected function validateAmountRange(int $amount, int $min, int $max): array
     {
@@ -362,6 +372,9 @@ class FundConstraintValidator
 
     /**
      * 验证时间窗口
+     *
+     * @param array<string, mixed> $allowedHours
+     * @return array<string, mixed>
      */
     protected function validateTimeWindow(array $allowedHours): array
     {
@@ -381,6 +394,10 @@ class FundConstraintValidator
 
     /**
      * 验证账户黑白名单
+     *
+     * @param array<string, mixed> $whitelist
+     * @param array<string, mixed> $blacklist
+     * @return array<string, mixed>
      */
     protected function validateAccountList(string $account, array $whitelist, array $blacklist): array
     {
@@ -403,6 +420,8 @@ class FundConstraintValidator
 
     /**
      * 验证日限额
+     *
+     * @return array<string, mixed>
      */
     protected function validateDailyLimit(string $userId, string $type, int $amount, int $dailyLimit, int $countLimit): array
     {

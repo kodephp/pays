@@ -248,9 +248,21 @@ class WechatPayGateway extends AbstractGateway
      */
     protected function xmlToArray(string $xml): array
     {
-        $xml = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NOCDATA);
+        $element = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NOCDATA);
 
-        return json_decode(json_encode($xml), true) ?: [];
+        if ($element === false) {
+            return [];
+        }
+
+        $json = json_encode($element);
+
+        if ($json === false) {
+            return [];
+        }
+
+        $decoded = json_decode($json, true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -261,6 +273,6 @@ class WechatPayGateway extends AbstractGateway
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

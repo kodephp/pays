@@ -169,7 +169,7 @@ class KodeToolsCryptoAdapter
             return \Kode\Tools\Crypto\Crypto::randomBytes($length);
         }
 
-        return random_bytes($length);
+        return random_bytes(max(1, $length));
     }
 
     /**

@@ -199,7 +199,9 @@ class HttpClient implements HttpClientInterface
             }
         }
 
-        throw $lastException;
+        throw $lastException ?? new \RuntimeException(
+            sprintf('HTTP 请求失败：%s %s（重试 %d 次后仍未成功）', strtoupper($method), $url, $this->maxRetries),
+        );
     }
 
     /**

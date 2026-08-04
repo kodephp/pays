@@ -12,6 +12,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * @param string $apiKey Coinbase Commerce API Key
  * @param string $webhookSecret Webhook 签名密钥
  * @param bool $sandbox 是否沙箱模式
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class CoinbaseConfig implements ConfigInterface
 {

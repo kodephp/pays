@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Apple Pay 配置 DTO
  *
  * 封装 Apple Pay 所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class AppleConfig implements ConfigInterface
 {

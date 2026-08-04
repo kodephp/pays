@@ -248,6 +248,8 @@ class XenditGateway extends AbstractGateway
 
     /**
      * 解析请求头
+     *
+     * @return array<string, mixed>
      */
     protected function resolveHeader(): array
     {

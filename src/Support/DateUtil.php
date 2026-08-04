@@ -108,7 +108,7 @@ class DateUtil
      */
     public static function billDate(int $daysAgo = 1, string $format = 'Ymd'): string
     {
-        return date($format, strtotime("-{$daysAgo} days"));
+        return date($format, strtotime("-{$daysAgo} days") ?: time());
     }
 
     /**

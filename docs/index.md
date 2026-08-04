@@ -94,11 +94,17 @@
 - [门面 Facade](architecture.md#22-门面层-facade) - `Pay` 静态类使用指南
 - [事件系统](architecture.md#26-扩展层) - `EventDispatcher` 事件驱动
 - [管道中间件](architecture.md#45-管道模式) - `Pipeline` 中间件栈
+- [熔断器中间件](circuit-breaker.md) - `CircuitBreakerMiddleware` 故障隔离（closed/open/half-open）
 - [配置 DTO](development.md#2-实现配置-dto) - 只读配置对象
 - [异常体系](architecture.md#7-异常体系) - 异常分类与处理
 - [沙箱管理](architecture.md#26-扩展层) - `SandboxManager` 沙箱/生产环境切换
 - [钱包管理器](architecture.md#29-管理层) - `WalletManager` 多账户钱包管理
 - [资金约束验证器](architecture.md#29-管理层) - `FundConstraintValidator` 操作限额与风控
+
+## 值对象与枚举
+
+- [枚举与金额值对象](enums-money.md) - `Currency` / `TradeStatus` / `TradeType` 与不可变 `Money`
+- [熔断器中间件](circuit-breaker.md) - `CircuitBreakerMiddleware` 三态故障隔离
 
 ## 生态集成
 

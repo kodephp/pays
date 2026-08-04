@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 个人收款插件
@@ -45,18 +47,24 @@ use Kode\Pays\Core\PayException;
  */
 class PersonalReceivePlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -147,6 +155,9 @@ class PersonalReceivePlugin
 
     /**
      * 微信生成个人收款码（NATIVE 扫码支付）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createWechatPersonalQrCode(array $params): array
     {
@@ -183,6 +194,9 @@ class PersonalReceivePlugin
 
     /**
      * 查询微信个人收款记录
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function queryWechatPersonalRecords(array $params): array
     {
@@ -199,6 +213,9 @@ class PersonalReceivePlugin
 
     /**
      * 微信提现到银行卡（企业付款到银行卡）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function withdrawWechatToBank(array $params): array
     {
@@ -216,6 +233,8 @@ class PersonalReceivePlugin
 
     /**
      * 查询微信提现结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatWithdraw(string $outBizNo): array
     {
@@ -230,6 +249,9 @@ class PersonalReceivePlugin
 
     /**
      * 支付宝生成个人收款码（当面付扫码）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createAlipayPersonalQrCode(array $params): array
     {
@@ -256,6 +278,9 @@ class PersonalReceivePlugin
 
     /**
      * 查询支付宝个人收款记录
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function queryAlipayPersonalRecords(array $params): array
     {
@@ -270,6 +295,9 @@ class PersonalReceivePlugin
 
     /**
      * 支付宝提现到银行卡（转账到银行卡）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function withdrawAlipayToBank(array $params): array
     {
@@ -293,6 +321,8 @@ class PersonalReceivePlugin
 
     /**
      * 查询支付宝提现结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipayWithdraw(string $outBizNo): array
     {
@@ -310,6 +340,9 @@ class PersonalReceivePlugin
 
     /**
      * Stripe 创建 Payment Link（个人收款）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createStripePaymentLink(array $params): array
     {
@@ -345,6 +378,9 @@ class PersonalReceivePlugin
 
     /**
      * 查询 Stripe Payment 记录
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function queryStripePaymentRecords(array $params): array
     {
@@ -391,7 +427,7 @@ class PersonalReceivePlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
@@ -424,6 +460,6 @@ class PersonalReceivePlugin
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

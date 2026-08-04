@@ -47,6 +47,8 @@ class WalletManager
 
     /**
      * 默认结算规则
+     *
+     * @var array<string, mixed>
      */
     protected array $defaultRules = [
         'auto_settlement' => false,
@@ -57,6 +59,8 @@ class WalletManager
 
     /**
      * 支持的账户类型
+     *
+     * @var array<int, string>
      */
     protected array $supportedTypes = [
         'wechat_wallet',

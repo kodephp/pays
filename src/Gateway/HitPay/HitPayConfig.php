@@ -15,6 +15,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * @param string $apiKey API 密钥
  * @param string $webhookSecret Webhook 签名密钥
  * @param bool $sandbox 是否沙箱模式
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class HitPayConfig implements ConfigInterface
 {

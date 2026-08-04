@@ -280,6 +280,11 @@ class AlipayGlobalGateway extends AbstractGateway
         }
 
         $method = array_key_first($data);
+
+        if (!is_string($method)) {
+            throw PayException::gatewayError('支付宝国际版响应结构异常');
+        }
+
         $responseKey = str_replace('.', '_', $method) . '_response';
 
         if (!isset($data[$responseKey])) {

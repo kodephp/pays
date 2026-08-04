@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 退款插件
@@ -38,18 +40,24 @@ use Kode\Pays\Core\PayException;
  */
 class RefundPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -121,6 +129,9 @@ class RefundPlugin
 
     /**
      * 微信申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function applyWechatRefund(array $params): array
     {
@@ -152,6 +163,8 @@ class RefundPlugin
 
     /**
      * 查询微信退款
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatRefund(string $outRefundNo): array
     {
@@ -167,6 +180,9 @@ class RefundPlugin
 
     /**
      * 支付宝申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function applyAlipayRefund(array $params): array
     {
@@ -193,6 +209,8 @@ class RefundPlugin
 
     /**
      * 查询支付宝退款
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipayRefund(string $outRefundNo): array
     {
@@ -208,6 +226,9 @@ class RefundPlugin
 
     /**
      * Stripe 创建退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function applyStripeRefund(array $params): array
     {
@@ -227,6 +248,8 @@ class RefundPlugin
 
     /**
      * 查询 Stripe 退款
+     *
+     * @return array<string, mixed>
      */
     protected function queryStripeRefund(string $outRefundNo): array
     {
@@ -239,6 +262,8 @@ class RefundPlugin
 
     /**
      * 取消 Stripe 退款
+     *
+     * @return array<string, mixed>
      */
     protected function cancelStripeRefund(string $outRefundNo): array
     {
@@ -271,6 +296,9 @@ class RefundPlugin
 
     /**
      * PayPal 申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function applyPaypalRefund(array $params): array
     {
@@ -296,6 +324,8 @@ class RefundPlugin
 
     /**
      * 查询 PayPal 退款
+     *
+     * @return array<string, mixed>
      */
     protected function queryPaypalRefund(string $outRefundNo): array
     {
@@ -316,7 +346,7 @@ class RefundPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
@@ -349,6 +379,6 @@ class RefundPlugin
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

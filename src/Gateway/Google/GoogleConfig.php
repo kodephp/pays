@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Google Pay 配置 DTO
  *
  * 封装 Google Pay 所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class GoogleConfig implements ConfigInterface
 {

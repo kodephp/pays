@@ -91,7 +91,7 @@ class WechatPayV3Gateway extends AbstractGateway
             default => $requestData,
         };
 
-        $headers = $this->buildV3Headers('POST', 'pay/transactions/' . ($params['trade_type'] ?? 'native'), json_encode($requestData));
+        $headers = $this->buildV3Headers('POST', 'pay/transactions/' . ($params['trade_type'] ?? 'native'), (string) json_encode($requestData));
 
         return $this->post('pay/transactions/' . ($params['trade_type'] ?? 'native'), $requestData, $headers);
     }
@@ -123,7 +123,7 @@ class WechatPayV3Gateway extends AbstractGateway
             'mchid' => $this->getConfig('mch_id'),
         ];
 
-        $headers = $this->buildV3Headers('POST', "pay/transactions/out-trade-no/{$orderId}/close", json_encode($requestData));
+        $headers = $this->buildV3Headers('POST', "pay/transactions/out-trade-no/{$orderId}/close", (string) json_encode($requestData));
 
         return $this->post("pay/transactions/out-trade-no/{$orderId}/close", $requestData, $headers);
     }
@@ -151,7 +151,7 @@ class WechatPayV3Gateway extends AbstractGateway
             ],
         ];
 
-        $headers = $this->buildV3Headers('POST', 'refund/domestic/refunds', json_encode($requestData));
+        $headers = $this->buildV3Headers('POST', 'refund/domestic/refunds', (string) json_encode($requestData));
 
         return $this->post('refund/domestic/refunds', $requestData, $headers);
     }

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 对账插件
@@ -40,18 +42,24 @@ use Kode\Pays\Core\PayException;
  */
 class ReconciliationPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -199,6 +207,9 @@ class ReconciliationPlugin
 
     /**
      * 下载微信对账单
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function downloadWechatBill(array $params): array
     {
@@ -223,6 +234,9 @@ class ReconciliationPlugin
 
     /**
      * 下载微信资金账单
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function downloadWechatFundFlow(array $params): array
     {
@@ -246,6 +260,8 @@ class ReconciliationPlugin
 
     /**
      * 解析微信对账单（CSV 格式）
+     *
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
      */
     protected function parseWechatBill(string $rawData): array
     {
@@ -310,6 +326,9 @@ class ReconciliationPlugin
 
     /**
      * 下载支付宝对账单
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function downloadAlipayBill(array $params): array
     {
@@ -324,6 +343,9 @@ class ReconciliationPlugin
 
     /**
      * 下载支付宝资金账单
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function downloadAlipayFundFlow(array $params): array
     {
@@ -338,6 +360,8 @@ class ReconciliationPlugin
 
     /**
      * 解析支付宝对账单（CSV 格式）
+     *
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
      */
     protected function parseAlipayBill(string $rawData): array
     {
@@ -399,6 +423,9 @@ class ReconciliationPlugin
 
     /**
      * 下载 Stripe Balance Transaction
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function downloadStripeBill(array $params): array
     {
@@ -416,6 +443,8 @@ class ReconciliationPlugin
 
     /**
      * 解析 Stripe Balance Transaction（JSON 格式）
+     *
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
      */
     protected function parseStripeBill(string $rawData): array
     {
@@ -458,7 +487,7 @@ class ReconciliationPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
@@ -491,6 +520,6 @@ class ReconciliationPlugin
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

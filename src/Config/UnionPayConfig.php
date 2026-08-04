@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * 云闪付配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class UnionPayConfig implements ConfigInterface
 {

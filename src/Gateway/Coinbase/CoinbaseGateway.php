@@ -51,6 +51,8 @@ class CoinbaseGateway extends AbstractGateway
 {
     /**
      * 支持的加密货币列表
+     *
+     * @var array<string, mixed>
      */
     protected array $supportedCryptos = [
         'BTC' => 'bitcoin',
@@ -315,6 +317,11 @@ class CoinbaseGateway extends AbstractGateway
         return $data;
     }
 
+    /**
+     * 构建请求头
+     *
+     * @return array<string, string> 请求头
+     */
     protected function resolveHeader(): array
     {
         return [
@@ -326,6 +333,9 @@ class CoinbaseGateway extends AbstractGateway
 
     /**
      * 格式化 Charge 响应
+     *
+     * @param array<string, mixed> $response
+     * @return array<string, mixed>
      */
     protected function formatChargeResponse(array $response, string $outTradeNo): array
     {
@@ -346,6 +356,8 @@ class CoinbaseGateway extends AbstractGateway
 
     /**
      * 解析 Coinbase 时间线状态
+     *
+     * @param array<string, mixed> $timeline
      */
     protected function resolveStatus(array $timeline): string
     {
@@ -360,6 +372,8 @@ class CoinbaseGateway extends AbstractGateway
 
     /**
      * 构建加密货币支付 URI
+     *
+     * @param array<string, mixed> $pricing
      */
     protected function buildCryptoUri(string $crypto, string $address, array $pricing): string
     {

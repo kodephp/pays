@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * 微信支付 V3 配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class WechatV3Config implements ConfigInterface
 {

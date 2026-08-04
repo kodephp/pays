@@ -1,0 +1,19 @@
+parameters:
+    level: 8
+    paths:
+        - src
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: false
+
+    # kode/* 生态包与 Swoole 扩展均为 suggest 级可选依赖，
+    # 未安装时其符号无法解析，属预期情况，不视为静态分析错误。
+    ignoreErrors:
+        -
+            identifier: class.notFound
+            message: '#Kode\\(Tools|Fiber|Limiting|Parallel|Process|Cache|Event|Exception|Facade|Di)\\#'
+        -
+            message: '#(Instantiated class|on an unknown class|invalid return type|has invalid typehint type|unknown class) Kode\\(Tools|Fiber|Limiting|Parallel|Process|Cache|Event|Exception|Facade|Di)\\#'
+        -
+            message: '#Function Swoole\\Coroutine\\\w+ not found\.#'
+        -
+            message: '#expects Kode\\Pays\\Event\\EventDispatcher, Kode\\Event\\EventBus\|Kode\\Pays\\Event\\EventDispatcher given\.#'

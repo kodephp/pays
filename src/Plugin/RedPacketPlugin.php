@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 红包插件
@@ -51,18 +53,24 @@ use Kode\Pays\Core\PayException;
  */
 class RedPacketPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -143,6 +151,9 @@ class RedPacketPlugin
 
     /**
      * 微信发放普通红包
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function sendWechatRedPacket(array $params): array
     {
@@ -167,6 +178,9 @@ class RedPacketPlugin
 
     /**
      * 微信发放裂变红包
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function sendWechatGroupRedPacket(array $params): array
     {
@@ -191,6 +205,8 @@ class RedPacketPlugin
 
     /**
      * 查询微信红包记录
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatRedPacket(string $mchBillNo): array
     {
@@ -207,6 +223,9 @@ class RedPacketPlugin
 
     /**
      * 支付宝发放普通红包
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function sendAlipayRedPacket(array $params): array
     {
@@ -227,6 +246,9 @@ class RedPacketPlugin
 
     /**
      * 支付宝发放群红包（裂变红包）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function sendAlipayGroupRedPacket(array $params): array
     {
@@ -250,6 +272,8 @@ class RedPacketPlugin
 
     /**
      * 查询支付宝红包记录
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipayRedPacket(string $mchBillNo): array
     {
@@ -274,7 +298,7 @@ class RedPacketPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
@@ -307,6 +331,6 @@ class RedPacketPlugin
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

@@ -250,7 +250,7 @@ class OrderMonitorDaemon
             $this->scanOnce($stats);
 
             // 若所有任务完成且无新任务，可退出（但守护进程通常应持续等待新任务）
-            if ($this->monitors === [] && $maxLoops === 0) {
+            if ($maxLoops === 0 && $this->getMonitors() === []) {
                 // 默认行为：所有任务完成后退出
                 break;
             }

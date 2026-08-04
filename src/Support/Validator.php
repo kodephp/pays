@@ -86,7 +86,7 @@ class Validator
     public function required(string ...$fields): self
     {
         foreach ($fields as $field) {
-            if (!isset($this->data[$field]) || $this->data[$field] === '' || $this->data[$field] === null) {
+            if (!isset($this->data[$field]) || $this->data[$field] === '') {
                 $this->fail("字段 {$field} 为必填项");
             }
         }

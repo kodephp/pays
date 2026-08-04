@@ -233,7 +233,7 @@ class HitPayGateway extends AbstractGateway
 
         if (isset($data['errors']) && is_array($data['errors'])) {
             throw new GatewayException(
-                json_encode($data['errors']),
+                json_encode($data['errors'], JSON_UNESCAPED_UNICODE) ?: 'HitPay 业务失败',
                 'HITPAY_ERROR',
             );
         }
@@ -243,6 +243,8 @@ class HitPayGateway extends AbstractGateway
 
     /**
      * 解析请求头
+     *
+     * @return array<string, mixed>
      */
     protected function resolveHeader(): array
     {

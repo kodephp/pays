@@ -14,6 +14,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * @param string $apiKey QQ 支付 API 密钥
  * @param string $notifyUrl 异步通知回调地址
  * @param bool $sandbox 是否沙箱模式
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class QQConfig implements ConfigInterface
 {

@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * 支付宝配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class AlipayConfig implements ConfigInterface
 {

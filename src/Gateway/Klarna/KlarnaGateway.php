@@ -243,8 +243,8 @@ class KlarnaGateway extends AbstractGateway
 
         if (isset($data['error_code'])) {
             throw PayException::gatewayError(
-                $data['error_messages'] ?? 'Klarna 业务失败',
-                $data['error_code'] ?? '',
+                is_string($data['error_messages'] ?? null) ? $data['error_messages'] : 'Klarna 业务失败',
+                (string) $data['error_code'],
             );
         }
 

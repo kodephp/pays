@@ -163,16 +163,23 @@ class Signer
      *
      * @param string $privateKey 私钥内容或路径
      * @param bool $isFile 是否为文件路径
-     * @return resource 私钥资源
+     * @return \OpenSSLAsymmetricKey 私钥对象
      * @throws PayException
      */
-    protected static function loadPrivateKey(string $privateKey, bool $isFile)
+    protected static function loadPrivateKey(string $privateKey, bool $isFile): \OpenSSLAsymmetricKey
     {
         if ($isFile) {
             if (!file_exists($privateKey)) {
                 throw PayException::configError('私钥文件不存在：' . $privateKey);
             }
-            $privateKey = file_get_contents($privateKey);
+
+            $content = file_get_contents($privateKey);
+
+            if ($content === false) {
+                throw PayException::configError('私钥文件读取失败：' . $privateKey);
+            }
+
+            $privateKey = $content;
         }
 
         $key = openssl_pkey_get_private($privateKey);
@@ -189,16 +196,23 @@ class Signer
      *
      * @param string $publicKey 公钥内容或路径
      * @param bool $isFile 是否为文件路径
-     * @return resource 公钥资源
+     * @return \OpenSSLAsymmetricKey 公钥对象
      * @throws PayException
      */
-    protected static function loadPublicKey(string $publicKey, bool $isFile)
+    protected static function loadPublicKey(string $publicKey, bool $isFile): \OpenSSLAsymmetricKey
     {
         if ($isFile) {
             if (!file_exists($publicKey)) {
                 throw PayException::configError('公钥文件不存在：' . $publicKey);
             }
-            $publicKey = file_get_contents($publicKey);
+
+            $content = file_get_contents($publicKey);
+
+            if ($content === false) {
+                throw PayException::configError('公钥文件读取失败：' . $publicKey);
+            }
+
+            $publicKey = $content;
         }
 
         $key = openssl_pkey_get_public($publicKey);

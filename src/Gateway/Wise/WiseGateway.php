@@ -211,7 +211,7 @@ class WiseGateway extends AbstractGateway
         $signature = $data['signature'];
         unset($data['signature']);
 
-        $payload = json_encode($data);
+        $payload = json_encode($data) ?: '';
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
 
         return hash_equals($expected, $signature);

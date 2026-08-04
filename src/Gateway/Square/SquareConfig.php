@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * Square 配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class SquareConfig implements ConfigInterface
 {

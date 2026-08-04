@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * Adyen 配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class AdyenConfig implements ConfigInterface
 {

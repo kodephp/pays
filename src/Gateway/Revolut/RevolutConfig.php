@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Revolut 配置 DTO
  *
  * 封装 Revolut 商户支付所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class RevolutConfig implements ConfigInterface
 {

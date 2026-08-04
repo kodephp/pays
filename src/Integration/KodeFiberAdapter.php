@@ -84,9 +84,9 @@ class KodeFiberAdapter
     {
         $results = [];
 
-        \Swoole\Coroutine\run(function () use ($tasks, $timeout, &$results): void {
+        \Swoole\Coroutine\run(function () use ($tasks, &$results): void {
             foreach ($tasks as $index => $task) {
-                \Swoole\Coroutine\create(function () use ($task, $index, $timeout, &$results): void {
+                \Swoole\Coroutine\create(function () use ($task, $index, &$results): void {
                     try {
                         $gateway = $task['gateway'];
                         $method = $task['method'];

@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * 京东支付配置 DTO
  *
  * 封装京东支付（京东钱包、京东白条）所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class JdConfig implements ConfigInterface
 {

@@ -218,6 +218,19 @@ class PayResponse
     }
 
     /**
+     * 以枚举形式获取归一化交易状态
+     *
+     * 将网关返回的原始状态字符串通过 {@see \Kode\Pays\Enum\TradeStatus::fromRaw()}
+     * 归一化，无法识别时返回 null。
+     *
+     * @return \Kode\Pays\Enum\TradeStatus|null
+     */
+    public function getTradeStatusEnum(): ?\Kode\Pays\Enum\TradeStatus
+    {
+        return \Kode\Pays\Enum\TradeStatus::fromRaw($this->getTradeStatus());
+    }
+
+    /**
      * 获取支付时间
      *
      * @return string|null
@@ -281,10 +294,11 @@ class PayResponse
      * 将响应转换为 JSON 字符串
      *
      * @return string
+     * @throws \JsonException 当响应数据无法编码为 JSON 时抛出
      */
     public function toJson(): string
     {
-        return json_encode($this->raw, JSON_UNESCAPED_UNICODE);
+        return json_encode($this->raw, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     /**

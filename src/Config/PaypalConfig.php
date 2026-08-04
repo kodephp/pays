@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * PayPal 配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class PaypalConfig implements ConfigInterface
 {

@@ -8,6 +8,8 @@ use Kode\Pays\Contract\ConfigInterface;
 
 /**
  * 抖音支付配置对象
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class DouyinConfig implements ConfigInterface
 {

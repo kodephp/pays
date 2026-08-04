@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\FundConstraintValidator;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 转账插件
@@ -43,8 +45,12 @@ use Kode\Pays\Core\PayException;
  */
 class TransferPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
@@ -56,11 +62,13 @@ class TransferPlugin
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      * @param FundConstraintValidator|null $validator 资金约束验证器
      */
     public function __construct(GatewayInterface $gateway, ?FundConstraintValidator $validator = null)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
         $this->validator = $validator;
     }
@@ -167,6 +175,9 @@ class TransferPlugin
 
     /**
      * 微信单笔转账到零钱
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function singleWechatTransfer(array $params): array
     {
@@ -191,6 +202,9 @@ class TransferPlugin
 
     /**
      * 微信批量转账到零钱
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function batchWechatTransfer(array $params): array
     {
@@ -218,6 +232,8 @@ class TransferPlugin
 
     /**
      * 查询微信转账结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatTransfer(string $outBizNo): array
     {
@@ -226,6 +242,8 @@ class TransferPlugin
 
     /**
      * 查询微信转账电子回单
+     *
+     * @return array<string, mixed>
      */
     protected function receiptWechatTransfer(string $outBizNo): array
     {
@@ -236,6 +254,9 @@ class TransferPlugin
 
     /**
      * 支付宝单笔转账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function singleAlipayTransfer(array $params): array
     {
@@ -262,6 +283,9 @@ class TransferPlugin
 
     /**
      * 支付宝批量转账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function batchAlipayTransfer(array $params): array
     {
@@ -296,6 +320,8 @@ class TransferPlugin
 
     /**
      * 查询支付宝转账结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipayTransfer(string $outBizNo): array
     {
@@ -311,6 +337,8 @@ class TransferPlugin
 
     /**
      * 查询支付宝转账电子回单
+     *
+     * @return array<string, mixed>
      */
     protected function receiptAlipayTransfer(string $outBizNo): array
     {
@@ -326,6 +354,9 @@ class TransferPlugin
 
     /**
      * Stripe 单笔 Payout
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function singleStripeTransfer(array $params): array
     {
@@ -347,6 +378,9 @@ class TransferPlugin
 
     /**
      * Stripe 批量 Payout
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function batchStripeTransfer(array $params): array
     {
@@ -371,6 +405,8 @@ class TransferPlugin
 
     /**
      * 查询 Stripe Payout
+     *
+     * @return array<string, mixed>
      */
     protected function queryStripeTransfer(string $outBizNo): array
     {
@@ -393,7 +429,7 @@ class TransferPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
@@ -426,6 +462,6 @@ class TransferPlugin
      */
     protected function generateNonceStr(int $length = 32): string
     {
-        return bin2hex(random_bytes($length / 2));
+        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

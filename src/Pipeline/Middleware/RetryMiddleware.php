@@ -86,7 +86,7 @@ class RetryMiddleware
                 }
 
                 // 指数退避延迟
-                $sleepMs = $delayMs * pow($multiplier, $attempt - 1);
+                $sleepMs = (int) round($delayMs * $multiplier ** ($attempt - 1));
                 $this->sleep($sleepMs);
             }
         }

@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * 快手支付配置 DTO
  *
  * 封装快手支付（快手小程序、快手 App）所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class KuaishouConfig implements ConfigInterface
 {

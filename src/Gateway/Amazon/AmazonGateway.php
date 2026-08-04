@@ -175,7 +175,7 @@ class AmazonGateway extends AbstractGateway
         $signature = $data['Signature'];
         unset($data['Signature']);
 
-        $string = json_encode($data);
+        $string = json_encode($data) ?: '';
         $expected = base64_encode(hash_hmac('sha256', $string, $this->getConfig('secret_key'), true));
 
         return hash_equals($expected, $signature);

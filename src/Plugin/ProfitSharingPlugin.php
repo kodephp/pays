@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 分账插件
@@ -48,18 +50,24 @@ use Kode\Pays\Core\PayException;
  */
 class ProfitSharingPlugin
 {
+    use InteractsWithGateway;
+
     /**
-     * 支付网关实例
+     * 支付网关实例（必须具备 HTTP 通道能力）
+     *
+     * @var GatewayInterface&HttpCapableInterface
      */
     protected GatewayInterface $gateway;
 
     /**
      * 构造函数
      *
-     * @param GatewayInterface $gateway 支付网关
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
      */
     public function __construct(GatewayInterface $gateway)
     {
+        self::assertHttpCapable($gateway);
+
         $this->gateway = $gateway;
     }
 
@@ -210,6 +218,9 @@ class ProfitSharingPlugin
 
     /**
      * 创建微信分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createWechatSharing(array $params): array
     {
@@ -231,6 +242,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询微信分账结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatSharing(string $outOrderNo): array
     {
@@ -242,6 +255,9 @@ class ProfitSharingPlugin
 
     /**
      * 微信分账回退
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function returnWechatSharing(array $params): array
     {
@@ -257,6 +273,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询微信分账回退结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryWechatReturn(string $outReturnNo): array
     {
@@ -267,6 +285,8 @@ class ProfitSharingPlugin
 
     /**
      * 微信解冻剩余资金
+     *
+     * @return array<string, mixed>
      */
     protected function unfreezeWechat(string $transactionId): array
     {
@@ -279,6 +299,9 @@ class ProfitSharingPlugin
 
     /**
      * 添加微信分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
      */
     protected function addWechatReceiver(array $receiver): array
     {
@@ -296,6 +319,9 @@ class ProfitSharingPlugin
 
     /**
      * 删除微信分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
      */
     protected function removeWechatReceiver(array $receiver): array
     {
@@ -313,6 +339,9 @@ class ProfitSharingPlugin
 
     /**
      * 创建支付宝分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createAlipaySharing(array $params): array
     {
@@ -339,6 +368,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询支付宝分账结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipaySharing(string $outOrderNo): array
     {
@@ -352,6 +383,9 @@ class ProfitSharingPlugin
 
     /**
      * 支付宝分账回退
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function returnAlipaySharing(array $params): array
     {
@@ -368,6 +402,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询支付宝分账回退结果
+     *
+     * @return array<string, mixed>
      */
     protected function queryAlipayReturn(string $outReturnNo): array
     {
@@ -381,6 +417,8 @@ class ProfitSharingPlugin
 
     /**
      * 支付宝解冻剩余资金
+     *
+     * @return array<string, mixed>
      */
     protected function unfreezeAlipay(string $transactionId): array
     {
@@ -394,6 +432,9 @@ class ProfitSharingPlugin
 
     /**
      * 添加支付宝分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
      */
     protected function addAlipayReceiver(array $receiver): array
     {
@@ -415,6 +456,9 @@ class ProfitSharingPlugin
 
     /**
      * 删除支付宝分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
      */
     protected function removeAlipayReceiver(array $receiver): array
     {
@@ -437,6 +481,9 @@ class ProfitSharingPlugin
 
     /**
      * 创建 Stripe Transfer 分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function createStripeSharing(array $params): array
     {
@@ -471,6 +518,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询 Stripe Transfer
+     *
+     * @return array<string, mixed>
      */
     protected function queryStripeSharing(string $outOrderNo): array
     {
@@ -483,6 +532,9 @@ class ProfitSharingPlugin
 
     /**
      * Stripe 分账回退（创建 Reversal）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
      */
     protected function returnStripeSharing(array $params): array
     {
@@ -501,6 +553,8 @@ class ProfitSharingPlugin
 
     /**
      * 查询 Stripe Reversal
+     *
+     * @return array<string, mixed>
      */
     protected function queryStripeReturn(string $outReturnNo): array
     {
@@ -511,6 +565,8 @@ class ProfitSharingPlugin
 
     /**
      * Stripe 解冻剩余资金
+     *
+     * @return array<string, mixed>
      */
     protected function unfreezeStripe(string $transactionId): array
     {
@@ -534,7 +590,7 @@ class ProfitSharingPlugin
     protected function validateRequired(array $params, array $required): void
     {
         foreach ($required as $field) {
-            if (!isset($params[$field]) || $params[$field] === '' || $params[$field] === null) {
+            if (!isset($params[$field]) || $params[$field] === '') {
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }

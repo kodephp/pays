@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Wise 配置 DTO
  *
  * 封装 Wise（原 TransferWise）跨境汇款所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class WiseConfig implements ConfigInterface
 {

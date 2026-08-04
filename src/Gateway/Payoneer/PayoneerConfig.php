@@ -10,6 +10,8 @@ use Kode\Pays\Contract\ConfigInterface;
  * Payoneer 配置 DTO
  *
  * 封装 Payoneer 跨境支付所需的全部配置项。
+ *
+ * @phpstan-consistent-constructor
  */
 readonly class PayoneerConfig implements ConfigInterface
 {

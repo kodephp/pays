@@ -50,7 +50,7 @@ class KodeFacadeAdapter
      */
     public static function gateway(string $name, ?array $config = null): GatewayInterface
     {
-        $key = $name . '_' . md5(json_encode($config ?? self::$configs[$name] ?? []));
+        $key = $name . '_' . md5(json_encode($config ?? self::$configs[$name] ?? []) ?: '');
 
         if (!isset(self::$instances[$key])) {
             $cfg = $config ?? self::$configs[$name] ?? [];
