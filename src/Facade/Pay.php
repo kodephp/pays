@@ -563,6 +563,87 @@ class Pay
     }
 
     /**
+     * 统一创建订阅计划
+     *
+     * 经统一入口动态派发到目标网关的 `createPlan` 特色方法，
+     * 支持 Stripe、PayPal 等已接入订阅能力的平台。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 计划参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionCreatePlan(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createPlan', $params);
+    }
+
+    /**
+     * 统一创建订阅
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 订阅参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionCreate(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createSubscription', $params);
+    }
+
+    /**
+     * 统一取消订阅
+     *
+     * @param string $gateway 网关标识
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionCancel(string $gateway, string $subscriptionId): array
+    {
+        return self::call($gateway, 'cancelSubscription', $subscriptionId);
+    }
+
+    /**
+     * 统一暂停订阅
+     *
+     * @param string $gateway 网关标识
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionPause(string $gateway, string $subscriptionId): array
+    {
+        return self::call($gateway, 'pauseSubscription', $subscriptionId);
+    }
+
+    /**
+     * 统一恢复订阅
+     *
+     * @param string $gateway 网关标识
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionResume(string $gateway, string $subscriptionId): array
+    {
+        return self::call($gateway, 'resumeSubscription', $subscriptionId);
+    }
+
+    /**
+     * 统一查询订阅详情
+     *
+     * @param string $gateway 网关标识
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function subscriptionGet(string $gateway, string $subscriptionId): array
+    {
+        return self::call($gateway, 'getSubscription', $subscriptionId);
+    }
+
+    /**
      * 统一异步通知校验（安全入口）
      *
      * 先经过 {@see NotifyGuard} 做通用安全过滤（签名字段、防重放等），

@@ -320,13 +320,15 @@ Pay::redPacketQuery('wechat', 'REDPACK_20240425000001');
 
 ## 订阅插件 (SubscriptionPlugin)
 
-支持 Stripe、PayPal 的订阅与周期扣款能力。
+支持 Stripe、PayPal 的订阅与周期扣款能力。订阅逻辑已下沉到各网关原生方法，插件只做「参数校验
++ 类型安全转发」（架构说明见 [订阅能力设计](subscription.md)）。
 
 ### 配置
 
-Stripe 需创建 Product 与 Price；PayPal 需创建订阅计划。
+Stripe 需 `secret_key`；PayPal 需 `client_id` / `client_secret`。两网关在 `GatewayManifest`
+中声明 `CAP_SUBSCRIPTION => true`。
 
-### 使用示例
+### 使用示例（插件）
 
 ```php
 <?php
@@ -338,12 +340,13 @@ use Kode\Pays\Plugin\SubscriptionPlugin;
 $stripe = Pay::stripe(['secret_key' => 'sk_test_...']);
 $plugin = new SubscriptionPlugin($stripe);
 
-// 创建订阅计划
+// 创建订阅计划（金额单位为分）
 $plan = $plugin->createPlan([
-    'name'     => '月度会员',
-    'amount'   => 9900,            // Stripe 单位：分
-    'currency' => 'usd',
-    'interval' => 'month',
+    'name'           => '月度会员',
+    'amount'         => 9900,
+    'currency'       => 'usd',
+    'interval'       => 'month',
+    'interval_count' => 3,
 ]);
 
 // 创建订阅
@@ -352,17 +355,16 @@ $subscription = $plugin->createSubscription([
     'plan_id'     => $plan['id'],
 ]);
 
-// 暂停订阅（暂停扣款，可恢复）
+// 暂停 / 恢复 / 取消
 $plugin->pauseSubscription($subscription['id']);
-
-// 恢复订阅
 $plugin->resumeSubscription($subscription['id']);
-
-// 取消订阅（终止周期扣款）
 $plugin->cancelSubscription($subscription['id']);
+
+// 查询
+$plugin->getSubscription($subscription['id']);
 ```
 
-### PayPal 订阅示例
+### PayPal 订阅示例（插件）
 
 ```php
 <?php
@@ -379,25 +381,41 @@ $paypal = Pay::paypal([
 $plugin = new SubscriptionPlugin($paypal);
 
 $plan = $plugin->createPlan([
-    'name'          => '月度会员',
-    'amount'        => '9.99',
-    'currency'      => 'USD',
-    'interval'      => 'month',
+    'name'           => '月度会员',
+    'amount'         => 9900,            // 金额单位为分（网关内部换算为两位小数字符串）
+    'currency'       => 'usd',
+    'interval'       => 'month',
     'interval_count' => 1,
 ]);
 
 $subscription = $plugin->createSubscription([
-    'plan_id'      => $plan['id'],
-    'subscriber'   => ['email' => 'customer@example.com'],
+    'plan_id'        => $plan['id'],
+    'customer_email' => 'customer@example.com',
 ]);
+```
+
+### 统一入口（等价写法）
+
+```php
+use Kode\Pays\Facade\Pay;
+
+Pay::subscriptionCreatePlan('stripe', [
+    'name' => '月度会员', 'amount' => 9900, 'currency' => 'usd', 'interval' => 'month',
+]);
+Pay::subscriptionCreate('paypal', ['plan_id' => $plan['id'], 'customer_email' => 'a@b.com']);
+Pay::subscriptionCancel('stripe', 'sub_xxx');
+Pay::subscriptionPause('paypal', 'sub_xxx');
+Pay::subscriptionResume('stripe', 'sub_xxx');
+Pay::subscriptionGet('paypal', 'sub_xxx');
 ```
 
 ### 注意事项
 
 - 暂停与取消的语义不同：暂停可恢复，取消不可恢复（需重新订阅）
-- Stripe 订阅扣款失败会自动重试 4 次
-- PayPal 订阅扣款失败会按计划配置的重试策略执行
+- 平台未实现 `SubscriptionCapableInterface`（或不支持某方法）时，插件 / 统一入口统一抛「无此方法」
+- Stripe 订阅扣款失败会自动重试；PayPal 按订阅计划配置的重试策略执行
 - 取消订阅前请确认是否有未结算账单
+- 金额单位：Stripe / PayPal 订阅金额统一以「分」传入（`amount`），网关内部换算为最小货币单位字符串
 
 ## 对账插件 (ReconciliationPlugin)
 

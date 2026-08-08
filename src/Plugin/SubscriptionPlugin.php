@@ -6,14 +6,26 @@ namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 订阅支付插件
  *
- * 为支持订阅模式的网关提供统一的订阅管理能力。
- * 支持创建订阅计划、订阅、取消、暂停、恢复等操作。
+ * 为支持订阅模式的网关提供统一的订阅管理能力：创建订阅计划、创建订阅、
+ * 取消、暂停、恢复、查询订阅。
+ *
+ * 架构说明（对齐「统一入口」设计）：
+ * 各平台的订阅逻辑已下沉到各自的网关类内部，实现 {@see SubscriptionCapableInterface}
+ * （Stripe、PayPal 均已实现）。本插件只做「参数校验 + 类型安全转发」，不重复承载
+ * 平台组装逻辑，保证单一职责：
+ * - 校验通过后，经 {@see forwardToCapableGateway()} 调用网关原生方法；
+ * - 网关未实现 {@see SubscriptionCapableInterface}（或不支持某方法）时，统一抛「无此方法」。
+ *
+ * 与平台无关的差异对比方法 {@see diff()} 保留在插件内。
+ *
+ * 支持网关：Stripe、PayPal。
  *
  * 使用示例：
  * ```php
@@ -32,6 +44,8 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  *     'customer_id' => 'cus_xxx',
  *     'plan_id' => $plan['id'],
  * ]);
+ *
+ * // 统一入口亦可：Pay::subscriptionCreate('stripe', [...])
  * ```
  */
 class SubscriptionPlugin
@@ -48,7 +62,7 @@ class SubscriptionPlugin
     /**
      * 构造函数
      *
-     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需实现 SubscriptionCapableInterface）
      */
     public function __construct(GatewayInterface $gateway)
     {
@@ -61,6 +75,11 @@ class SubscriptionPlugin
      * 创建订阅计划
      *
      * @param array<string, mixed> $params 计划参数
+     *        - name: 计划名称
+     *        - amount: 金额（最小货币单位，如分）
+     *        - currency: 货币
+     *        - interval: 周期 day/week/month/year
+     *        - interval_count: 周期数量（可选，默认 1）
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -68,23 +87,16 @@ class SubscriptionPlugin
     {
         $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
 
-        $name = $params['name'];
-        $amount = $params['amount'];
-        $currency = $params['currency'];
-        $interval = $params['interval'];
-        $intervalCount = $params['interval_count'] ?? 1;
-
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->createStripePlan($name, $amount, $currency, $interval, $intervalCount),
-            'paypal' => $this->createPaypalPlan($name, $amount, $currency, $interval, $intervalCount),
-            default => throw PayException::invalidArgument('当前网关不支持订阅计划创建'),
-        };
+        return $this->forwardToCapableGateway('createPlan', $params);
     }
 
     /**
      * 创建订阅
      *
      * @param array<string, mixed> $params 订阅参数
+     *        - customer_id: 客户 ID（Stripe）
+     *        - plan_id: 计划 / Price ID
+     *        - customer_name / customer_email / return_url / cancel_url: PayPal 等所需
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -92,11 +104,7 @@ class SubscriptionPlugin
     {
         $this->validateRequired($params, ['customer_id', 'plan_id']);
 
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->createStripeSubscription($params),
-            'paypal' => $this->createPaypalSubscription($params),
-            default => throw PayException::invalidArgument('当前网关不支持订阅创建'),
-        };
+        return $this->forwardToCapableGateway('createSubscription', $params);
     }
 
     /**
@@ -108,11 +116,7 @@ class SubscriptionPlugin
      */
     public function cancelSubscription(string $subscriptionId): array
     {
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->gateway->post("v1/subscriptions/{$subscriptionId}", ['cancel_at_period_end' => true]),
-            'paypal' => $this->gateway->post("v1/billing/subscriptions/{$subscriptionId}/cancel", ['reason' => '用户取消']),
-            default => throw PayException::invalidArgument('当前网关不支持订阅取消'),
-        };
+        return $this->forwardToCapableGateway('cancelSubscription', $subscriptionId);
     }
 
     /**
@@ -124,11 +128,7 @@ class SubscriptionPlugin
      */
     public function pauseSubscription(string $subscriptionId): array
     {
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->gateway->post("v1/subscriptions/{$subscriptionId}", ['pause_collection' => ['behavior' => 'mark_uncollectible']]),
-            'paypal' => $this->gateway->post("v1/billing/subscriptions/{$subscriptionId}/suspend", ['reason' => '用户暂停']),
-            default => throw PayException::invalidArgument('当前网关不支持订阅暂停'),
-        };
+        return $this->forwardToCapableGateway('pauseSubscription', $subscriptionId);
     }
 
     /**
@@ -140,11 +140,7 @@ class SubscriptionPlugin
      */
     public function resumeSubscription(string $subscriptionId): array
     {
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->gateway->post("v1/subscriptions/{$subscriptionId}", ['pause_collection' => null]),
-            'paypal' => $this->gateway->post("v1/billing/subscriptions/{$subscriptionId}/activate", ['reason' => '用户恢复']),
-            default => throw PayException::invalidArgument('当前网关不支持订阅恢复'),
-        };
+        return $this->forwardToCapableGateway('resumeSubscription', $subscriptionId);
     }
 
     /**
@@ -156,126 +152,116 @@ class SubscriptionPlugin
      */
     public function getSubscription(string $subscriptionId): array
     {
-        return match ($this->gateway::getName()) {
-            'stripe' => $this->gateway->get("v1/subscriptions/{$subscriptionId}"),
-            'paypal' => $this->gateway->get("v1/billing/subscriptions/{$subscriptionId}"),
-            default => throw PayException::invalidArgument('当前网关不支持订阅查询'),
-        };
+        return $this->forwardToCapableGateway('getSubscription', $subscriptionId);
     }
 
     /**
-     * 创建 Stripe 订阅计划
+     * 对比系统订单与对账单差异
      *
-     * @param string $name 计划名称
-     * @param int $amount 金额（分）
-     * @param string $currency 货币
-     * @param string $interval 周期：day、week、month、year
-     * @param int $intervalCount 周期数量
-     * @return array<string, mixed>
-     * @throws PayException
+     * 平台无关的差异对比逻辑，保留在插件内（不涉及网关派发）。
+     *
+     * @param array<int, array<string, mixed>> $systemOrders 系统订单列表
+     * @param array<int, array<string, mixed>> $billRecords 对账单记录列表
+     * @return array<string, mixed> 差异报告
      */
-    protected function createStripePlan(string $name, int $amount, string $currency, string $interval, int $intervalCount): array
+    public function diff(array $systemOrders, array $billRecords): array
     {
-        // 先创建 Price
-        return $this->gateway->post('v1/prices', [
-            'unit_amount' => $amount,
-            'currency' => $currency,
-            'recurring' => [
-                'interval' => $interval,
-                'interval_count' => $intervalCount,
+        $systemMap = [];
+        foreach ($systemOrders as $order) {
+            $key = $order['out_trade_no'] ?? $order['order_id'] ?? '';
+            if ($key !== '') {
+                $systemMap[$key] = $order;
+            }
+        }
+
+        $billMap = [];
+        foreach ($billRecords as $record) {
+            $key = $record['out_trade_no'] ?? $record['merchant_order_no'] ?? '';
+            if ($key !== '') {
+                $billMap[$key] = $record;
+            }
+        }
+
+        $onlyInSystem = [];
+        $onlyInBill = [];
+        $amountMismatch = [];
+        $statusMismatch = [];
+
+        // 系统有但账单没有的
+        foreach ($systemMap as $key => $order) {
+            if (!isset($billMap[$key])) {
+                $onlyInSystem[] = $order;
+                continue;
+            }
+
+            $bill = $billMap[$key];
+
+            $sysAmount = $order['amount'] ?? $order['total_amount'] ?? null;
+            $billAmount = $bill['amount'] ?? $bill['total_amount'] ?? null;
+            if ($sysAmount !== null && $billAmount !== null && (float) $sysAmount !== (float) $billAmount) {
+                $amountMismatch[] = ['key' => $key, 'system' => $sysAmount, 'bill' => $billAmount];
+            }
+
+            $sysStatus = $order['status'] ?? $order['trade_state'] ?? null;
+            $billStatus = $bill['status'] ?? $bill['trade_state'] ?? null;
+            if ($sysStatus !== null && $billStatus !== null && $sysStatus !== $billStatus) {
+                $statusMismatch[] = ['key' => $key, 'system' => $sysStatus, 'bill' => $billStatus];
+            }
+        }
+
+        // 账单有但系统没有的
+        foreach ($billMap as $key => $record) {
+            if (!isset($systemMap[$key])) {
+                $onlyInBill[] = $record;
+            }
+        }
+
+        return [
+            'only_in_system' => $onlyInSystem,
+            'only_in_bill' => $onlyInBill,
+            'amount_mismatch' => $amountMismatch,
+            'status_mismatch' => $statusMismatch,
+            'summary' => [
+                'system_count' => count($systemMap),
+                'bill_count' => count($billMap),
+                'only_in_system_count' => count($onlyInSystem),
+                'only_in_bill_count' => count($onlyInBill),
+                'amount_mismatch_count' => count($amountMismatch),
+                'status_mismatch_count' => count($statusMismatch),
             ],
-            'product_data' => [
-                'name' => $name,
-            ],
-        ]);
+        ];
     }
 
     /**
-     * 创建 Stripe 订阅
+     * 类型安全转发到支持订阅的网关原生方法
      *
-     * @param array<string, mixed> $params 订阅参数
-     * @return array<string, mixed>
-     * @throws PayException
-     */
-    protected function createStripeSubscription(array $params): array
-    {
-        return $this->gateway->post('v1/subscriptions', [
-            'customer' => $params['customer_id'],
-            'items' => [
-                ['price' => $params['plan_id']],
-            ],
-            'metadata' => $params['metadata'] ?? [],
-        ]);
-    }
-
-    /**
-     * 创建 PayPal 订阅计划
+     * Stripe / PayPal 的「订阅」是其各自网关类内部实现的特色方法
+     * （声明了 {@see SubscriptionCapableInterface}）。插件在此只做校验与转发，不重复承载
+     * 平台组装逻辑。网关不支持某方法时抛 {@see PayException::methodNotSupported}（无此方法）。
      *
-     * @param string $name 计划名称
-     * @param int $amount 金额（分）
-     * @param string $currency 货币
-     * @param string $interval 周期
-     * @param int $intervalCount 周期数量
+     * @param string $method 网关原生订阅方法名
+     * @param mixed ...$args 透传参数
      * @return array<string, mixed>
-     * @throws PayException
-     */
-    protected function createPaypalPlan(string $name, int $amount, string $currency, string $interval, int $intervalCount): array
-    {
-        // 创建产品
-        $product = $this->gateway->post('v1/catalogs/products', [
-            'name' => $name,
-            'type' => 'DIGITAL',
-        ]);
-
-        // 创建计划
-        return $this->gateway->post('v1/billing/plans', [
-            'product_id' => $product['id'],
-            'name' => $name,
-            'billing_cycles' => [
-                [
-                    'frequency' => [
-                        'interval_unit' => strtoupper($interval),
-                        'interval_count' => $intervalCount,
-                    ],
-                    'tenure_type' => 'REGULAR',
-                    'sequence' => 1,
-                    'total_cycles' => 0,
-                    'pricing_scheme' => [
-                        'fixed_price' => [
-                            'value' => number_format($amount / 100, 2),
-                            'currency_code' => strtoupper($currency),
-                        ],
-                    ],
-                ],
-            ],
-            'payment_preferences' => [
-                'auto_bill_outstanding' => true,
-            ],
-        ]);
-    }
-
-    /**
-     * 创建 PayPal 订阅
+     * @throws PayException 当网关未实现订阅能力接口或不支持该方法时
      *
-     * @param array<string, mixed> $params 订阅参数
-     * @return array<string, mixed>
-     * @throws PayException
+     * @phpstan-assert SubscriptionCapableInterface $this->gateway
      */
-    protected function createPaypalSubscription(array $params): array
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
     {
-        return $this->gateway->post('v1/billing/subscriptions', [
-            'plan_id' => $params['plan_id'],
-            'subscriber' => [
-                'name' => [
-                    'given_name' => $params['customer_name'] ?? 'Customer',
-                ],
-                'email_address' => $params['customer_email'] ?? '',
-            ],
-            'application_context' => [
-                'return_url' => $params['return_url'] ?? '',
-                'cancel_url' => $params['cancel_url'] ?? '',
-            ],
-        ]);
+        if (!$this->gateway instanceof SubscriptionCapableInterface) {
+            throw PayException::invalidArgument(
+                sprintf('网关 %s 未实现订阅能力接口（SubscriptionCapableInterface）', $this->gateway::getName()),
+            );
+        }
+
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
+
+        /** @var SubscriptionCapableInterface $gateway */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
 
     /**

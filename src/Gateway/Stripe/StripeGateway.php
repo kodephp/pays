@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Stripe;
 
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -14,7 +15,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -322,6 +323,106 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface
     public function transferReceipt(string $outBizNo): array
     {
         throw PayException::methodNotSupported('stripe', 'transferReceipt');
+    }
+
+    /**
+     * 创建订阅计划（Stripe Price）
+     *
+     * 复用网关 {@see buildAuthHeaders()} 携带 Bearer Token，金额单位为最小货币单位。
+     *
+     * @param array<string, mixed> $params 计划参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createPlan(array $params): array
+    {
+        $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
+
+        return $this->post('v1/prices', [
+            'unit_amount' => (int) $params['amount'],
+            'currency' => $params['currency'],
+            'recurring' => [
+                'interval' => $params['interval'],
+                'interval_count' => (int) ($params['interval_count'] ?? 1),
+            ],
+            'product_data' => [
+                'name' => $params['name'],
+            ],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 创建订阅（Stripe Subscription）
+     *
+     * @param array<string, mixed> $params 订阅参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['customer_id', 'plan_id']);
+
+        return $this->post('v1/subscriptions', [
+            'customer' => $params['customer_id'],
+            'items' => [
+                ['price' => $params['plan_id']],
+            ],
+            'metadata' => $params['metadata'] ?? [],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 取消订阅（Stripe Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        return $this->post("v1/subscriptions/{$subscriptionId}", [
+            'cancel_at_period_end' => true,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 暂停订阅（Stripe Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        return $this->post("v1/subscriptions/{$subscriptionId}", [
+            'pause_collection' => ['behavior' => 'mark_uncollectible'],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 恢复订阅（Stripe Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        return $this->post("v1/subscriptions/{$subscriptionId}", [
+            'pause_collection' => null,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 查询订阅详情（Stripe Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function getSubscription(string $subscriptionId): array
+    {
+        return $this->get("v1/subscriptions/{$subscriptionId}", [], $this->buildAuthHeaders());
     }
 
     /**

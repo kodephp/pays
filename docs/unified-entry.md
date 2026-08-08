@@ -157,6 +157,32 @@ Pay::call('wechat', 'sendRedPacket', $params);
 > `groupRedPacket` / `queryRedPacket`）。`Pay::call()` 缺方法时仍抛「无此方法」；
 > 例如未实现 `RedPacketCapableInterface` 的平台（如 unionpay / douyin）调用红包入口会报「无此方法」。
 
+订阅 / 代扣同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的订阅特色方法）：
+
+```php
+// 统一创建订阅计划（Stripe / PayPal 已接入订阅能力的平台）
+Pay::subscriptionCreatePlan('stripe', [
+    'name'           => '月度会员',
+    'amount'         => 9900,            // 最小货币单位（分）
+    'currency'       => 'usd',
+    'interval'       => 'month',
+]);
+Pay::subscriptionCreate('stripe', ['customer_id' => 'cus_xxx', 'plan_id' => 'price_xxx']);
+Pay::subscriptionCancel('stripe', 'sub_xxx');
+Pay::subscriptionPause('paypal', 'sub_xxx');
+Pay::subscriptionResume('stripe', 'sub_xxx');
+Pay::subscriptionGet('paypal', 'sub_xxx');
+
+// 等价写法：直接用 call 派发网关原生订阅方法
+Pay::call('stripe', 'createPlan', $params);
+```
+
+> 订阅逻辑下沉到各网关类内部，声明 `SubscriptionCapableInterface`（`createPlan` /
+> `createSubscription` / `cancelSubscription` / `pauseSubscription` / `resumeSubscription` /
+> `getSubscription`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如未实现 `SubscriptionCapableInterface` 的平台调用订阅入口会报「无此方法」。详见
+> [订阅能力设计](subscription.md)。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php

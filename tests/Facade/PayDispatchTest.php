@@ -6,6 +6,7 @@ namespace Kode\Pays\Tests\Facade;
 
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
@@ -144,6 +145,62 @@ class RedPacketCapableFakeGateway extends FakeGateway implements RedPacketCapabl
     }
 }
 
+/**
+ * 支持订阅能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class SubscriptionCapableFakeGateway extends FakeGateway implements SubscriptionCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $subCalls = [];
+
+    public static function getName(): string
+    {
+        return 'subgw';
+    }
+
+    public function createPlan(array $params): array
+    {
+        $this->subCalls[] = ['createPlan', $params];
+
+        return ['ok' => true, 'id' => 'plan_1'];
+    }
+
+    public function createSubscription(array $params): array
+    {
+        $this->subCalls[] = ['createSubscription', $params];
+
+        return ['ok' => true, 'id' => 'sub_1'];
+    }
+
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        $this->subCalls[] = ['cancelSubscription', $subscriptionId];
+
+        return ['ok' => true];
+    }
+
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        $this->subCalls[] = ['pauseSubscription', $subscriptionId];
+
+        return ['ok' => true];
+    }
+
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        $this->subCalls[] = ['resumeSubscription', $subscriptionId];
+
+        return ['ok' => true];
+    }
+
+    public function getSubscription(string $subscriptionId): array
+    {
+        $this->subCalls[] = ['getSubscription', $subscriptionId];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -161,6 +218,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('redgw', RedPacketCapableFakeGateway::class);
         Pay::registerConfig('redgw', []);
+
+        GatewayFactory::register('subgw', SubscriptionCapableFakeGateway::class);
+        Pay::registerConfig('subgw', []);
     }
 
     protected function tearDown(): void
@@ -170,6 +230,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('profitgw');
         GatewayFactory::unregister('transgw');
         GatewayFactory::unregister('redgw');
+        GatewayFactory::unregister('subgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -366,5 +427,96 @@ class PayDispatchTest extends TestCase
         $gateway = Pay::gateway('redgw');
         $this->assertSame('query', $gateway->redPacketCalls[0][0]);
         $this->assertSame('REDPACK_1', $gateway->redPacketCalls[0][1]);
+    }
+
+    /**
+     * 统一订阅计划入口 subscriptionCreatePlan 派发到网关原生 createPlan
+     */
+    public function testSubscriptionCreatePlanUnifiedEntry(): void
+    {
+        $result = Pay::subscriptionCreatePlan('subgw', [
+            'name' => '月度会员',
+            'amount' => 9900,
+            'currency' => 'usd',
+            'interval' => 'month',
+        ]);
+
+        $this->assertSame(['ok' => true, 'id' => 'plan_1'], $result);
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('createPlan', $gateway->subCalls[0][0]);
+        $this->assertSame('月度会员', $gateway->subCalls[0][1]['name']);
+    }
+
+    /**
+     * 统一订阅创建入口 subscriptionCreate 派发到网关原生 createSubscription
+     */
+    public function testSubscriptionCreateUnifiedEntry(): void
+    {
+        Pay::subscriptionCreate('subgw', ['customer_id' => 'cus_1', 'plan_id' => 'plan_1']);
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('createSubscription', $gateway->subCalls[0][0]);
+        $this->assertSame('plan_1', $gateway->subCalls[0][1]['plan_id']);
+    }
+
+    /**
+     * 统一订阅取消入口 subscriptionCancel 派发到网关原生 cancelSubscription
+     */
+    public function testSubscriptionCancelUnifiedEntry(): void
+    {
+        Pay::subscriptionCancel('subgw', 'sub_1');
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('cancelSubscription', $gateway->subCalls[0][0]);
+        $this->assertSame('sub_1', $gateway->subCalls[0][1]);
+    }
+
+    /**
+     * 统一订阅暂停入口 subscriptionPause 派发到网关原生 pauseSubscription
+     */
+    public function testSubscriptionPauseUnifiedEntry(): void
+    {
+        Pay::subscriptionPause('subgw', 'sub_1');
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('pauseSubscription', $gateway->subCalls[0][0]);
+        $this->assertSame('sub_1', $gateway->subCalls[0][1]);
+    }
+
+    /**
+     * 统一订阅恢复入口 subscriptionResume 派发到网关原生 resumeSubscription
+     */
+    public function testSubscriptionResumeUnifiedEntry(): void
+    {
+        Pay::subscriptionResume('subgw', 'sub_1');
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('resumeSubscription', $gateway->subCalls[0][0]);
+        $this->assertSame('sub_1', $gateway->subCalls[0][1]);
+    }
+
+    /**
+     * 统一订阅查询入口 subscriptionGet 派发到网关原生 getSubscription
+     */
+    public function testSubscriptionGetUnifiedEntry(): void
+    {
+        Pay::subscriptionGet('subgw', 'sub_1');
+
+        $gateway = Pay::gateway('subgw');
+        $this->assertSame('getSubscription', $gateway->subCalls[0][0]);
+        $this->assertSame('sub_1', $gateway->subCalls[0][1]);
+    }
+
+    /**
+     * 统一入口调用未实现的方法应抛「无此方法」
+     */
+    public function testSubscriptionMethodNotSupported(): void
+    {
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        // fakechan 未实现 SubscriptionCapableInterface，无 createPlan 方法
+        Pay::subscriptionCreatePlan('fakechan', ['name' => 'x', 'amount' => 1, 'currency' => 'usd', 'interval' => 'month']);
     }
 }

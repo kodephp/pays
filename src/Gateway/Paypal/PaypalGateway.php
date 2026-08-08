@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Paypal;
 
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -12,7 +13,7 @@ use Kode\Pays\Core\PayException;
  *
  * 支持 PayPal Checkout、订阅等支付场景
  */
-class PaypalGateway extends AbstractGateway
+class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -147,6 +148,160 @@ class PaypalGateway extends AbstractGateway
         ];
 
         return $this->post("v2/checkout/orders/{$orderId}/cancel", [], $headers);
+    }
+
+    /**
+     * 创建订阅计划（PayPal Billing Plan）
+     *
+     * 先创建 Product，再基于 Product 创建 Plan，金额单位为最小货币单位（分）。
+     *
+     * @param array<string, mixed> $params 计划参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createPlan(array $params): array
+    {
+        $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        $product = $this->post('v1/catalogs/products', [
+            'name' => $params['name'],
+            'type' => 'DIGITAL',
+        ], $headers);
+
+        return $this->post('v1/billing/plans', [
+            'product_id' => $product['id'],
+            'name' => $params['name'],
+            'billing_cycles' => [
+                [
+                    'frequency' => [
+                        'interval_unit' => strtoupper($params['interval']),
+                        'interval_count' => (int) ($params['interval_count'] ?? 1),
+                    ],
+                    'tenure_type' => 'REGULAR',
+                    'sequence' => 1,
+                    'total_cycles' => 0,
+                    'pricing_scheme' => [
+                        'fixed_price' => [
+                            'value' => number_format($params['amount'] / 100, 2),
+                            'currency_code' => strtoupper($params['currency']),
+                        ],
+                    ],
+                ],
+            ],
+            'payment_preferences' => [
+                'auto_bill_outstanding' => true,
+            ],
+        ], $headers);
+    }
+
+    /**
+     * 创建订阅（PayPal Subscription）
+     *
+     * @param array<string, mixed> $params 订阅参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['plan_id']);
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->post('v1/billing/subscriptions', [
+            'plan_id' => $params['plan_id'],
+            'subscriber' => [
+                'name' => [
+                    'given_name' => $params['customer_name'] ?? 'Customer',
+                ],
+                'email_address' => $params['customer_email'] ?? '',
+            ],
+            'application_context' => [
+                'return_url' => $params['return_url'] ?? '',
+                'cancel_url' => $params['cancel_url'] ?? '',
+            ],
+        ], $headers);
+    }
+
+    /**
+     * 取消订阅（PayPal Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->post("v1/billing/subscriptions/{$subscriptionId}/cancel", [
+            'reason' => '用户取消',
+        ], $headers);
+    }
+
+    /**
+     * 暂停订阅（PayPal Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->post("v1/billing/subscriptions/{$subscriptionId}/suspend", [
+            'reason' => '用户暂停',
+        ], $headers);
+    }
+
+    /**
+     * 恢复订阅（PayPal Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->post("v1/billing/subscriptions/{$subscriptionId}/activate", [
+            'reason' => '用户恢复',
+        ], $headers);
+    }
+
+    /**
+     * 查询订阅详情（PayPal Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function getSubscription(string $subscriptionId): array
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->get("v1/billing/subscriptions/{$subscriptionId}", [], $headers);
     }
 
     /**
