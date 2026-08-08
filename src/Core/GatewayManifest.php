@@ -500,13 +500,13 @@ class GatewayManifest
                 'label' => '云闪付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_RSA,
-                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true, self::CAP_PROFIT_SHARING => true],
             ],
             'douyin' => [
                 'label' => '抖音支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true],
+                'capabilities' => [self::CAP_QR => true, self::CAP_PROFIT_SHARING => true],
             ],
             'meituan' => [
                 'label' => '美团支付',

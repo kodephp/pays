@@ -6,6 +6,7 @@ namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -20,6 +21,12 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  * - 微信支付（服务商模式分账）
  * - 支付宝（交易分账）
  * - Stripe（Connect 平台分账 / Transfer）
+ * - 抖音支付（分账，网关原生方法实现）
+ * - 云闪付（分账，网关原生方法实现）
+ *
+ * 设计说明：抖音 / 云闪付的「分账」是其各自网关的「特色方法」，已在网关类内部实现
+ * （复用基类配置、签名与 HTTP 通道）并声明 {@see ProfitSharingCapableInterface}；
+ * 本插件在对应分支只做「校验 + 类型安全转发」，不重复承载平台组装逻辑，保证单一职责。
  *
  * 使用示例：
  * ```php
@@ -121,6 +128,7 @@ class ProfitSharingPlugin
             'wechat' => $this->createWechatSharing($params),
             'alipay' => $this->createAlipaySharing($params),
             'stripe' => $this->createStripeSharing($params),
+            'douyin', 'unionpay' => $this->forwardToCapableGateway('createProfitSharing', $params),
             default => throw PayException::invalidArgument('当前网关不支持分账功能'),
         };
     }
@@ -138,6 +146,7 @@ class ProfitSharingPlugin
             'wechat' => $this->queryWechatSharing($outOrderNo),
             'alipay' => $this->queryAlipaySharing($outOrderNo),
             'stripe' => $this->queryStripeSharing($outOrderNo),
+            'douyin', 'unionpay' => $this->forwardToCapableGateway('queryProfitSharing', $outOrderNo),
             default => throw PayException::invalidArgument('当前网关不支持分账查询'),
         };
     }
@@ -163,6 +172,7 @@ class ProfitSharingPlugin
             'wechat' => $this->returnWechatSharing($params),
             'alipay' => $this->returnAlipaySharing($params),
             'stripe' => $this->returnStripeSharing($params),
+            'douyin', 'unionpay' => $this->forwardToCapableGateway('returnProfitSharing', $params),
             default => throw PayException::invalidArgument('当前网关不支持分账回退'),
         };
     }
@@ -180,6 +190,7 @@ class ProfitSharingPlugin
             'wechat' => $this->queryWechatReturn($outReturnNo),
             'alipay' => $this->queryAlipayReturn($outReturnNo),
             'stripe' => $this->queryStripeReturn($outReturnNo),
+            'douyin', 'unionpay' => $this->forwardToCapableGateway('queryProfitSharingReturn', $outReturnNo),
             default => throw PayException::invalidArgument('当前网关不支持分账回退查询'),
         };
     }
@@ -219,6 +230,11 @@ class ProfitSharingPlugin
             'wechat' => $this->unfreezeWechat($transactionId, $outOrderNo),
             'alipay' => $this->unfreezeAlipay($transactionId),
             'stripe' => $this->unfreezeStripe($transactionId),
+            'douyin', 'unionpay' => $this->forwardToCapableGateway(
+                'unfreezeProfitSharing',
+                $transactionId,
+                $outOrderNo,
+            ),
             default => throw PayException::invalidArgument('当前网关不支持资金解冻'),
         };
     }
@@ -698,5 +714,32 @@ class ProfitSharingPlugin
         }
 
         return $default;
+    }
+
+    /**
+     * 类型安全转发到支持分账的网关原生方法
+     *
+     * 抖音 / 云闪付的「分账」是各自网关类内部实现的特色方法（声明了
+     * {@see ProfitSharingCapableInterface}）。插件在此只做校验与转发，不重复承载平台组装逻辑。
+     *
+     * @param string $method 网关原生分账方法名
+     * @param mixed ...$args 透传参数
+     * @return array<string, mixed>
+     * @throws PayException 当网关未实现分账能力接口时
+     *
+     * @phpstan-assert ProfitSharingCapableInterface $this->gateway
+     */
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
+    {
+        if (!$this->gateway instanceof ProfitSharingCapableInterface) {
+            throw PayException::invalidArgument(
+                sprintf('网关 %s 未实现分账能力接口（ProfitSharingCapableInterface）', $this->gateway::getName()),
+            );
+        }
+
+        /** @var ProfitSharingCapableInterface $gateway */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
 }

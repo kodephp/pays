@@ -92,6 +92,22 @@ Pay::queryRefund('alipay', $refundId);
 Pay::closeOrder('alipay', $orderId);
 ```
 
+分账等「增值能力」也提供统一入口（内部经 `Pay::call()` 动态派发到目标网关的分账特色方法）：
+
+```php
+// 统一发起分账（微信 / 支付宝 / Stripe / 抖音 / 云闪付 等已接入分账能力的平台）
+Pay::profitSharingCreate('douyin', $params);
+Pay::profitSharingQuery('douyin', $outOrderNo);
+Pay::profitSharingReturn('douyin', $params);
+Pay::profitSharingUnfreeze('douyin', $transactionId, $outOrderNo);
+
+// 等价写法：直接用 call 派发网关原生分账方法
+Pay::call('douyin', 'createProfitSharing', $params);
+```
+
+> 平台「特色方法」（如 `createProfitSharing`、`queryProfitSharing`）由各网关类直接实现并声明
+> `ProfitSharingCapableInterface`，因此 `Pay::call()` 与 `ProfitSharingPlugin` 都能类型安全地调用。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php
@@ -102,6 +118,17 @@ $wechat->someSpecificMethod(...);       // 平台特色方法
 
 > 前置条件：调用前需通过 `Pay::registerConfig('wechat', $config)` 预登记配置，或在调用时
 > 传入配置。`Pay::call()` 内部统一解析并缓存网关实例。
+
+被调用的方法在该网关上不存在时，`Pay::call()` 会抛出 `PayException`
+（`ERROR_METHOD_NOT_SUPPORTED`，文案含「无此方法」），明确提示该平台不支持此能力：
+
+```php
+try {
+    Pay::call('paypal', 'createProfitSharing', $params); // paypal 未实现分账
+} catch (PayException $e) {
+    // 网关 paypal 不支持方法：createProfitSharing（无此方法）
+}
+```
 
 ## 3. 安全校验 NotifyGuard
 

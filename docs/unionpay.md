@@ -30,6 +30,34 @@ composer require kode/pays
 - 测试环境：`https://gateway.test.95516.com/`
 - 生产环境：`https://gateway.95516.com/`
 
+## 分账能力（Profit Sharing）
+
+云闪付网关实现了 `ProfitSharingCapableInterface`，将「分账」作为网关特色方法，可被统一入口
+`Pay::call()` 与 `ProfitSharingPlugin` 直接调用（RSA 签名复用网关既有证书）：
+
+```php
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
+use Kode\Pays\Support\Money;
+
+// 统一入口
+Pay::profitSharingCreate('unionpay', [
+    'transaction_id' => 'T100',            // 原交易查询流水号（origQryId）
+    'out_order_no'   => 'SHARE_001',       // 作为银联 orderId
+    'receivers'      => [
+        new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(200, 'CNY'), '分账', 'SERVICE_PROVIDER'),
+    ],
+]);
+
+// 或等价地通过 call 派发网关原生方法
+Pay::call('unionpay', 'queryProfitSharing', 'SHARE_001');
+```
+
+分账方法：`createProfitSharing` / `queryProfitSharing` / `returnProfitSharing` /
+`queryProfitSharingReturn` / `unfreezeProfitSharing`；接收方金额按最小货币单位（分，`txnAmt`）。
+
+> ⚠️ 云闪付分账的 Endpoint 与字段命名以官方文档为准，投产前请按官方接口联调确认。
+
 ## 快速开始
 
 ```php

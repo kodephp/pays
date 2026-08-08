@@ -55,6 +55,11 @@ class PayException extends Exception
     public const ERROR_REFUND = 1007;
 
     /**
+     * 错误码：网关不支持某方法（统一入口动态派发时命中）
+     */
+    public const ERROR_METHOD_NOT_SUPPORTED = 1008;
+
+    /**
      * 错误码列表
      *
      * @var array<int, string>
@@ -68,6 +73,7 @@ class PayException extends Exception
         self::ERROR_GATEWAY => '网关业务错误',
         self::ERROR_ORDER_NOT_FOUND => '订单不存在',
         self::ERROR_REFUND => '退款失败',
+        self::ERROR_METHOD_NOT_SUPPORTED => '网关不支持该方法',
     ];
 
     /**
@@ -188,5 +194,22 @@ class PayException extends Exception
     public static function refundError(string $message): self
     {
         return new self($message, self::ERROR_REFUND);
+    }
+
+    /**
+     * 快速创建「网关不支持该方法」异常
+     *
+     * 用于统一入口 {@see \Kode\Pays\Facade\Pay::call()} 动态派发时，
+     * 命中网关不存在的方法，明确提示「无此方法」。
+     *
+     * @param string $gateway 网关标识
+     * @param string $method 调用的方法名
+     */
+    public static function methodNotSupported(string $gateway, string $method): self
+    {
+        return new self(
+            sprintf('网关 %s 不支持方法：%s（无此方法）', $gateway, $method),
+            self::ERROR_METHOD_NOT_SUPPORTED,
+        );
     }
 }

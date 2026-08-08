@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\UnionPay;
 
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 
 /**
  * 云闪付网关
  *
- * 支持 App、H5、小程序、二维码等支付场景
+ * 支持 App、H5、小程序、二维码等支付场景；分账作为网关「特色方法」实现于本类内部
+ * （复用基类配置、RSA 签名与 HTTP 通道），并通过 {@see ProfitSharingCapableInterface} 暴露，
+ * 可被统一入口 {@see \Kode\Pays\Facade\Pay::call()} 直接调用。
  */
-class UnionPayGateway extends AbstractGateway
+class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -176,6 +180,166 @@ class UnionPayGateway extends AbstractGateway
     }
 
     /**
+     * 发起银联分账
+     *
+     * 将一笔已支付订单的金额按接收方列表进行分账。接收方金额按最小货币单位（分，txnAmt）上报。
+     *
+     * @param array<string, mixed> $params 分账参数
+     *        - transaction_id: 原支付交易查询流水号（origQryId）
+     *        - out_order_no: 商户分账订单号（作为银联 orderId）
+     *        - receivers: 接收方列表 [{type, account, amount(分), description}]
+     *        - txnAmt: 分账总金额（可选，缺省取接收方合计）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['out_order_no', 'transaction_id', 'receivers']);
+
+        $receivers = $this->mapReceivers((array) $params['receivers'], 'unionpay');
+        $txnAmt = isset($params['txnAmt']) ? (int) $params['txnAmt'] : $this->sumReceiverAmount($receivers);
+
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '11',
+            'txnSubType' => '00',
+            'bizType' => '000000',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $params['out_order_no'],
+            'origQryId' => $params['transaction_id'],
+            'txnTime' => date('YmdHis'),
+            'txnAmt' => $txnAmt,
+            'receivers' => json_encode($receivers, JSON_UNESCAPED_UNICODE),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        // 注：银联分账 Endpoint 与字段命名请以官方文档为准，投产前联调确认。
+        return $this->post('gateway/api/profitSharing.do', $requestData);
+    }
+
+    /**
+     * 查询银联分账结果
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '00',
+            'txnSubType' => '00',
+            'bizType' => '000000',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $outOrderNo,
+            'txnTime' => date('YmdHis'),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/queryProfitSharing.do', $requestData);
+    }
+
+    /**
+     * 银联分账回退
+     *
+     * @param array<string, mixed> $params 回退参数
+     *        - out_order_no: 商户分账订单号
+     *        - out_return_no: 商户回退单号
+     *        - return_amount: 回退金额（分）
+     *        - transaction_id: 原交易查询流水号（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function returnProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
+
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '04',
+            'txnSubType' => '00',
+            'bizType' => '000000',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $params['out_order_no'],
+            'origQryId' => $params['transaction_id'] ?? '',
+            'txnTime' => date('YmdHis'),
+            'txnAmt' => (int) $params['return_amount'],
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/backProfitSharing.do', $requestData);
+    }
+
+    /**
+     * 查询银联分账回退结果
+     *
+     * @param string $outReturnNo 商户回退单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '00',
+            'txnSubType' => '00',
+            'bizType' => '000000',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $outReturnNo,
+            'txnTime' => date('YmdHis'),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/queryProfitSharingReturn.do', $requestData);
+    }
+
+    /**
+     * 解冻银联未分账的剩余资金
+     *
+     * @param string $transactionId 原支付交易查询流水号
+     * @param string|null $outOrderNo 商户解冻单号（可选，缺省自动生成）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '04',
+            'txnSubType' => '00',
+            'bizType' => '000000',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $outOrderNo ?? ('UNFREEZE_' . time()),
+            'origQryId' => $transactionId,
+            'txnTime' => date('YmdHis'),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/finishProfitSharing.do', $requestData);
+    }
+
+    /**
      * 获取网关标识
      */
     public static function getName(): string
@@ -271,5 +435,46 @@ class UnionPayGateway extends AbstractGateway
         }
 
         return openssl_verify($string, base64_decode($signature), $publicKey, OPENSSL_ALGO_SHA256) === 1;
+    }
+
+    /**
+     * 将接收方列表（Receiver DTO 或数组）映射为银联分账参数
+     *
+     * 金额统一按最小货币单位（分，txnAmt）上报。
+     *
+     * @param array<int, Receiver|array<string, mixed>> $receivers
+     * @param 'douyin'|'unionpay' $platform
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mapReceivers(array $receivers, string $platform): array
+    {
+        return array_map(static function ($r) use ($platform): array {
+            if ($r instanceof Receiver) {
+                return $platform === 'unionpay' ? $r->toUnionPayArray() : $r->toDouyinArray();
+            }
+
+            return [
+                'type' => $r['type'] ?? '',
+                'account' => $r['account'] ?? '',
+                'amount' => (int) ($r['amount'] ?? 0),
+                'description' => $r['description'] ?? '分账',
+            ];
+        }, $receivers);
+    }
+
+    /**
+     * 计算接收方金额合计（最小货币单位）
+     *
+     * @param array<int, array<string, mixed>> $receivers
+     * @return int
+     */
+    protected function sumReceiverAmount(array $receivers): int
+    {
+        $sum = 0;
+        foreach ($receivers as $r) {
+            $sum += (int) ($r['amount'] ?? 0);
+        }
+
+        return $sum;
     }
 }

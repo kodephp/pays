@@ -9,10 +9,18 @@
 | 微信支付 | ✅ 完整 | 服务商模式分账（增删接收方 / 分账 / 回退 / 查询 / 配置查询 / 完结解冻） |
 | 支付宝 | ✅ 完整 | 交易分账（统一收单结算 / 关系绑定解绑 / 回退 / 查询） |
 | Stripe | ✅ 完整 | Connect 平台分账（Transfer / Reversal） |
-| 其他网关 | ❌ | 暂不支持，调用时抛出 `InvalidArgumentException` |
+| 抖音支付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 解冻），作为网关「特色方法」实现于网关内部 |
+| 云闪付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 解冻），作为网关「特色方法」实现于网关内部 |
 
 > 说明：分账并非所有支付平台都提供标准能力。微信、支付宝、Stripe 具备成熟的分账/转账体系；
-> 其余平台如需分账，需按对应网关的商户平台能力另行接入。
+> 抖音、云闪付将分账实现为各自网关类的「特色方法」（声明 `ProfitSharingCapableInterface`），
+> 复用基类配置、签名与 HTTP 通道，并能被统一入口 `Pay::call()` 直接调用。
+>
+> **架构要点**：抖音 / 云闪付的分账逻辑在各自网关内完成（组装 + 签名 + 发请求），`ProfitSharingPlugin`
+> 在这些平台的分支只做「参数校验 + 类型安全转发」（`forwardToCapableGateway`），不重复承载平台组装逻辑；
+> 微信 / 支付宝 / Stripe 的分账逻辑仍由插件内的分支承载。两者对调用方透明。
+>
+> ⚠️ 抖音 / 云闪付的分账 Endpoint 与字段命名以官方文档为准，投产前请按官方接口联调确认。
 
 ## 快速开始
 
@@ -63,21 +71,23 @@ $result = $plugin->create([
 |------|------|----------|
 | `addReceiver(array)` | 添加分账接收方 | 微信、支付宝 |
 | `removeReceiver(array)` | 删除分账接收方 | 微信、支付宝 |
-| `create(array)` | 发起分账 | 微信、支付宝、Stripe |
-| `query(string $outOrderNo)` | 查询分账结果 | 微信、支付宝、Stripe |
-| `return(array)` | 分账回退 | 微信、支付宝、Stripe |
-| `queryReturn(string $outReturnNo)` | 查询分账回退 | 微信、支付宝、Stripe |
-| `unfreeze(string $transactionId, ?string $outOrderNo = null)` | 解冻剩余资金 / 完结分账 | 微信（支付宝、Stripe 自动完成） |
+| `create(array)` | 发起分账 | 微信、支付宝、Stripe、抖音、云闪付 |
+| `query(string $outOrderNo)` | 查询分账结果 | 微信、支付宝、Stripe、抖音、云闪付 |
+| `return(array)` | 分账回退 | 微信、支付宝、Stripe、抖音、云闪付 |
+| `queryReturn(string $outReturnNo)` | 查询分账回退 | 微信、支付宝、Stripe、抖音、云闪付 |
+| `unfreeze(string $transactionId, ?string $outOrderNo = null)` | 解冻剩余资金 / 完结分账 | 微信、抖音、云闪付（支付宝、Stripe 自动完成） |
 | `queryConfig(string $outOrderNo, ?string $transactionId = null)` | 查询分账配置（最大比例与关系） | 微信 |
 
 ## Receiver 接收方值对象
 
 金额统一由 `Money`（最小货币单位整数）承载，规避浮点误差；网关差异在调用时由
-`toWechatArray()` / `toAlipayArray()` / `toStripeArray()` 自动换算：
+`toWechatArray()` / `toAlipayArray()` / `toStripeArray()` / `toDouyinArray()` / `toUnionPayArray()`
+自动换算：
 
 - 微信：`amount` 为「分」；
 - 支付宝：`amount` 为「元」（字符串，如 `"1.00"`），`PERSONAL_OPENID` 自动映射为 `loginName`；
-- Stripe：`amount` 为「货币最小单位」（如美分），币种转小写。
+- Stripe：`amount` 为「货币最小单位」（如美分），币种转小写；
+- 抖音 / 云闪付：`amount` 为「分」（与微信一致，银联 `txnAmt` 同为最小货币单位）。
 
 ```php
 use Kode\Pays\Plugin\ProfitSharing\Receiver;

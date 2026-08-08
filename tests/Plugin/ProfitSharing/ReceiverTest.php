@@ -111,6 +111,34 @@ class ReceiverTest extends TestCase
     }
 
     /**
+     * 抖音映射：amount 为分（与微信一致）
+     */
+    public function testToDouyinArray(): void
+    {
+        $receiver = new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(100, 'CNY'), '分账', 'SERVICE_PROVIDER');
+        $this->assertSame([
+            'type' => 'MERCHANT_ID',
+            'account' => '123',
+            'amount' => 100,
+            'description' => '分账',
+        ], $receiver->toDouyinArray());
+    }
+
+    /**
+     * 银联映射：amount 为分（txnAmt 同最小货币单位）
+     */
+    public function testToUnionPayArray(): void
+    {
+        $receiver = new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(200, 'CNY'), '分账', 'SERVICE_PROVIDER');
+        $this->assertSame([
+            'type' => 'MERCHANT_ID',
+            'account' => '123',
+            'amount' => 200,
+            'description' => '分账',
+        ], $receiver->toUnionPayArray());
+    }
+
+    /**
      * 归一化数组含币种与最小单位金额
      */
     public function testToArray(): void

@@ -11,8 +11,8 @@ use Kode\Pays\Support\Money;
  * 分账接收方值对象（不可变）
  *
  * 将「一个分账接收方」封装为类型安全的不可变对象：金额统一用 {@see Money}
- * （最小货币单位整数）承载，规避浮点误差；网关差异（微信分 / 支付宝元 / Stripe 美分）
- * 由各 {@see to*Array()} 映射方法在调用时按需换算。
+ * （最小货币单位整数）承载，规避浮点误差；网关差异（微信分 / 支付宝元 / Stripe 美分 /
+ * 抖音分 / 银联分）由各 {@see to*Array()} 映射方法在调用时按需换算。
  *
  * 使用示例：
  * ```php
@@ -152,6 +152,36 @@ final class Receiver
             'account' => $this->account,
             'amount' => $this->amount->getMinorAmount(),
             'currency' => strtolower($this->amount->getCurrency()->value),
+        ];
+    }
+
+    /**
+     * 转为抖音分账接收方参数（amount 为分，与微信一致）
+     *
+     * @return array<string, mixed>
+     */
+    public function toDouyinArray(): array
+    {
+        return [
+            'type' => $this->type,
+            'account' => $this->account,
+            'amount' => $this->amount->getMinorAmount(),
+            'description' => $this->description,
+        ];
+    }
+
+    /**
+     * 转为银联分账接收方参数（amount 为分，txnAmt 同最小货币单位）
+     *
+     * @return array<string, mixed>
+     */
+    public function toUnionPayArray(): array
+    {
+        return [
+            'type' => $this->type,
+            'account' => $this->account,
+            'amount' => $this->amount->getMinorAmount(),
+            'description' => $this->description,
         ];
     }
 }

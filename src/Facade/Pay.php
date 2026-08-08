@@ -338,7 +338,7 @@ class Pay
         $instance = self::gateway($gateway);
 
         if (!method_exists($instance, $method)) {
-            throw PayException::paramError("网关 {$gateway} 不支持方法：{$method}");
+            throw PayException::methodNotSupported($gateway, $method);
         }
 
         return $instance->$method(...$args);
@@ -407,6 +407,62 @@ class Pay
     public static function closeOrder(string $gateway, string $orderId): array
     {
         return self::call($gateway, 'closeOrder', $orderId);
+    }
+
+    /**
+     * 统一发起分账
+     *
+     * 经统一入口动态派发到目标网关的 `createProfitSharing` 特色方法，
+     * 支持微信 / 支付宝 / Stripe / 抖音 / 云闪付等已接入分账能力的平台。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 分账参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function profitSharingCreate(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createProfitSharing', $params);
+    }
+
+    /**
+     * 统一查询分账结果
+     *
+     * @param string $gateway 网关标识
+     * @param string $outOrderNo 商户分账订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function profitSharingQuery(string $gateway, string $outOrderNo): array
+    {
+        return self::call($gateway, 'queryProfitSharing', $outOrderNo);
+    }
+
+    /**
+     * 统一发起分账回退
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 回退参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function profitSharingReturn(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'returnProfitSharing', $params);
+    }
+
+    /**
+     * 统一解冻未分账的剩余资金
+     *
+     * @param string $gateway 网关标识
+     * @param string $transactionId 原支付订单号 / 交易流水号
+     * @param string|null $outOrderNo 商户解冻单号（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function profitSharingUnfreeze(string $gateway, string $transactionId, ?string $outOrderNo = null): array
+    {
+        return self::call($gateway, 'unfreezeProfitSharing', $transactionId, $outOrderNo);
     }
 
     /**

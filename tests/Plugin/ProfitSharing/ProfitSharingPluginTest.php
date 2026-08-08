@@ -6,6 +6,7 @@ namespace Kode\Pays\Tests\Plugin\ProfitSharing;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Event\EventDispatcher;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -92,6 +93,82 @@ class StripeFakeGateway extends FakeGateway
 class UnsupportedFakeGateway extends FakeGateway
 {
     public static function getName(): string { return 'paypal'; }
+}
+
+/**
+ * 抖音假网关：实现分账能力接口，记录原生分账方法调用（不发起真实 HTTP）
+ */
+class DouyinFakeGateway extends FakeGateway implements ProfitSharingCapableInterface
+{
+    public static function getName(): string { return 'douyin'; }
+
+    public function createProfitSharing(array $params): array
+    {
+        $this->calls[] = ['method' => 'createProfitSharing', 'data' => $params];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        $this->calls[] = ['method' => 'queryProfitSharing', 'data' => ['out_order_no' => $outOrderNo]];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function returnProfitSharing(array $params): array
+    {
+        $this->calls[] = ['method' => 'returnProfitSharing', 'data' => $params];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        $this->calls[] = ['method' => 'queryProfitSharingReturn', 'data' => ['out_return_no' => $outReturnNo]];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        $this->calls[] = ['method' => 'unfreezeProfitSharing', 'data' => ['transaction_id' => $transactionId, 'out_order_no' => $outOrderNo]];
+        return ['status' => 'SUCCESS'];
+    }
+}
+
+/**
+ * 银联假网关：实现分账能力接口，记录原生分账方法调用（不发起真实 HTTP）
+ */
+class UnionPayFakeGateway extends FakeGateway implements ProfitSharingCapableInterface
+{
+    public static function getName(): string { return 'unionpay'; }
+
+    public function createProfitSharing(array $params): array
+    {
+        $this->calls[] = ['method' => 'createProfitSharing', 'data' => $params];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        $this->calls[] = ['method' => 'queryProfitSharing', 'data' => ['out_order_no' => $outOrderNo]];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function returnProfitSharing(array $params): array
+    {
+        $this->calls[] = ['method' => 'returnProfitSharing', 'data' => $params];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        $this->calls[] = ['method' => 'queryProfitSharingReturn', 'data' => ['out_return_no' => $outReturnNo]];
+        return ['status' => 'SUCCESS'];
+    }
+
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        $this->calls[] = ['method' => 'unfreezeProfitSharing', 'data' => ['transaction_id' => $transactionId, 'out_order_no' => $outOrderNo]];
+        return ['status' => 'SUCCESS'];
+    }
 }
 
 class ProfitSharingPluginTest extends TestCase
@@ -272,5 +349,107 @@ class ProfitSharingPluginTest extends TestCase
         $this->assertSame('usd', $gateway->calls[0]['data']['currency']);
         $this->assertSame('pi_1', $gateway->calls[0]['data']['source_transaction']);
         $this->assertSame('Bearer sk_test_123', $gateway->calls[0]['headers']['Authorization']);
+    }
+
+    /**
+     * 抖音分账：插件转发到网关原生 createProfitSharing，Receiver DTO 金额按分保留
+     */
+    public function testDouyinCreateForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new DouyinFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->create([
+            'transaction_id' => 'T100',
+            'out_order_no' => 'SHARE_1',
+            'receivers' => [
+                new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(100, 'CNY'), '分账', 'SERVICE_PROVIDER'),
+            ],
+        ]);
+
+        $this->assertSame('createProfitSharing', $gateway->calls[0]['method']);
+        $receiver = $gateway->calls[0]['data']['receivers'][0];
+        $this->assertInstanceOf(Receiver::class, $receiver);
+        $this->assertSame(100, $receiver->amount->getMinorAmount());
+        $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
+    }
+
+    /**
+     * 抖音分账查询：插件转发到网关原生 queryProfitSharing
+     */
+    public function testDouyinQueryForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new DouyinFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->query('SHARE_1');
+
+        $this->assertSame('queryProfitSharing', $gateway->calls[0]['method']);
+        $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
+    }
+
+    /**
+     * 抖音分账回退：插件转发到网关原生 returnProfitSharing
+     */
+    public function testDouyinReturnForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new DouyinFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->return(['out_order_no' => 'SHARE_1', 'out_return_no' => 'R1', 'return_amount' => 50]);
+
+        $this->assertSame('returnProfitSharing', $gateway->calls[0]['method']);
+        $this->assertSame('R1', $gateway->calls[0]['data']['out_return_no']);
+    }
+
+    /**
+     * 抖音解冻：插件转发到网关原生 unfreezeProfitSharing
+     */
+    public function testDouyinUnfreezeForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new DouyinFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->unfreeze('T100', 'FINISH_9');
+
+        $this->assertSame('unfreezeProfitSharing', $gateway->calls[0]['method']);
+        $this->assertSame('T100', $gateway->calls[0]['data']['transaction_id']);
+        $this->assertSame('FINISH_9', $gateway->calls[0]['data']['out_order_no']);
+    }
+
+    /**
+     * 银联分账：插件转发到网关原生 createProfitSharing，Receiver DTO 金额按分保留
+     */
+    public function testUnionPayCreateForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new UnionPayFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->create([
+            'transaction_id' => 'T100',
+            'out_order_no' => 'SHARE_1',
+            'receivers' => [
+                new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(200, 'CNY'), '分账', 'SERVICE_PROVIDER'),
+            ],
+        ]);
+
+        $this->assertSame('createProfitSharing', $gateway->calls[0]['method']);
+        $receiver = $gateway->calls[0]['data']['receivers'][0];
+        $this->assertInstanceOf(Receiver::class, $receiver);
+        $this->assertSame(200, $receiver->amount->getMinorAmount());
+    }
+
+    /**
+     * 银联分账查询：插件转发到网关原生 queryProfitSharing
+     */
+    public function testUnionPayQueryForwardsToGatewayNativeMethod(): void
+    {
+        $gateway = new UnionPayFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->query('SHARE_1');
+
+        $this->assertSame('queryProfitSharing', $gateway->calls[0]['method']);
+        $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
     }
 }

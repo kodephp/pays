@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Douyin;
 
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
 
 /**
  * 抖音支付网关
  *
- * 支持 App、小程序等场景的支付接入
+ * 支持 App、小程序等场景的支付接入；分账作为网关「特色方法」实现于本类内部
+ * （复用基类配置、MD5 签名与 HTTP 通道），并通过 {@see ProfitSharingCapableInterface} 暴露，
+ * 可被统一入口 {@see \Kode\Pays\Facade\Pay::call()} 直接调用。
  */
-class DouyinPayGateway extends AbstractGateway
+class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -193,6 +197,143 @@ class DouyinPayGateway extends AbstractGateway
     }
 
     /**
+     * 发起抖音分账
+     *
+     * 将一笔已支付订单的金额按接收方列表进行分账。接收方金额统一按最小货币单位（分）上报。
+     *
+     * @param array<string, mixed> $params 分账参数
+     *        - transaction_id: 原支付订单号
+     *        - out_order_no: 商户分账订单号
+     *        - receivers: 接收方列表 [{type, account, amount(分), description}]
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['out_order_no', 'transaction_id', 'receivers']);
+
+        $requestData = [
+            'app_id' => $this->getConfig('app_id'),
+            'merchant_id' => $this->getConfig('merchant_id'),
+            'out_order_no' => $params['out_order_no'],
+            'transaction_id' => $params['transaction_id'],
+            'receivers' => json_encode(
+                $this->mapReceivers((array) $params['receivers'], 'douyin'),
+                JSON_UNESCAPED_UNICODE,
+            ),
+        ];
+
+        $requestData['sign'] = $this->sign($requestData);
+        $requestData['timestamp'] = (string) time();
+
+        // 注：抖音分账 Endpoint 与字段命名请以官方文档为准，投产前联调确认。
+        return $this->post('api/apps/ecpay/v1/create_profit_sharing', $requestData, [
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
+     * 查询抖音分账结果
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        $requestData = [
+            'app_id' => $this->getConfig('app_id'),
+            'merchant_id' => $this->getConfig('merchant_id'),
+            'out_order_no' => $outOrderNo,
+        ];
+
+        $requestData['sign'] = $this->sign($requestData);
+        $requestData['timestamp'] = (string) time();
+
+        return $this->post('api/apps/ecpay/v1/query_profit_sharing', $requestData, [
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
+     * 抖音分账回退
+     *
+     * @param array<string, mixed> $params 回退参数
+     *        - out_order_no: 商户分账订单号
+     *        - out_return_no: 商户回退单号
+     *        - return_amount: 回退金额（分）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function returnProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
+
+        $requestData = [
+            'app_id' => $this->getConfig('app_id'),
+            'merchant_id' => $this->getConfig('merchant_id'),
+            'out_order_no' => $params['out_order_no'],
+            'out_return_no' => $params['out_return_no'],
+            'return_amount' => (int) $params['return_amount'],
+        ];
+
+        $requestData['sign'] = $this->sign($requestData);
+        $requestData['timestamp'] = (string) time();
+
+        return $this->post('api/apps/ecpay/v1/return_profit_sharing', $requestData, [
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
+     * 查询抖音分账回退结果
+     *
+     * @param string $outReturnNo 商户回退单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        $requestData = [
+            'app_id' => $this->getConfig('app_id'),
+            'merchant_id' => $this->getConfig('merchant_id'),
+            'out_return_no' => $outReturnNo,
+        ];
+
+        $requestData['sign'] = $this->sign($requestData);
+        $requestData['timestamp'] = (string) time();
+
+        return $this->post('api/apps/ecpay/v1/query_return_profit_sharing', $requestData, [
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
+     * 解冻抖音未分账的剩余资金
+     *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选，缺省自动生成）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        $requestData = [
+            'app_id' => $this->getConfig('app_id'),
+            'merchant_id' => $this->getConfig('merchant_id'),
+            'transaction_id' => $transactionId,
+            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
+        ];
+
+        $requestData['sign'] = $this->sign($requestData);
+        $requestData['timestamp'] = (string) time();
+
+        return $this->post('api/apps/ecpay/v1/finish_profit_sharing', $requestData, [
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
      * 获取网关标识
      */
     public static function getName(): string
@@ -227,6 +368,47 @@ class DouyinPayGateway extends AbstractGateway
         }
 
         return $data;
+    }
+
+    /**
+     * 将接收方列表（Receiver DTO 或数组）映射为抖音分账参数
+     *
+     * 金额统一按最小货币单位（分）上报。
+     *
+     * @param array<int, Receiver|array<string, mixed>> $receivers
+     * @param 'douyin'|'unionpay' $platform
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mapReceivers(array $receivers, string $platform): array
+    {
+        return array_map(static function ($r) use ($platform): array {
+            if ($r instanceof Receiver) {
+                return $platform === 'unionpay' ? $r->toUnionPayArray() : $r->toDouyinArray();
+            }
+
+            return [
+                'type' => $r['type'] ?? '',
+                'account' => $r['account'] ?? '',
+                'amount' => (int) ($r['amount'] ?? 0),
+                'description' => $r['description'] ?? '分账',
+            ];
+        }, $receivers);
+    }
+
+    /**
+     * 计算接收方金额合计（最小货币单位）
+     *
+     * @param array<int, array<string, mixed>> $receivers
+     * @return int
+     */
+    protected function sumReceiverAmount(array $receivers): int
+    {
+        $sum = 0;
+        foreach ($receivers as $r) {
+            $sum += (int) ($r['amount'] ?? 0);
+        }
+
+        return $sum;
     }
 
     /**

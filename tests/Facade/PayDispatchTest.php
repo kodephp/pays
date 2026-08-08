@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Facade;
 
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
 use Kode\Pays\Core\PayException;
@@ -14,6 +15,56 @@ use Kode\Pays\Tests\TestCase;
 /**
  * 统一入口（Pay 门面 call / gateway / extend / verify）单元测试
  */
+
+/**
+ * 支持分账能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class ProfitSharingCapableFakeGateway extends FakeGateway implements ProfitSharingCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $psCalls = [];
+
+    public static function getName(): string
+    {
+        return 'profitgw';
+    }
+
+    public function createProfitSharing(array $params): array
+    {
+        $this->psCalls[] = ['create', $params];
+
+        return ['ok' => true];
+    }
+
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        $this->psCalls[] = ['query', $outOrderNo];
+
+        return ['ok' => true];
+    }
+
+    public function returnProfitSharing(array $params): array
+    {
+        $this->psCalls[] = ['return', $params];
+
+        return ['ok' => true];
+    }
+
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        $this->psCalls[] = ['queryReturn', $outReturnNo];
+
+        return ['ok' => true];
+    }
+
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        $this->psCalls[] = ['unfreeze', $transactionId, $outOrderNo];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -22,12 +73,16 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('fakechan', FakeGateway::class);
         Pay::registerConfig('fakechan', []);
+
+        GatewayFactory::register('profitgw', ProfitSharingCapableFakeGateway::class);
+        Pay::registerConfig('profitgw', []);
     }
 
     protected function tearDown(): void
     {
         Pay::clearCache();
         GatewayFactory::unregister('fakechan');
+        GatewayFactory::unregister('profitgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -77,14 +132,44 @@ class PayDispatchTest extends TestCase
     }
 
     /**
-     * 调用不存在的方法应抛出参数异常
+     * 调用不存在的方法应抛出「无此方法」异常
      */
     public function testCallUnknownMethodThrows(): void
     {
         $this->expectException(PayException::class);
-        $this->expectExceptionMessage('不支持方法');
+        $this->expectExceptionMessage('无此方法');
 
         Pay::call('fakechan', 'noSuchMethod');
+    }
+
+    /**
+     * 统一分账入口 profitSharingCreate 经 call 派发到网关原生方法
+     */
+    public function testProfitSharingUnifiedEntry(): void
+    {
+        $result = Pay::profitSharingCreate('profitgw', [
+            'out_order_no' => 'S1',
+            'transaction_id' => 'T1',
+            'receivers' => [],
+        ]);
+
+        $this->assertSame(['ok' => true], $result);
+
+        $gateway = Pay::gateway('profitgw');
+        $this->assertSame('create', $gateway->psCalls[0][0]);
+        $this->assertSame('S1', $gateway->psCalls[0][1]['out_order_no']);
+    }
+
+    /**
+     * 统一分账查询入口派发到网关原生 queryProfitSharing
+     */
+    public function testProfitSharingQueryUnifiedEntry(): void
+    {
+        Pay::profitSharingQuery('profitgw', 'S1');
+
+        $gateway = Pay::gateway('profitgw');
+        $this->assertSame('query', $gateway->psCalls[0][0]);
+        $this->assertSame('S1', $gateway->psCalls[0][1]);
     }
 
     /**
