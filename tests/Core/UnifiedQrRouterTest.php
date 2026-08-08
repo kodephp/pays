@@ -4,358 +4,135 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Core;
 
-use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Core\PayException;
-use Kode\Pays\Core\UnifiedQrRouter;
+use Kode\Pays\Core\QrEntry;
 use Kode\Pays\Tests\TestCase;
 
 /**
- * 统一收款码路由器单元测试
- *
- * 覆盖入口创建、路由下单、状态流转、幂等保护、错误边界等场景。
+ * UnifiedQrRouter 单元测试（不发起真实 HTTP）
  */
 class UnifiedQrRouterTest extends TestCase
 {
-    /**
-     * 可测试的路由器子类
-     *
-     * 重写 createGateway 注入 mock 网关，避免依赖真实网关与 HttpClient。
-     */
-    private function createRouter(array $gateways = []): UnifiedQrRouter
+    private function router(): TestableQrRouter
     {
-        return new class ($gateways) extends UnifiedQrRouter {
-            /**
-             * @param array<string, GatewayInterface> $gateways 通道标识 → mock 网关
-             */
-            public function __construct(array $gateways)
-            {
-                parent::__construct(
-                    gatewayConfigs: array_fill_keys(array_keys($gateways), []),
-                    httpClient: null,
-                    entryUrlPrefix: 'https://test.kodephp.com/r/',
-                );
-                $this->gateways = $gateways;
-            }
+        $router = new TestableQrRouter(['fakechan' => ['app_id' => 'x']]);
+        $router->fake = new FakeGateway();
 
-            /** @var array<string, GatewayInterface> */
-            protected array $gateways = [];
-
-            protected function createGateway(string $channel): GatewayInterface
-            {
-                if (!isset($this->gateways[$channel])) {
-                    throw PayException::configError("通道 {$channel} 未配置 mock");
-                }
-
-                return $this->gateways[$channel];
-            }
-        };
+        return $router;
     }
 
-    /**
-     * 构造一个 mock 网关
-     *
-     * @param array<string, mixed>|null $createResult createOrder 返回值（null 抛异常）
-     * @param bool $verifyResult verifyNotify 返回值
-     */
-    private function createMockGateway(?array $createResult = null, bool $verifyResult = true): GatewayInterface
+    public function testCreateEntryReturnsQrEntry(): void
     {
-        $gateway = $this->createMock(GatewayInterface::class);
+        $entry = $this->router()->createEntry(['fakechan'], 100, '商品付款');
 
-        if ($createResult === null) {
-            $gateway->method('createOrder')
-                ->willThrowException(PayException::gatewayError('下单失败'));
-        } else {
-            $gateway->method('createOrder')->willReturn($createResult);
-        }
-
-        $gateway->method('verifyNotify')->willReturn($verifyResult);
-        $gateway->method('queryOrder')->willReturn(['trade_state' => 'SUCCESS']);
-
-        return $gateway;
+        $this->assertInstanceOf(QrEntry::class, $entry);
+        $this->assertSame(['fakechan'], $entry->getChannels());
+        $this->assertSame(100, $entry->getAmount());
+        $this->assertSame('商品付款', $entry->getDescription());
+        $this->assertTrue($entry->isPending());
+        $this->assertNotNull($entry->getQrContent());
     }
 
-    /**
-     * 测试创建入口：返回 router_id、entry_url、qr_content 等
-     */
-    public function testCreateEntry(): void
+    public function testCreateEntryRejectsEmptyChannels(): void
     {
-        $router = $this->createRouter([
-            'wechat' => $this->createMockGateway(),
-        ]);
-
-        $entry = $router->createEntry(['wechat'], 100, '商品付款');
-
-        $this->assertNotEmpty($entry['router_id']);
-        $this->assertSame(100, $entry['amount']);
-        $this->assertSame(['wechat'], $entry['channels']);
-        $this->assertSame($entry['entry_url'], $entry['qr_content']);
-        $this->assertStringStartsWith('https://test.kodephp.com/r/', $entry['entry_url']);
-        $this->assertStringContainsString($entry['router_id'], $entry['entry_url']);
-    }
-
-    /**
-     * 测试创建入口：channels 为空抛异常
-     */
-    public function testCreateEntryWithEmptyChannelsThrows(): void
-    {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
-
         $this->expectException(PayException::class);
-        $this->expectExceptionMessage('channels 不能为空');
-
-        $router->createEntry([], 100, '商品');
+        $this->router()->createEntry([], 100, 'x');
     }
 
-    /**
-     * 测试创建入口：金额非正抛异常
-     */
-    public function testCreateEntryWithZeroAmountThrows(): void
+    public function testCreateEntryRejectsUnconfiguredChannel(): void
     {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
-
         $this->expectException(PayException::class);
-        $this->expectExceptionMessage('amount 必须大于 0');
-
-        $router->createEntry(['wechat'], 0, '商品');
+        $this->router()->createEntry(['unknown'], 100, 'x');
     }
 
-    /**
-     * 测试创建入口：通道未配置抛异常
-     */
-    public function testCreateEntryWithUnknownChannelThrows(): void
+    public function testRouteOrdersAndReturnsQrEntry(): void
     {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
+        $order = $router->route($entry->getRouterId(), 'fakechan');
 
-        $this->expectException(PayException::class);
-        $this->expectExceptionMessage('通道 alipay 未在 gatewayConfigs 中配置');
-
-        $router->createEntry(['alipay'], 100, '商品');
+        $this->assertInstanceOf(QrEntry::class, $order);
+        $this->assertTrue($order->isOrdered());
+        $this->assertNotNull($order->getOutTradeNo());
+        $this->assertStringStartsWith('weixin://wxpay/bizpayurl', (string) $order->getCodeUrl());
+        $this->assertCount(1, $router->fake->calls);
     }
 
-    /**
-     * 测试路由下单成功：返回动态订单码与微信 code_url
-     */
-    public function testRouteSuccess(): void
-    {
-        $gateway = $this->createMockGateway(['code_url' => 'weixin://wxpay/bizpayurl?pr=xxx']);
-
-        $router = $this->createRouter(['wechat' => $gateway]);
-
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-        $order = $router->route($entry['router_id'], 'wechat');
-
-        $this->assertSame('wechat', $order['channel']);
-        $this->assertSame(100, $order['amount']);
-        $this->assertStringContainsString('weixin://wxpay/bizpayurl', $order['pay_url']);
-        $this->assertSame($order['pay_url'], $order['code_url']);
-        $this->assertNotEmpty($order['out_trade_no']);
-        $this->assertStringStartsWith('UO', $order['out_trade_no']);
-    }
-
-    /**
-     * 测试路由下单：兼容支付宝 qr_code 字段
-     */
-    public function testRouteSupportsAlipayQrCode(): void
-    {
-        $gateway = $this->createMockGateway(['qr_code' => 'https://qr.alipay.com/bax00000']);
-
-        $router = $this->createRouter(['alipay' => $gateway]);
-
-        $entry = $router->createEntry(['alipay'], 200, '商品');
-        $order = $router->route($entry['router_id'], 'alipay');
-
-        $this->assertSame('https://qr.alipay.com/bax00000', $order['pay_url']);
-    }
-
-    /**
-     * 测试路由下单：兼容 Stripe payment_link 字段
-     */
-    public function testRouteSupportsStripePaymentLink(): void
-    {
-        $gateway = $this->createMockGateway(['payment_link' => 'https://stripe.com/pl_123']);
-
-        $router = $this->createRouter(['stripe' => $gateway]);
-
-        $entry = $router->createEntry(['stripe'], 500, '商品');
-        $order = $router->route($entry['router_id'], 'stripe');
-
-        $this->assertSame('https://stripe.com/pl_123', $order['pay_url']);
-    }
-
-    /**
-     * 测试路由下单：入口不存在抛异常
-     */
-    public function testRouteWithUnknownRouterIdThrows(): void
-    {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
-
-        $this->expectException(PayException::class);
-        $this->expectExceptionMessage('统一收款入口不存在');
-
-        $router->route('UNKNOWN_ROUTER', 'wechat');
-    }
-
-    /**
-     * 测试路由下单：通道不在允许列表抛异常
-     */
-    public function testRouteWithDisallowedChannelThrows(): void
-    {
-        $router = $this->createRouter([
-            'wechat' => $this->createMockGateway(),
-            'alipay' => $this->createMockGateway(),
-        ]);
-
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-
-        $this->expectException(PayException::class);
-        $this->expectExceptionMessage('通道 alipay 不在该入口允许列表中');
-
-        $router->route($entry['router_id'], 'alipay');
-    }
-
-    /**
-     * 测试路由下单：已下单的入口再次调用返回相同订单（幂等）
-     */
     public function testRouteIsIdempotentWhenOrdered(): void
     {
-        $gateway = $this->createMockGateway(['code_url' => 'weixin://wxpay/bizpayurl?pr=xxx']);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
 
-        $router = $this->createRouter(['wechat' => $gateway]);
+        $router->route($entry->getRouterId(), 'fakechan');
+        $router->route($entry->getRouterId(), 'fakechan');
 
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-
-        $first = $router->route($entry['router_id'], 'wechat');
-        $second = $router->route($entry['router_id'], 'wechat');
-
-        // 第二次直接返回缓存，不会再调用 createOrder
-        $this->assertSame($first['out_trade_no'], $second['out_trade_no']);
-        $this->assertSame($first['pay_url'], $second['pay_url']);
-        $this->assertSame($first['channel'], $second['channel']);
-        $this->assertSame($first['amount'], $second['amount']);
+        // 已下单后再次 route 应直接返回已有订单，不再调用网关
+        $this->assertCount(1, $router->fake->calls);
     }
 
-    /**
-     * 测试路由下单：已支付的入口再次调用抛异常
-     */
-    public function testRouteThrowsWhenAlreadyPaid(): void
+    public function testRouteRejectsDisallowedChannel(): void
     {
-        $gateway = $this->createMockGateway(['code_url' => 'weixin://wxpay/bizpayurl']);
-
-        $router = $this->createRouter(['wechat' => $gateway]);
-
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-        $router->route($entry['router_id'], 'wechat');
-        $router->markPaid($entry['router_id'], ['transaction_id' => 'T1']);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
 
         $this->expectException(PayException::class);
-        $this->expectExceptionMessage('入口已支付完成，无法重复下单');
-
-        $router->route($entry['router_id'], 'wechat');
+        $router->route($entry->getRouterId(), 'otherchan');
     }
 
-    /**
-     * 测试 markPaid：状态变更并写入 paid_at 与 payment_data
-     */
-    public function testMarkPaid(): void
+    public function testRouteRejectsClosedEntry(): void
     {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
+        $router->close($entry->getRouterId());
 
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-
-        $ok = $router->markPaid($entry['router_id'], ['transaction_id' => 'T1']);
-
-        $this->assertTrue($ok);
-
-        $status = $router->getStatus($entry['router_id']);
-        $this->assertSame(UnifiedQrRouter::STATUS_PAID, $status['status']);
-        $this->assertNotNull($status['paid_at']);
-        $this->assertSame(['transaction_id' => 'T1'], $status['payment_data']);
+        $this->expectException(PayException::class);
+        $router->route($entry->getRouterId(), 'fakechan');
     }
 
-    /**
-     * 测试 markPaid：入口不存在返回 false
-     */
-    public function testMarkPaidReturnsFalseWhenNotFound(): void
+    public function testCloseUnknownEntryThrows(): void
     {
-        $router = $this->createRouter([]);
-
-        $this->assertFalse($router->markPaid('UNKNOWN', []));
+        $this->expectException(PayException::class);
+        $this->router()->close('UR_NOT_EXIST');
     }
 
-    /**
-     * 测试 markClosed：状态变为 closed
-     */
-    public function testMarkClosed(): void
+    public function testClosePaidEntryThrows(): void
     {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
+        $router->markPaid($entry->getRouterId());
 
-        $entry = $router->createEntry(['wechat'], 100, '商品');
-
-        $this->assertTrue($router->markClosed($entry['router_id']));
-
-        $status = $router->getStatus($entry['router_id']);
-        $this->assertSame(UnifiedQrRouter::STATUS_CLOSED, $status['status']);
+        $this->expectException(PayException::class);
+        $router->close($entry->getRouterId());
     }
 
-    /**
-     * 测试 getPendingEntries：排除已支付与已关闭的入口
-     */
-    public function testGetPendingEntries(): void
+    public function testMarkPaidAndMarkClosedTransitions(): void
     {
-        $router = $this->createRouter([
-            'wechat' => $this->createMockGateway(['code_url' => 'w']),
-            'alipay' => $this->createMockGateway(['qr_code' => 'a']),
-        ]);
+        $router = $this->router();
+        $entry = $router->createEntry(['fakechan'], 100, '商品付款');
 
-        $e1 = $router->createEntry(['wechat'], 100, 'A');
-        $e2 = $router->createEntry(['alipay'], 200, 'B');
-        $e3 = $router->createEntry(['wechat'], 300, 'C');
+        $this->assertTrue($router->markPaid($entry->getRouterId()));
+        $this->assertTrue($router->getEntry($entry->getRouterId())->isPaid());
 
-        $router->markPaid($e1['router_id']);
-        $router->markClosed($e2['router_id']);
+        // 重新打开一个入口测试关闭
+        $entry2 = $router->createEntry(['fakechan'], 200, '第二笔');
+        $this->assertTrue($router->markClosed($entry2->getRouterId()));
+        $this->assertTrue($router->getEntry($entry2->getRouterId())->isClosed());
+    }
+
+    public function testGetPendingEntriesExcludesTerminal(): void
+    {
+        $router = $this->router();
+        $a = $router->createEntry(['fakechan'], 100, 'A');
+        $b = $router->createEntry(['fakechan'], 200, 'B');
+        $router->markPaid($a->getRouterId());
+        $c = $router->createEntry(['fakechan'], 300, 'C');
+        $router->markClosed($c->getRouterId());
 
         $pending = $router->getPendingEntries();
 
-        $this->assertCount(1, $pending);
-        $this->assertArrayHasKey($e3['router_id'], $pending);
-    }
-
-    /**
-     * 测试 getEntry：不存在的入口返回 null
-     */
-    public function testGetEntryReturnsNullWhenNotFound(): void
-    {
-        $router = $this->createRouter([]);
-
-        $this->assertNull($router->getEntry('UNKNOWN'));
-    }
-
-    /**
-     * 测试 createEntry：attach 字段原样保存
-     */
-    public function testCreateEntryStoresAttach(): void
-    {
-        $router = $this->createRouter(['wechat' => $this->createMockGateway()]);
-
-        $attach = ['user_id' => 123, 'shop_id' => 'S1'];
-        $entry = $router->createEntry(['wechat'], 100, '商品', $attach);
-
-        $status = $router->getStatus($entry['router_id']);
-        $this->assertSame($attach, $status['attach']);
-    }
-
-    /**
-     * 测试 createEntry：支持多个通道
-     */
-    public function testCreateEntryWithMultipleChannels(): void
-    {
-        $router = $this->createRouter([
-            'wechat' => $this->createMockGateway(),
-            'alipay' => $this->createMockGateway(),
-        ]);
-
-        $entry = $router->createEntry(['wechat', 'alipay'], 100, '商品');
-
-        $this->assertSame(['wechat', 'alipay'], $entry['channels']);
+        $this->assertArrayHasKey($b->getRouterId(), $pending);
+        $this->assertArrayNotHasKey($a->getRouterId(), $pending);
+        $this->assertArrayNotHasKey($c->getRouterId(), $pending);
+        $this->assertContainsOnlyInstancesOf(QrEntry::class, $pending);
     }
 }

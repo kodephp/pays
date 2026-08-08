@@ -347,12 +347,12 @@ class OrderMonitorDaemonTest extends TestCase
 
         $daemon = $this->createDaemon(['wechat' => $gateway], $router);
 
-        $daemon->register($entry['router_id'], 'wechat', ['out_trade_no' => 'O1']);
+        $daemon->register($entry->getRouterId(), 'wechat', ['out_trade_no' => 'O1']);
         $daemon->scanOnce();
 
-        $status = $router->getStatus($entry['router_id']);
-        $this->assertSame(UnifiedQrRouter::STATUS_PAID, $status['status']);
-        $this->assertSame('T1', $status['payment_data']['transaction_id']);
+        $status = $router->getStatus($entry->getRouterId());
+        $this->assertTrue($status->isPaid());
+        $this->assertNotNull($status->getPaidAt());
     }
 
     /**

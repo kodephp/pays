@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Core;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Core\QrEntry;
 
 /**
  * 统一收款码路由器
@@ -32,26 +33,26 @@ use Kode\Pays\Contract\GatewayInterface;
  *
  * // 1. 商家出示统一收款码
  * $entry = $router->createEntry(['wechat', 'alipay'], 100, '商品付款');
- * // $entry['qr_content'] 用于渲染二维码图片
+ * // $entry->getQrContent() 用于渲染二维码图片
  *
  * // 2. 用户扫码选通道后，后端路由下单
- * $order = $router->route($entry['router_id'], 'wechat');
- * // $order['code_url'] 是微信 Native 扫码支付链接
+ * $order = $router->route($entry->getRouterId(), 'wechat');
+ * // $order->getCodeUrl() 是微信 Native 扫码支付链接
  * ```
  */
 class UnifiedQrRouter
 {
-    /** 入口状态：待支付 */
-    public const string STATUS_PENDING = 'pending';
+    /** 入口状态：待支付（别名，规范定义见 {@see QrEntry}） */
+    public const string STATUS_PENDING = QrEntry::STATUS_PENDING;
 
     /** 入口状态：已下单（用户已选通道并生成动态订单码） */
-    public const string STATUS_ORDERED = 'ordered';
+    public const string STATUS_ORDERED = QrEntry::STATUS_ORDERED;
 
     /** 入口状态：已支付 */
-    public const string STATUS_PAID = 'paid';
+    public const string STATUS_PAID = QrEntry::STATUS_PAID;
 
     /** 入口状态：已关闭/失败 */
-    public const string STATUS_CLOSED = 'closed';
+    public const string STATUS_CLOSED = QrEntry::STATUS_CLOSED;
 
     /** 统一入口 URL 前缀（业务方可重写为自有域名） */
     protected const string ENTRY_URL_PREFIX = 'https://pay.kodephp.com/r/';
@@ -89,10 +90,10 @@ class UnifiedQrRouter
      * @param int $amount 收款金额（分）
      * @param string $description 收款说明
      * @param array<string, mixed>|null $attach 附加数据（原样存储，便于业务关联）
-     * @return array{router_id: string, entry_url: string, qr_content: string, amount: int, channels: array<int, string>}
+     * @return QrEntry 统一收款入口值对象
      * @throws PayException 当 channels 为空或包含未配置的通道时
      */
-    public function createEntry(array $channels, int $amount, string $description, ?array $attach = null): array
+    public function createEntry(array $channels, int $amount, string $description, ?array $attach = null): QrEntry
     {
         if ($channels === []) {
             throw PayException::paramError('channels 不能为空');
@@ -110,6 +111,7 @@ class UnifiedQrRouter
         }
 
         $routerId = $this->generateRouterId();
+        $entryUrl = $this->buildEntryUrl($routerId);
 
         $this->entries[$routerId] = [
             'router_id' => $routerId,
@@ -121,19 +123,12 @@ class UnifiedQrRouter
             'channel' => null,
             'out_trade_no' => null,
             'pay_url' => null,
+            'qr_content' => $entryUrl,
             'created_at' => time(),
             'paid_at' => null,
         ];
 
-        $entryUrl = $this->buildEntryUrl($routerId);
-
-        return [
-            'router_id' => $routerId,
-            'entry_url' => $entryUrl,
-            'qr_content' => $entryUrl,
-            'amount' => $amount,
-            'channels' => array_values($channels),
-        ];
+        return QrEntry::fromArray($this->entries[$routerId]);
     }
 
     /**
@@ -143,10 +138,10 @@ class UnifiedQrRouter
      *
      * @param string $routerId 统一入口 ID
      * @param string $channel 用户选择的通道标识
-     * @return array{out_trade_no: string, pay_url: string, code_url: string, channel: string, amount: int}
-     * @throws PayException 入口不存在/已下单/通道不在允许列表/下单失败
+     * @return QrEntry 下单后的统一收款入口（含动态订单支付链接）
+     * @throws PayException 入口不存在/已支付/已关闭/通道不在允许列表/下单失败
      */
-    public function route(string $routerId, string $channel): array
+    public function route(string $routerId, string $channel): QrEntry
     {
         $entry = $this->getEntry($routerId);
 
@@ -154,22 +149,20 @@ class UnifiedQrRouter
             throw PayException::orderNotFound("统一收款入口不存在：{$routerId}");
         }
 
-        if ($entry['status'] === self::STATUS_PAID) {
+        if ($entry->status === self::STATUS_PAID) {
             throw PayException::gatewayError('入口已支付完成，无法重复下单');
         }
 
-        if ($entry['status'] === self::STATUS_ORDERED) {
-            // 已下单，返回已有订单信息（幂等）
-            return [
-                'out_trade_no' => (string) $entry['out_trade_no'],
-                'pay_url' => (string) $entry['pay_url'],
-                'code_url' => (string) $entry['pay_url'],
-                'channel' => (string) $entry['channel'],
-                'amount' => (int) $entry['amount'],
-            ];
+        if ($entry->status === self::STATUS_CLOSED) {
+            throw PayException::gatewayError('入口已关闭，无法再次下单');
         }
 
-        if (!in_array($channel, $entry['channels'], true)) {
+        if ($entry->status === self::STATUS_ORDERED) {
+            // 已下单，返回已有订单信息（幂等）
+            return $entry;
+        }
+
+        if (!in_array($channel, $entry->channels, true)) {
             throw PayException::paramError("通道 {$channel} 不在该入口允许列表中");
         }
 
@@ -179,9 +172,9 @@ class UnifiedQrRouter
         // 调用网关下单
         $orderParams = [
             'out_trade_no' => $this->generateOrderNo($routerId),
-            'total_fee' => $entry['amount'],
-            'body' => $entry['description'],
-            'attach' => $entry['attach'] !== null ? json_encode($entry['attach'], JSON_UNESCAPED_UNICODE) : null,
+            'total_fee' => $entry->amount,
+            'body' => $entry->description,
+            'attach' => $entry->attach !== null ? json_encode($entry->attach, JSON_UNESCAPED_UNICODE) : null,
         ];
 
         $orderResult = $gateway->createOrder($orderParams);
@@ -199,22 +192,16 @@ class UnifiedQrRouter
         $this->entries[$routerId]['out_trade_no'] = $orderParams['out_trade_no'];
         $this->entries[$routerId]['pay_url'] = $payUrl;
 
-        return [
-            'out_trade_no' => $orderParams['out_trade_no'],
-            'pay_url' => $payUrl,
-            'code_url' => $payUrl,
-            'channel' => $channel,
-            'amount' => $entry['amount'],
-        ];
+        return QrEntry::fromArray($this->entries[$routerId]);
     }
 
     /**
      * 查询入口当前状态
      *
      * @param string $routerId
-     * @return array<string, mixed>|null 入口数据或 null（不存在）
+     * @return QrEntry|null 入口值对象或 null（不存在）
      */
-    public function getStatus(string $routerId): ?array
+    public function getStatus(string $routerId): ?QrEntry
     {
         return $this->getEntry($routerId);
     }
@@ -259,25 +246,56 @@ class UnifiedQrRouter
     /**
      * 获取所有未完成（非 paid/closed）的入口
      *
-     * @return array<string, array<string, mixed>>
+     * @return array<string, QrEntry>
      */
     public function getPendingEntries(): array
     {
-        return array_filter(
+        $terminal = [self::STATUS_PAID, self::STATUS_CLOSED];
+        $pending = array_filter(
             $this->entries,
-            static fn (array $entry): bool => !in_array($entry['status'], [self::STATUS_PAID, self::STATUS_CLOSED], true),
+            static fn (array $entry): bool => !in_array($entry['status'], $terminal, true),
         );
+
+        return array_map(static fn (array $entry): QrEntry => QrEntry::fromArray($entry), $pending);
     }
 
     /**
      * 获取入口数据
      *
      * @param string $routerId
-     * @return array<string, mixed>|null
+     * @return QrEntry|null 入口值对象或 null（不存在）
      */
-    public function getEntry(string $routerId): ?array
+    public function getEntry(string $routerId): ?QrEntry
     {
-        return $this->entries[$routerId] ?? null;
+        return isset($this->entries[$routerId])
+            ? QrEntry::fromArray($this->entries[$routerId])
+            : null;
+    }
+
+    /**
+     * 关闭入口（显式放弃收款，终态）
+     *
+     * 已下单但未支付的入口可关闭以释放二维码；已支付的入口不可关闭。
+     *
+     * @param string $routerId
+     * @return QrEntry 关闭后的入口值对象
+     * @throws PayException 入口不存在或已支付时
+     */
+    public function close(string $routerId): QrEntry
+    {
+        $entry = $this->getEntry($routerId);
+
+        if ($entry === null) {
+            throw PayException::orderNotFound("统一收款入口不存在：{$routerId}");
+        }
+
+        if ($entry->isPaid()) {
+            throw PayException::gatewayError('入口已支付完成，无法关闭');
+        }
+
+        $this->entries[$routerId]['status'] = self::STATUS_CLOSED;
+
+        return QrEntry::fromArray($this->entries[$routerId]);
     }
 
     /**

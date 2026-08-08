@@ -186,6 +186,23 @@ class PayResponse
     }
 
     /**
+     * 获取二维码支付内容
+     *
+     * 归一化各网关返回的二维码字段：支付宝 qr_code、微信/银联 code_url、
+     * Stripe payment_link、通用 pay_url，取第一个非空值。
+     *
+     * @return string|null
+     */
+    public function getQrContent(): ?string
+    {
+        return $this->get('qr_code')
+            ?? $this->get('code_url')
+            ?? $this->get('payment_link')
+            ?? $this->get('pay_url')
+            ?? null;
+    }
+
+    /**
      * 获取实际使用的支付渠道（聚合支付场景）
      *
      * @return string|null
