@@ -8,6 +8,7 @@ use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 
 /**
  * 分账插件
@@ -94,6 +95,28 @@ class ProfitSharingPlugin
             throw PayException::paramError('receivers 必须是非空数组');
         }
 
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = [];
+        foreach ($params['receivers'] as $receiver) {
+            if ($receiver instanceof Receiver) {
+                if (!$receiver->amount->isPositive()) {
+                    throw PayException::paramError('分账接收方金额必须大于 0');
+                }
+                $receivers[] = $receiver;
+                continue;
+            }
+
+            if (!is_array($receiver)) {
+                throw PayException::paramError('receivers 元素必须是数组或 Receiver 对象');
+            }
+
+            if (isset($receiver['amount']) && (int) $receiver['amount'] <= 0) {
+                throw PayException::paramError('分账接收方金额必须大于 0');
+            }
+            $receivers[] = $receiver;
+        }
+        $params['receivers'] = $receivers;
+
         return match ($this->gateway::getName()) {
             'wechat' => $this->createWechatSharing($params),
             'alipay' => $this->createAlipaySharing($params),
@@ -162,18 +185,38 @@ class ProfitSharingPlugin
     }
 
     /**
+     * 查询分账配置（最大分账比例与分账关系）
+     *
+     * 目前微信支付提供该能力：返回该商户号允许的最大分账比例、当前已配置的分账关系等，
+     * 便于分账前校验比例是否超限。其他网关暂不支持。
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号（可选，与 out_order_no 至少其一）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryConfig(string $outOrderNo, ?string $transactionId = null): array
+    {
+        return match ($this->gateway::getName()) {
+            'wechat' => $this->queryWechatConfig($outOrderNo, $transactionId),
+            default => throw PayException::invalidArgument('当前网关不支持分账配置查询'),
+        };
+    }
+
+    /**
      * 解冻剩余资金
      *
      * 分账完成后，将未分账的剩余资金解冻给原订单收款方。
      *
      * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选，缺省自动生成）
      * @return array<string, mixed>
      * @throws PayException
      */
-    public function unfreeze(string $transactionId): array
+    public function unfreeze(string $transactionId, ?string $outOrderNo = null): array
     {
         return match ($this->gateway::getName()) {
-            'wechat' => $this->unfreezeWechat($transactionId),
+            'wechat' => $this->unfreezeWechat($transactionId, $outOrderNo),
             'alipay' => $this->unfreezeAlipay($transactionId),
             'stripe' => $this->unfreezeStripe($transactionId),
             default => throw PayException::invalidArgument('当前网关不支持资金解冻'),
@@ -224,19 +267,23 @@ class ProfitSharingPlugin
      */
     protected function createWechatSharing(array $params): array
     {
-        $receivers = array_map(function (array $r): array {
-            return [
-                'type' => $r['type'],
-                'account' => $r['account'],
-                'amount' => (int) $r['amount'],
-                'description' => $r['description'] ?? '分账',
-            ];
-        }, $params['receivers']);
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
+        $mapped = array_map(static function ($r): array {
+            return $r instanceof Receiver
+                ? $r->toWechatArray()
+                : [
+                    'type' => $r['type'],
+                    'account' => $r['account'],
+                    'amount' => (int) $r['amount'],
+                    'description' => $r['description'] ?? '分账',
+                ];
+        }, $receivers);
 
         return $this->gateway->post('secapi/pay/profitsharing', [
             'transaction_id' => $params['transaction_id'],
             'out_order_no' => $params['out_order_no'],
-            'receivers' => json_encode($receivers, JSON_UNESCAPED_UNICODE),
+            'receivers' => json_encode($mapped, JSON_UNESCAPED_UNICODE),
         ]);
     }
 
@@ -286,15 +333,34 @@ class ProfitSharingPlugin
     /**
      * 微信解冻剩余资金
      *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选）
      * @return array<string, mixed>
      */
-    protected function unfreezeWechat(string $transactionId): array
+    protected function unfreezeWechat(string $transactionId, ?string $outOrderNo): array
     {
         return $this->gateway->post('secapi/pay/profitsharingfinish', [
             'transaction_id' => $transactionId,
-            'out_order_no' => 'UNFREEZE_' . time(),
+            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
             'description' => '解冻剩余资金',
         ]);
+    }
+
+    /**
+     * 微信分账配置查询（最大分账比例与分账关系）
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号
+     * @return array<string, mixed>
+     */
+    protected function queryWechatConfig(string $outOrderNo, ?string $transactionId): array
+    {
+        $data = ['out_order_no' => $outOrderNo];
+        if ($transactionId !== null) {
+            $data['transaction_id'] = $transactionId;
+        }
+
+        return $this->gateway->post('pay/profitsharingconfigquery', $data);
     }
 
     /**
@@ -345,7 +411,13 @@ class ProfitSharingPlugin
      */
     protected function createAlipaySharing(array $params): array
     {
-        $royaltyParameters = array_map(function (array $r): array {
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
+        $royaltyParameters = array_map(static function ($r): array {
+            if ($r instanceof Receiver) {
+                return $r->toAlipayArray();
+            }
+
             return [
                 'trans_out_type' => $r['trans_out_type'] ?? 'userId',
                 'trans_out' => $r['trans_out'] ?? '',
@@ -354,7 +426,7 @@ class ProfitSharingPlugin
                 'amount' => (float) $r['amount'],
                 'desc' => $r['desc'] ?? $r['description'] ?? '分账',
             ];
-        }, $params['receivers']);
+        }, $receivers);
 
         return $this->gateway->post('', [
             'method' => 'alipay.trade.order.settle',
@@ -487,21 +559,30 @@ class ProfitSharingPlugin
      */
     protected function createStripeSharing(array $params): array
     {
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
         $results = [];
 
-        foreach ($params['receivers'] as $index => $receiver) {
-            $this->validateRequired($receiver, ['account', 'amount']);
+        foreach ($receivers as $receiver) {
+            if ($receiver instanceof Receiver) {
+                $transferData = $receiver->toStripeArray();
+                if (isset($params['transaction_id'])) {
+                    $transferData['source_transaction'] = $params['transaction_id'];
+                }
+            } else {
+                $this->validateRequired($receiver, ['account', 'amount']);
 
-            $transferData = [
-                'amount' => (int) $receiver['amount'],
-                'currency' => strtolower($receiver['currency'] ?? 'usd'),
-                'destination' => $receiver['account'],
-            ];
+                $transferData = [
+                    'amount' => (int) $receiver['amount'],
+                    'currency' => strtolower($receiver['currency'] ?? 'usd'),
+                    'destination' => $receiver['account'],
+                ];
 
-            if (isset($receiver['source_transaction'])) {
-                $transferData['source_transaction'] = $receiver['source_transaction'];
-            } elseif (isset($params['transaction_id'])) {
-                $transferData['source_transaction'] = $params['transaction_id'];
+                if (isset($receiver['source_transaction'])) {
+                    $transferData['source_transaction'] = $receiver['source_transaction'];
+                } elseif (isset($params['transaction_id'])) {
+                    $transferData['source_transaction'] = $params['transaction_id'];
+                }
             }
 
             $results[] = $this->gateway->post('v1/transfers', $transferData, [

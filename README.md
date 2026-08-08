@@ -15,6 +15,7 @@ Kode Pays 是一个面向 PHP 8.3+ 的企业级多平台聚合支付 SDK，支�
 - **类型安全**：充分利用 PHP 8.3+ 特性（`readonly`、`match`、`enum`、`typed class constants`）
 - **枚举与值对象**：内置 `Currency` / `TradeStatus` / `TradeType` 枚举与不可变 `Money` 金额对象（含 `allocate` 分账、`distribute` 均分），消除状态字符串与浮点金额隐患
 - **响应类型化访问器**：`PayResponse` 直接提供 `getAmountMoney()` / `getCurrencyEnum()` / `getTradeTypeEnum()` 等类型安全访问器，免去手工解析与币种换算
+- **分账能力完善**：`ProfitSharingPlugin` 提供微信/支付宝/Stripe 的完整分账 API 集合（增删接收方、分账、回退、查询、配置查询、解冻），配套 `Receiver` 值对象（Money 承载金额）与 `Result` 归一化结果
 - **异常细分**：6 种具体异常子类，便于精确捕获和差异化处理
 - **中文注释**：所有代码和文档均为中文，降低国内开发者学习成本
 - **生态兼容**：预留 kode 系列扩展点（二维码、协程、缓存、数据库等）

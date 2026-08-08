@@ -78,6 +78,7 @@
 
 - [插件总览](plugins.md) - 全部插件功能一览与使用示例
 - [分账插件](plugins.md#分账插件-profitsharingplugin) - 微信/支付宝/Stripe 分账
+- [分账功能详解](profit-sharing.md) - `ProfitSharingPlugin` API 集合、`Receiver` 值对象、`Result` 归一化
 - [转账插件](plugins.md#转账插件-transferplugin) - 企业付款/批量转账
 - [退款插件](plugins.md#退款插件-refundplugin) - 统一退款管理
 - [红包插件](plugins.md#红包插件-redpacketplugin) - 现金红包/裂变红包
