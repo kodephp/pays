@@ -85,5 +85,47 @@ $total->equals(Money::fromMinor(10589, 'CNY')); // true
 | `getAmount()` | 主单位金额字符串 |
 | `getMinorAmount()` | 最小单位整数（分） |
 | `format()` | 带符号的展示字符串 |
+| `zero(Currency\|string)` | 零值金额工厂 |
+| `allocate(array $ratios)` | 按比例分账，返回等长的 `Money` 分片（余数归入末片） |
+| `distribute(int $parts)` | 近似均分为 N 份（余数从前往后逐份 +1） |
+| `absolute()` / `negate()` | 取绝对值 / 取反，返回新实例 |
+| `min(Money)` / `max(Money)` | 取较小 / 较大者（币种须一致） |
 
 跨币种运算（如 CNY 与 USD 相加）会抛出 `InvalidArgumentException`，强制在编译期暴露币种不一致问题。
+
+### 分账与均分
+
+`allocate()` 适用于分账、佣金拆分等按比例分配场景，`distribute()` 适用于红包、代金券等近似均分场景，二者均保证分片之和严格等于原金额。
+
+```php
+use Kode\Pays\Support\Money;
+
+// 100 元按比例 3:7 分账
+$parts = Money::fromMajor(100, 'CNY')->allocate([3, 7]);
+// [¥30.00, ¥70.00]
+
+// 100 分均分为 3 份（34/33/33）
+$parts = Money::fromMinor(100, 'CNY')->distribute(3);
+```
+
+## 响应层类型化访问器
+
+`PayResponse` 在 v1.21.0 起直接提供枚举与 `Money` 访问器，免去业务侧手工解析与换算：
+
+```php
+use Kode\Pays\Enum\Currency;
+use Kode\Pays\Enum\TradeType;
+use Kode\Pays\Support\Money;
+
+$resp = $gateway->query($params);
+
+$resp->getCurrencyEnum();   // ?Currency（读 currency / fee_type）
+$resp->getTradeTypeEnum();  // ?TradeType（读 trade_type，已归一化别名）
+$resp->getAmountMoney();    // ?Money（自动识别 total_fee/amount/total_amount 与币种）
+$resp->getRefundAmountMoney(); // ?Money（读 refund_fee / refund_amount）
+
+// 也可显式指定币种（用于响应未携带币种字段时）
+$resp->getAmountMoney(Currency::JPY);
+```
+
+金额字段换算规则：含小数点的字符串或浮点视为「主单位（元）」，整数视为「最小单位（分）」，再按币种小数位换算为 `Money` 的最小单位整数。`getAmount()` / `getRefundAmount()` 的返回类型已放宽至 `int|float|string|null`，以兼容支付宝 `total_amount` 等字符串金额字段。

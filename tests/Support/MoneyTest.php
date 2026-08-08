@@ -135,4 +135,80 @@ class MoneyTest extends TestCase
         $this->assertTrue(Money::fromMinor(-10, 'CNY')->isNegative());
         $this->assertFalse(Money::fromMinor(10, 'CNY')->isNegative());
     }
+
+    /**
+     * 测试零值工厂
+     */
+    public function testZero(): void
+    {
+        $money = Money::zero('CNY');
+        $this->assertSame(0, $money->getMinorAmount());
+        $this->assertSame(Currency::CNY, $money->getCurrency());
+        $this->assertTrue($money->isZero());
+    }
+
+    /**
+     * 测试按比例分账（比例之和等于整除）
+     */
+    public function testAllocateProportional(): void
+    {
+        $parts = Money::fromMinor(10000, 'CNY')->allocate([3, 7]);
+        $this->assertCount(2, $parts);
+        $this->assertSame(3000, $parts[0]->getMinorAmount());
+        $this->assertSame(7000, $parts[1]->getMinorAmount());
+    }
+
+    /**
+     * 测试分账余数归入最后一个分片
+     */
+    public function testAllocateRemainderToLast(): void
+    {
+        $parts = Money::fromMinor(100, 'CNY')->allocate([1, 1, 1]);
+        $this->assertSame(33, $parts[0]->getMinorAmount());
+        $this->assertSame(33, $parts[1]->getMinorAmount());
+        $this->assertSame(34, $parts[2]->getMinorAmount());
+        $this->assertSame(100, array_sum(array_map(static fn (Money $m): int => $m->getMinorAmount(), $parts)));
+    }
+
+    /**
+     * 测试均分（余数从前往后分配）
+     */
+    public function testDistribute(): void
+    {
+        $parts = Money::fromMinor(100, 'CNY')->distribute(3);
+        $this->assertSame(34, $parts[0]->getMinorAmount());
+        $this->assertSame(33, $parts[1]->getMinorAmount());
+        $this->assertSame(33, $parts[2]->getMinorAmount());
+        $this->assertSame(100, array_sum(array_map(static fn (Money $m): int => $m->getMinorAmount(), $parts)));
+    }
+
+    /**
+     * 测试绝对值与取反
+     */
+    public function testAbsoluteAndNegate(): void
+    {
+        $money = Money::fromMinor(-500, 'CNY');
+        $this->assertSame(500, $money->absolute()->getMinorAmount());
+        $this->assertSame(-500, Money::fromMinor(500, 'CNY')->negate()->getMinorAmount());
+    }
+
+    /**
+     * 测试取较小/较大值
+     */
+    public function testMinMax(): void
+    {
+        $a = Money::fromMinor(100, 'CNY');
+        $b = Money::fromMinor(200, 'CNY');
+        $this->assertSame(100, $a->min($b)->getMinorAmount());
+        $this->assertSame(200, $a->max($b)->getMinorAmount());
+    }
+
+    /**
+     * 测试分账比例之和非正时抛异常
+     */
+    public function testAllocateInvalidRatioThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        Money::fromMinor(100, 'CNY')->allocate([0, 0]);
+    }
 }

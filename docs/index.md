@@ -104,6 +104,7 @@
 ## 值对象与枚举
 
 - [枚举与金额值对象](enums-money.md) - `Currency` / `TradeStatus` / `TradeType` 与不可变 `Money`
+- [响应层类型化访问器](enums-money.md#响应层类型化访问器) - `PayResponse` 的枚举/`Money` 访问器（`getAmountMoney` 等）
 - [熔断器中间件](circuit-breaker.md) - `CircuitBreakerMiddleware` 三态故障隔离
 
 ## 生态集成

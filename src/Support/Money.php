@@ -246,6 +246,125 @@ final class Money
     }
 
     /**
+     * 零值金额工厂
+     *
+     * @param Currency|string $currency 币种枚举或代码
+     * @return self
+     */
+    public static function zero(Currency|string $currency): self
+    {
+        return new self(0, self::resolveCurrency($currency));
+    }
+
+    /**
+     * 按比例拆分金额（分账场景常用）
+     *
+     * 按各接收方比例分配最小货币单位，余数统一归入最后一个分片，
+     * 保证所有分片之和严格等于原金额。
+     *
+     * @param array<int, int|float|string> $ratios 各分片比例（顺序即返回顺序）
+     * @return array<int, self> 与 $ratios 等长的 Money 分片
+     * @throws \InvalidArgumentException 比例之和不大于 0 时抛出
+     */
+    public function allocate(array $ratios): array
+    {
+        $total = array_sum($ratios);
+        if ($total <= 0) {
+            throw new \InvalidArgumentException('分配比例之和必须大于 0');
+        }
+
+        $result = [];
+        $lastIndex = count($ratios) - 1;
+        $remaining = $this->minorAmount;
+
+        foreach ($ratios as $index => $ratio) {
+            if ($index === $lastIndex) {
+                $part = $remaining;
+            } else {
+                $part = (int) floor($this->minorAmount * (float) $ratio / $total);
+                $remaining -= $part;
+            }
+
+            $result[] = new self($part, $this->currency);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 将金额近似均分为 N 份（余数从前往后逐份 +1）
+     *
+     * @param int $parts 份数
+     * @return array<int, self>
+     * @throws \InvalidArgumentException 份数不大于 0 时抛出
+     */
+    public function distribute(int $parts): array
+    {
+        if ($parts <= 0) {
+            throw new \InvalidArgumentException('份数必须大于 0');
+        }
+
+        $base = intdiv($this->minorAmount, $parts);
+        $remainder = $this->minorAmount - $base * $parts;
+
+        $result = [];
+        for ($i = 0; $i < $parts; $i++) {
+            $amount = $base + ($i < $remainder ? 1 : 0);
+            $result[] = new self($amount, $this->currency);
+        }
+
+        return $result;
+    }
+
+    /**
+     * 返回绝对值金额（符号取正）
+     *
+     * @return self
+     */
+    public function absolute(): self
+    {
+        return new self(abs($this->minorAmount), $this->currency);
+    }
+
+    /**
+     * 返回取反后的金额
+     *
+     * @return self
+     */
+    public function negate(): self
+    {
+        return new self(-$this->minorAmount, $this->currency);
+    }
+
+    /**
+     * 取两金额中的较小者（币种须一致）
+     *
+     * @param self $other
+     * @return self
+     * @throws \InvalidArgumentException 币种不一致时抛出
+     */
+    public function min(self $other): self
+    {
+        $this->assertSameCurrency($other);
+
+        return $this->minorAmount <= $other->minorAmount ? $this : $other;
+    }
+
+    /**
+     * 取两金额中的较大者（币种须一致）
+     *
+     * @param self $other
+     * @return self
+     * @throws \InvalidArgumentException 币种不一致时抛出
+     */
+    public function max(self $other): self
+    {
+        $this->assertSameCurrency($other);
+
+        return $this->minorAmount >= $other->minorAmount ? $this : $other;
+    }
+
+    /**
      * 格式化为带符号的展示字符串（如 "¥105.89"）
      *
      * @param int|null $decimals 小数位，默认取币种小数位

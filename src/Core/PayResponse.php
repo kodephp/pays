@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Core;
 
+use Kode\Pays\Enum\Currency;
+use Kode\Pays\Enum\TradeType;
+use Kode\Pays\Support\Money;
+
 /**
  * 支付结果统一响应对象
  *
@@ -194,9 +198,12 @@ class PayResponse
     /**
      * 获取支付金额
      *
-     * @return int|float|null
+     * 注意：不同网关金额字段类型不一致（微信 total_fee 为整数分，
+     * 支付宝 total_amount 为字符串元），故返回类型包含字符串。
+     *
+     * @return int|float|string|null
      */
-    public function getAmount(): int|float|null
+    public function getAmount(): int|float|string|null
     {
         return $this->get('total_fee')
             ?? $this->get('amount')
@@ -259,9 +266,11 @@ class PayResponse
     /**
      * 获取退款金额
      *
-     * @return int|float|null
+     * 同 {@see getAmount()}，返回类型包含字符串以兼容各网关。
+     *
+     * @return int|float|string|null
      */
-    public function getRefundAmount(): int|float|null
+    public function getRefundAmount(): int|float|string|null
     {
         return $this->get('refund_fee')
             ?? $this->get('refund_amount')
@@ -278,6 +287,84 @@ class PayResponse
         return $this->get('refund_status')
             ?? $this->get('status')
             ?? null;
+    }
+
+    /**
+     * 以枚举形式获取币种
+     *
+     * 读取响应中的 currency / fee_type 字段，无法识别时返回 null。
+     *
+     * @return \Kode\Pays\Enum\Currency|null
+     */
+    public function getCurrencyEnum(): ?Currency
+    {
+        return Currency::fromCode(
+            $this->get('currency') ?? $this->get('fee_type') ?? '',
+        );
+    }
+
+    /**
+     * 以枚举形式获取交易类型（支付场景）
+     *
+     * 读取响应中的 trade_type 字段，通过 {@see \Kode\Pays\Enum\TradeType::fromRaw()}
+     * 归一化，无法识别时返回 null。
+     *
+     * @return \Kode\Pays\Enum\TradeType|null
+     */
+    public function getTradeTypeEnum(): ?TradeType
+    {
+        $raw = $this->get('trade_type');
+
+        return TradeType::fromRaw(is_string($raw) ? $raw : null);
+    }
+
+    /**
+     * 以 Money 值对象形式获取支付金额
+     *
+     * 自动识别金额字段（total_fee / amount / total_amount）与币种：
+     * 含小数点的字符串或浮点视为「主单位（元）」，整数视为「最小单位（分）」，
+     * 二者按币种小数位换算。币种优先使用传入参数，其次取响应币种，缺省按 CNY。
+     *
+     * @param \Kode\Pays\Enum\Currency|null $currency 显式币种（可选）
+     * @return \Kode\Pays\Support\Money|null 无金额或金额非法时返回 null
+     */
+    public function getAmountMoney(?Currency $currency = null): ?Money
+    {
+        return $this->toMoney($this->getAmount(), $currency);
+    }
+
+    /**
+     * 以 Money 值对象形式获取退款金额
+     *
+     * 识别退款金额字段（refund_fee / refund_amount），换算规则同 {@see getAmountMoney()}。
+     *
+     * @param \Kode\Pays\Enum\Currency|null $currency 显式币种（可选）
+     * @return \Kode\Pays\Support\Money|null
+     */
+    public function getRefundAmountMoney(?Currency $currency = null): ?Money
+    {
+        return $this->toMoney($this->getRefundAmount(), $currency);
+    }
+
+    /**
+     * 将原始金额值转换为 Money 值对象
+     *
+     * @param int|float|string|null $value 原始金额
+     * @param \Kode\Pays\Enum\Currency|null $currency 显式币种（可选）
+     * @return \Kode\Pays\Support\Money|null
+     */
+    private function toMoney(int|float|string|null $value, ?Currency $currency): ?Money
+    {
+        if ($value === null || !is_numeric($value)) {
+            return null;
+        }
+
+        $currency ??= $this->getCurrencyEnum() ?? Currency::CNY;
+        $hasDecimal = (is_string($value) && str_contains($value, '.')) || is_float($value);
+
+        return $hasDecimal
+            ? Money::fromMajor($value, $currency)
+            : Money::fromMinor((int) $value, $currency);
     }
 
     /**
