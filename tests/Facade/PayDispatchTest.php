@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Tests\Facade;
 
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
 use Kode\Pays\Core\PayException;
@@ -65,6 +66,48 @@ class ProfitSharingCapableFakeGateway extends FakeGateway implements ProfitShari
     }
 }
 
+/**
+ * 支持转账能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class TransferCapableFakeGateway extends FakeGateway implements TransferCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $transferCalls = [];
+
+    public static function getName(): string
+    {
+        return 'transgw';
+    }
+
+    public function singleTransfer(array $params): array
+    {
+        $this->transferCalls[] = ['single', $params];
+
+        return ['ok' => true, 'out_biz_no' => $params['out_biz_no'] ?? ''];
+    }
+
+    public function batchTransfer(array $params): array
+    {
+        $this->transferCalls[] = ['batch', $params];
+
+        return ['ok' => true];
+    }
+
+    public function queryTransfer(string $outBizNo): array
+    {
+        $this->transferCalls[] = ['query', $outBizNo];
+
+        return ['ok' => true];
+    }
+
+    public function transferReceipt(string $outBizNo): array
+    {
+        $this->transferCalls[] = ['receipt', $outBizNo];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -76,6 +119,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('profitgw', ProfitSharingCapableFakeGateway::class);
         Pay::registerConfig('profitgw', []);
+
+        GatewayFactory::register('transgw', TransferCapableFakeGateway::class);
+        Pay::registerConfig('transgw', []);
     }
 
     protected function tearDown(): void
@@ -83,6 +129,7 @@ class PayDispatchTest extends TestCase
         Pay::clearCache();
         GatewayFactory::unregister('fakechan');
         GatewayFactory::unregister('profitgw');
+        GatewayFactory::unregister('transgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -215,5 +262,35 @@ class PayDispatchTest extends TestCase
         Pay::registerConfig('samplegw', []);
         $result = Pay::call('samplegw', 'createOrder', ['out_trade_no' => 'S1']);
         $this->assertStringContainsString('S1', $result['code_url']);
+    }
+
+    /**
+     * 统一转账入口 transferSingle 经 call 派发到网关原生方法
+     */
+    public function testTransferSingleUnifiedEntry(): void
+    {
+        $result = Pay::transferSingle('transgw', [
+            'out_biz_no' => 'T1',
+            'amount' => 100,
+            'recipient' => ['account' => 'a'],
+        ]);
+
+        $this->assertSame(['ok' => true, 'out_biz_no' => 'T1'], $result);
+
+        $gateway = Pay::gateway('transgw');
+        $this->assertSame('single', $gateway->transferCalls[0][0]);
+        $this->assertSame('T1', $gateway->transferCalls[0][1]['out_biz_no']);
+    }
+
+    /**
+     * 统一转账查询入口 transferQuery 派发到网关原生 queryTransfer
+     */
+    public function testTransferQueryUnifiedEntry(): void
+    {
+        Pay::transferQuery('transgw', 'T1');
+
+        $gateway = Pay::gateway('transgw');
+        $this->assertSame('query', $gateway->transferCalls[0][0]);
+        $this->assertSame('T1', $gateway->transferCalls[0][1]);
     }
 }

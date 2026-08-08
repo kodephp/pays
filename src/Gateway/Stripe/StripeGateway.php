@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Stripe;
 
+use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -13,7 +14,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway
+class StripeGateway extends AbstractGateway implements TransferCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -233,6 +234,94 @@ class StripeGateway extends AbstractGateway
         $headers = $this->buildAuthHeaders();
 
         return $this->post('v1/checkout/sessions', $requestData, $headers);
+    }
+
+    /**
+     * 单笔 Payout（企业付款到 Connect 账户）
+     *
+     * 复用网关 {@see buildAuthHeaders()} 携带 Bearer Token，金额单位为最小货币单位。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function singleTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
+
+        $recipient = $params['recipient'];
+        $this->validateRequired($recipient, ['account']);
+
+        return $this->post('v1/payouts', [
+            'amount' => (int) $params['amount'],
+            'currency' => strtolower($params['currency'] ?? 'usd'),
+            'destination' => $recipient['account'],
+            'description' => $params['description'] ?? '',
+            'metadata' => [
+                'out_biz_no' => $params['out_biz_no'],
+            ],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 批量 Payout
+     *
+     * Stripe 无原生批量 Payout，逐笔调用 {@see singleTransfer} 后聚合返回。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function batchTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'transfer_detail_list']);
+
+        $list = $params['transfer_detail_list'];
+        if (!is_array($list) || empty($list)) {
+            throw PayException::paramError('transfer_detail_list 必须是非空数组');
+        }
+
+        $results = [];
+
+        foreach ($list as $item) {
+            $results[] = $this->singleTransfer([
+                'out_biz_no' => $item['out_detail_no'],
+                'amount' => $item['amount'],
+                'currency' => $item['currency'] ?? 'usd',
+                'recipient' => $item['recipient'],
+                'description' => $item['remark'] ?? '',
+            ]);
+        }
+
+        return [
+            'out_biz_no' => $params['out_biz_no'],
+            'payouts' => $results,
+            'count' => count($results),
+        ];
+    }
+
+    /**
+     * 查询 Payout
+     *
+     * @return array<string, mixed>
+     */
+    public function queryTransfer(string $outBizNo): array
+    {
+        return $this->get('v1/payouts', [
+            'metadata[out_biz_no]' => $outBizNo,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 查询转账电子回单
+     *
+     * Stripe 不提供电子回单能力，调用即报「无此方法」。
+     *
+     * @throws PayException
+     */
+    public function transferReceipt(string $outBizNo): array
+    {
+        throw PayException::methodNotSupported('stripe', 'transferReceipt');
     }
 
     /**

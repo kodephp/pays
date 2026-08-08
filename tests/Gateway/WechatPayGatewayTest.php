@@ -223,4 +223,115 @@ class WechatPayGatewayTest extends TestCase
         $this->assertNotNull($last);
         $this->assertStringContainsString('sandboxnew', $last['url']);
     }
+
+    /**
+     * 测试单笔转账：验证端点与请求字段（金额按分）
+     */
+    public function testSingleTransfer(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code>'
+            . '<partner_trade_no><![CDATA[T1]]></partner_trade_no></xml>';
+
+        $gateway = $this->createGateway(['mmpaymkttransfers/promotion/transfers' => $xml]);
+
+        $result = $gateway->singleTransfer([
+            'out_biz_no' => 'T1',
+            'amount' => 100,
+            'recipient' => ['type' => 'openid', 'account' => 'openid123', 'name' => '张三'],
+            'description' => '佣金',
+            'client_ip' => '10.0.0.1',
+        ]);
+
+        $this->assertSame('SUCCESS', $result['return_code']);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('mmpaymkttransfers/promotion/transfers', $last['url']);
+        $this->assertSame('openid123', $last['data']['openid'] ?? '');
+        $this->assertSame('T1', $last['data']['partner_trade_no'] ?? '');
+        $this->assertSame(100, $last['data']['amount'] ?? 0);
+        $this->assertSame('wx123', $last['data']['mch_appid'] ?? '');
+        $this->assertSame('m1', $last['data']['mchid'] ?? '');
+    }
+
+    /**
+     * 测试单笔转账必填校验：缺 recipient 抛 PayException
+     */
+    public function testSingleTransferMissingRecipient(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('缺少必填参数：recipient');
+
+        $gateway->singleTransfer(['out_biz_no' => 'T1', 'amount' => 100]);
+    }
+
+    /**
+     * 测试批量转账：验证明细组装
+     */
+    public function testBatchTransfer(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['v3/transfer/batches' => $xml]);
+
+        $gateway->batchTransfer([
+            'out_biz_no' => 'B1',
+            'transfer_detail_list' => [
+                ['out_detail_no' => 'D1', 'amount' => 100, 'recipient' => ['account' => 'o1', 'name' => '张三'], 'remark' => '佣金'],
+                ['out_detail_no' => 'D2', 'amount' => 200, 'recipient' => ['account' => 'o2', 'name' => '李四'], 'remark' => '奖励'],
+            ],
+        ]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v3/transfer/batches', $last['url']);
+        $this->assertSame('B1', $last['data']['out_batch_no'] ?? '');
+        $this->assertSame(300, $last['data']['total_amount'] ?? 0);
+        $this->assertCount(2, $last['data']['transfer_detail_list'] ?? []);
+    }
+
+    /**
+     * 测试查询转账结果：GET 端点含商户单号
+     */
+    public function testQueryTransfer(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['v3/transfer/batches/out-batch-no/T1' => $xml]);
+
+        $gateway->queryTransfer('T1');
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('GET', $last['method']);
+        $this->assertStringContainsString('v3/transfer/batches/out-batch-no/T1', $last['url']);
+    }
+
+    /**
+     * 测试查询转账电子回单：GET 端点
+     */
+    public function testTransferReceipt(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(
+            ['v3/transfer/batches/out-batch-no/T1/details/out-detail-no/T1/electronic-receipt' => $xml],
+        );
+
+        $gateway->transferReceipt('T1');
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('electronic-receipt', $last['url']);
+    }
 }

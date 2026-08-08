@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Alipay;
 
+use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Support\Signer;
@@ -13,7 +14,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -180,6 +181,119 @@ class AlipayGateway extends AbstractGateway
         ];
 
         $requestParams = $this->buildRequestParams('alipay.trade.close', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 单笔转账到支付宝账户
+     *
+     * 复用网关 {@see buildRequestParams()} 进行标准签名，金额单位为分。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function singleTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
+
+        $recipient = $params['recipient'];
+        $this->validateRequired($recipient, ['type', 'account']);
+
+        $bizContent = [
+            'out_biz_no' => $params['out_biz_no'],
+            'trans_amount' => number_format($params['amount'] / 100, 2),
+            'product_code' => 'TRANS_ACCOUNT_NO_PWD',
+            'biz_scene' => 'DIRECT_TRANSFER',
+            'order_title' => $params['description'] ?? '转账',
+            'payee_info' => [
+                'identity_type' => $recipient['type'],
+                'identity' => $recipient['account'],
+                'name' => $recipient['name'] ?? '',
+            ],
+            'remark' => $params['description'] ?? '',
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.uni.transfer', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 批量转账到支付宝账户
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function batchTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'transfer_detail_list']);
+
+        $list = $params['transfer_detail_list'];
+        if (!is_array($list) || empty($list)) {
+            throw PayException::paramError('transfer_detail_list 必须是非空数组');
+        }
+
+        $detailList = array_map(static function (array $item): array {
+            $recipient = $item['recipient'];
+            return [
+                'out_biz_no' => $item['out_detail_no'],
+                'trans_amount' => number_format($item['amount'] / 100, 2),
+                'product_code' => 'TRANS_ACCOUNT_NO_PWD',
+                'biz_scene' => 'DIRECT_TRANSFER',
+                'order_title' => $item['remark'] ?? '转账',
+                'payee_info' => [
+                    'identity_type' => $recipient['type'] ?? 'ALIPAY_USER_ID',
+                    'identity' => $recipient['account'],
+                    'name' => $recipient['name'] ?? '',
+                ],
+            ];
+        }, $list);
+
+        $bizContent = [
+            'out_biz_no' => $params['out_biz_no'],
+            'product_code' => 'TRANS_ACCOUNT_NO_PWD',
+            'biz_scene' => 'DIRECT_TRANSFER',
+            'total_trans_amount' => number_format(array_sum(array_column($list, 'amount')) / 100, 2),
+            'total_count' => count($list),
+            'order_detail' => $detailList,
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.batch.create', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 查询转账结果
+     *
+     * @return array<string, mixed>
+     */
+    public function queryTransfer(string $outBizNo): array
+    {
+        $bizContent = [
+            'product_code' => 'TRANS_ACCOUNT_NO_PWD',
+            'biz_scene' => 'DIRECT_TRANSFER',
+            'out_biz_no' => $outBizNo,
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.common.query', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 查询转账电子回单
+     *
+     * @return array<string, mixed>
+     */
+    public function transferReceipt(string $outBizNo): array
+    {
+        $bizContent = ['out_biz_no' => $outBizNo];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.invoice.query', $bizContent);
 
         return $this->post('', $requestParams);
     }

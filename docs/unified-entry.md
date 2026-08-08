@@ -108,6 +108,30 @@ Pay::call('douyin', 'createProfitSharing', $params);
 > 平台「特色方法」（如 `createProfitSharing`、`queryProfitSharing`）由各网关类直接实现并声明
 > `ProfitSharingCapableInterface`，因此 `Pay::call()` 与 `ProfitSharingPlugin` 都能类型安全地调用。
 
+转账 / 企业付款同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的转账特色方法）：
+
+```php
+// 统一发起单笔转账（微信 / 支付宝 / Stripe 等已接入转账能力的平台）
+Pay::transferSingle('wechat', [
+    'out_biz_no' => 'TRANSFER_' . date('YmdHis'),
+    'amount'     => 100,            // 微信 / 支付宝单位为分
+    'recipient'  => ['type' => 'openid', 'account' => 'oUpF8u...', 'name' => '张三'],
+]);
+Pay::transferBatch('alipay', [
+    'out_biz_no' => 'BATCH_' . date('YmdHis'),
+    'transfer_detail_list' => [/* ... */],
+]);
+Pay::transferQuery('wechat', 'TRANSFER_20240425000001');
+Pay::transferReceipt('alipay', 'TRANSFER_20240425000001');
+
+// 等价写法：直接用 call 派发网关原生转账方法
+Pay::call('wechat', 'singleTransfer', $params);
+```
+
+> 转账逻辑下沉到各网关类内部，声明 `TransferCapableInterface`（`singleTransfer` /
+> `batchTransfer` / `queryTransfer` / `transferReceipt`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如 `Pay::transferReceipt('stripe', $no)` 会因 Stripe 不提供电子回单而报「无此方法」。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php

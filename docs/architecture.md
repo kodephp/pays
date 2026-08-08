@@ -162,7 +162,7 @@ interface GatewayInterface
 | 插件 | 支持网关 | 核心功能 |
 |------|----------|----------|
 | `ProfitSharingPlugin` | 微信、支付宝、Stripe | 分账创建/查询/回退/解冻 |
-| `TransferPlugin` | 微信、支付宝、Stripe | 单笔/批量转账、电子回单 |
+| `TransferPlugin` | 微信、支付宝、Stripe | 单笔/批量转账、电子回单（网关原生方法 + 插件校验转发） |
 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请/查询/取消退款 |
 | `RedPacketPlugin` | 微信、支付宝 | 普通/裂变红包、查询记录 |
 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划与周期扣款管理 |

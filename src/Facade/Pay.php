@@ -466,6 +466,61 @@ class Pay
     }
 
     /**
+     * 统一发起单笔转账
+     *
+     * 经统一入口动态派发到目标网关的 `singleTransfer` 特色方法，
+     * 支持微信 / 支付宝 / Stripe 等已接入转账能力的平台。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 转账参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function transferSingle(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'singleTransfer', $params);
+    }
+
+    /**
+     * 统一发起批量转账
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 批量转账参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function transferBatch(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'batchTransfer', $params);
+    }
+
+    /**
+     * 统一查询转账结果
+     *
+     * @param string $gateway 网关标识
+     * @param string $outBizNo 商户转账单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function transferQuery(string $gateway, string $outBizNo): array
+    {
+        return self::call($gateway, 'queryTransfer', $outBizNo);
+    }
+
+    /**
+     * 统一查询转账电子回单
+     *
+     * @param string $gateway 网关标识
+     * @param string $outBizNo 商户转账单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function transferReceipt(string $gateway, string $outBizNo): array
+    {
+        return self::call($gateway, 'transferReceipt', $outBizNo);
+    }
+
+    /**
      * 统一异步通知校验（安全入口）
      *
      * 先经过 {@see NotifyGuard} 做通用安全过滤（签名字段、防重放等），

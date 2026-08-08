@@ -479,7 +479,9 @@ class GatewayManifest
                 'label' => '微信支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => $domesticFeatures,
+                'capabilities' => array_merge($domesticFeatures, [
+                    self::CAP_TRANSFER => true,
+                ]),
             ],
             'alipay' => [
                 'label' => '支付宝',

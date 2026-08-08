@@ -122,6 +122,11 @@ $result = $plugin->unfreeze('4200000000000000');
 
 支持微信、支付宝、Stripe 的转账能力。
 
+> 架构说明：转账逻辑已下沉到各网关类内部（实现 `TransferCapableInterface` 的
+> `singleTransfer` / `batchTransfer` / `queryTransfer` / `transferReceipt` 原生方法，
+> 复用基类配置与签名）。`TransferPlugin` 仅负责「参数校验 + 资金约束校验 + 类型安全转发」，
+> 因此也能通过统一入口 `Pay::transferSingle(...)` 等语义化方法直接调用。
+
 ### 配置
 
 微信转账需使用商户证书；支付宝需配置应用私钥；Stripe 需配置 secret_key。
@@ -166,10 +171,21 @@ $result = $plugin->query('TRANSFER_20240425000001');
 $result = $plugin->receipt('TRANSFER_20240425000001');
 ```
 
+### 统一入口（等价写法）
+
+```php
+// 经 Pay::call 动态派发到网关原生转账方法
+Pay::transferSingle('wechat', $params);
+Pay::transferBatch('alipay', $batchParams);
+Pay::transferQuery('wechat', 'TRANSFER_20240425000001');
+Pay::transferReceipt('alipay', 'TRANSFER_20240425000001');
+```
+
 ### 注意事项
 
 - 单笔转账金额需在网关限额内（微信单笔上限 20000 元）
 - 批量转账单次最多 3000 笔
+- Stripe 不提供电子回单能力，`transferReceipt` 会报「无此方法」
 - 收款方姓名需与微信实名认证一致，否则会失败
 - 建议配合 `FundConstraintValidator` 做风控验证
 
