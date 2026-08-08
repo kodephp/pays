@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Tests\Facade;
 
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
@@ -108,6 +109,41 @@ class TransferCapableFakeGateway extends FakeGateway implements TransferCapableI
     }
 }
 
+/**
+ * 支持红包能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class RedPacketCapableFakeGateway extends FakeGateway implements RedPacketCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $redPacketCalls = [];
+
+    public static function getName(): string
+    {
+        return 'redgw';
+    }
+
+    public function sendRedPacket(array $params): array
+    {
+        $this->redPacketCalls[] = ['send', $params];
+
+        return ['ok' => true, 'mch_billno' => $params['mch_billno'] ?? ''];
+    }
+
+    public function groupRedPacket(array $params): array
+    {
+        $this->redPacketCalls[] = ['group', $params];
+
+        return ['ok' => true];
+    }
+
+    public function queryRedPacket(string $mchBillNo): array
+    {
+        $this->redPacketCalls[] = ['query', $mchBillNo];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -122,6 +158,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('transgw', TransferCapableFakeGateway::class);
         Pay::registerConfig('transgw', []);
+
+        GatewayFactory::register('redgw', RedPacketCapableFakeGateway::class);
+        Pay::registerConfig('redgw', []);
     }
 
     protected function tearDown(): void
@@ -130,6 +169,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('fakechan');
         GatewayFactory::unregister('profitgw');
         GatewayFactory::unregister('transgw');
+        GatewayFactory::unregister('redgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -292,5 +332,39 @@ class PayDispatchTest extends TestCase
         $gateway = Pay::gateway('transgw');
         $this->assertSame('query', $gateway->transferCalls[0][0]);
         $this->assertSame('T1', $gateway->transferCalls[0][1]);
+    }
+
+    /**
+     * 统一红包发放入口 redPacketSend 派发到网关原生 sendRedPacket
+     */
+    public function testRedPacketSendUnifiedEntry(): void
+    {
+        $result = Pay::redPacketSend('redgw', [
+            'mch_billno' => 'REDPACK_1',
+            'send_name' => '某某公司',
+            're_openid' => 'oXxx',
+            'total_amount' => 100,
+            'wishing' => '恭喜发财',
+            'act_name' => '新年活动',
+            'remark' => '参与活动领取红包',
+        ]);
+
+        $this->assertSame(['ok' => true, 'mch_billno' => 'REDPACK_1'], $result);
+
+        $gateway = Pay::gateway('redgw');
+        $this->assertSame('send', $gateway->redPacketCalls[0][0]);
+        $this->assertSame('REDPACK_1', $gateway->redPacketCalls[0][1]['mch_billno']);
+    }
+
+    /**
+     * 统一红包查询入口 redPacketQuery 派发到网关原生 queryRedPacket
+     */
+    public function testRedPacketQueryUnifiedEntry(): void
+    {
+        Pay::redPacketQuery('redgw', 'REDPACK_1');
+
+        $gateway = Pay::gateway('redgw');
+        $this->assertSame('query', $gateway->redPacketCalls[0][0]);
+        $this->assertSame('REDPACK_1', $gateway->redPacketCalls[0][1]);
     }
 }

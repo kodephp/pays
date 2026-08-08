@@ -521,6 +521,48 @@ class Pay
     }
 
     /**
+     * 统一发放普通红包
+     *
+     * 经统一入口动态派发到目标网关的 `sendRedPacket` 特色方法，
+     * 支持微信支付、支付宝等已接入红包能力的平台。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 红包参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function redPacketSend(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'sendRedPacket', $params);
+    }
+
+    /**
+     * 统一发放裂变红包（群红包）
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 裂变红包参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function redPacketGroup(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'groupRedPacket', $params);
+    }
+
+    /**
+     * 统一查询红包发放记录
+     *
+     * @param string $gateway 网关标识
+     * @param string $mchBillNo 商户红包单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function redPacketQuery(string $gateway, string $mchBillNo): array
+    {
+        return self::call($gateway, 'queryRedPacket', $mchBillNo);
+    }
+
+    /**
      * 统一异步通知校验（安全入口）
      *
      * 先经过 {@see NotifyGuard} 做通用安全过滤（签名字段、防重放等），

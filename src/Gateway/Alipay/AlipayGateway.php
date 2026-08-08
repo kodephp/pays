@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Alipay;
 
+use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -14,7 +15,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -294,6 +295,86 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface
         $bizContent = ['out_biz_no' => $outBizNo];
 
         $requestParams = $this->buildRequestParams('alipay.fund.trans.invoice.query', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 发放普通现金红包
+     *
+     * 复用网关 {@see buildRequestParams()} 进行标准签名，金额单位为分。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function sendRedPacket(array $params): array
+    {
+        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+
+        $bizContent = [
+            'out_order_no' => $params['mch_billno'],
+            'out_request_no' => $params['mch_billno'],
+            'order_title' => $params['act_name'],
+            'amount' => number_format($params['total_amount'] / 100, 2),
+            'payer_user_id' => $this->getConfig('app_id'),
+            'payee_user_id' => $params['re_openid'],
+            'remark' => $params['remark'],
+            'business_params' => json_encode(['sub_biz_scene' => 'CUSTOMIZED'], JSON_UNESCAPED_UNICODE),
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.coupon.order.app.pay', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 发放群红包（裂变红包）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function groupRedPacket(array $params): array
+    {
+        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+
+        if ((int) $params['total_num'] < 3) {
+            throw PayException::paramError('裂变红包 total_num 必须 >= 3');
+        }
+
+        $bizContent = [
+            'out_order_no' => $params['mch_billno'],
+            'out_request_no' => $params['mch_billno'],
+            'order_title' => $params['act_name'],
+            'amount' => number_format($params['total_amount'] / 100, 2),
+            'payer_user_id' => $this->getConfig('app_id'),
+            'payee_user_id' => $params['re_openid'],
+            'remark' => $params['remark'],
+            'business_params' => json_encode([
+                'sub_biz_scene' => 'GROUP_RED_PACKET',
+                'total_num' => (int) $params['total_num'],
+            ], JSON_UNESCAPED_UNICODE),
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.coupon.order.app.pay', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 查询红包发放记录
+     *
+     * @return array<string, mixed>
+     */
+    public function queryRedPacket(string $mchBillNo): array
+    {
+        $bizContent = [
+            'out_order_no' => $mchBillNo,
+            'out_request_no' => $mchBillNo,
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.coupon.order.query', $bizContent);
 
         return $this->post('', $requestParams);
     }

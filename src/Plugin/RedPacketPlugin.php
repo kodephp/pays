@@ -6,18 +6,24 @@ namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 红包插件
  *
- * 为支持红包/现金红包的网关提供统一的红包发放管理能力。
+ * 为支持红包 / 现金红包的网关提供统一的红包发放管理能力。
  * 支持普通红包、裂变红包、查询红包记录。
  *
- * 支持网关：
- * - 微信支付（现金红包、裂变红包）
- * - 支付宝（商家红包、现金红包）
+ * 架构说明（对齐「统一入口」设计）：
+ * 各平台的红包逻辑已下沉到各自的网关类内部，实现 {@see RedPacketCapableInterface}
+ * （微信支付、支付宝均已实现）。本插件只做「参数校验 + 类型安全转发」，不重复承载
+ * 平台组装逻辑，保证单一职责：
+ * - 校验通过后，经 {@see forwardToCapableGateway()} 调用网关原生方法；
+ * - 网关未实现 {@see RedPacketCapableInterface}（或不支持某方法）时，统一抛「无此方法」。
+ *
+ * 支持网关：微信支付、支付宝。
  *
  * 使用示例：
  * ```php
@@ -49,6 +55,8 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  *
  * // 查询红包记录
  * $result = $plugin->query('REDPACK_20240425000001');
+ *
+ * // 统一入口亦可：Pay::redPacketSend('wechat', [...])
  * ```
  */
 class RedPacketPlugin
@@ -65,7 +73,7 @@ class RedPacketPlugin
     /**
      * 构造函数
      *
-     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需继承 AbstractGateway）
+     * @param GatewayInterface&HttpCapableInterface $gateway 支付网关（需实现 RedPacketCapableInterface）
      */
     public function __construct(GatewayInterface $gateway)
     {
@@ -86,7 +94,6 @@ class RedPacketPlugin
      *        - wishing: 红包祝福语
      *        - act_name: 活动名称
      *        - remark: 备注
-     *        - scene_id: 场景 ID（可选，PRODUCT_1~PRODUCT_8）
      * @return array<string, mixed> 发放结果
      * @throws PayException
      */
@@ -94,11 +101,7 @@ class RedPacketPlugin
     {
         $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->sendWechatRedPacket($params),
-            'alipay' => $this->sendAlipayRedPacket($params),
-            default => throw PayException::invalidArgument('当前网关不支持红包功能'),
-        };
+        return $this->forwardToCapableGateway('sendRedPacket', $params);
     }
 
     /**
@@ -120,15 +123,7 @@ class RedPacketPlugin
     {
         $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
 
-        if ((int) $params['total_num'] < 3) {
-            throw PayException::paramError('裂变红包 total_num 必须 >= 3');
-        }
-
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->sendWechatGroupRedPacket($params),
-            'alipay' => $this->sendAlipayGroupRedPacket($params),
-            default => throw PayException::invalidArgument('当前网关不支持裂变红包'),
-        };
+        return $this->forwardToCapableGateway('groupRedPacket', $params);
     }
 
     /**
@@ -140,153 +135,40 @@ class RedPacketPlugin
      */
     public function query(string $mchBillNo): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->queryWechatRedPacket($mchBillNo),
-            'alipay' => $this->queryAlipayRedPacket($mchBillNo),
-            default => throw PayException::invalidArgument('当前网关不支持红包查询'),
-        };
-    }
-
-    /* ==================== 微信红包实现 ==================== */
-
-    /**
-     * 微信发放普通红包
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function sendWechatRedPacket(array $params): array
-    {
-        $requestData = [
-            'nonce_str' => $this->generateNonceStr(),
-            'mch_billno' => $params['mch_billno'],
-            'mch_id' => $this->getGatewayConfig('mch_id'),
-            'wxappid' => $this->getGatewayConfig('app_id'),
-            'send_name' => $params['send_name'],
-            're_openid' => $params['re_openid'],
-            'total_amount' => (int) $params['total_amount'],
-            'total_num' => (int) ($params['total_num'] ?? 1),
-            'wishing' => $params['wishing'],
-            'client_ip' => $params['client_ip'] ?? '127.0.0.1',
-            'act_name' => $params['act_name'],
-            'remark' => $params['remark'],
-            'scene_id' => $params['scene_id'] ?? '',
-        ];
-
-        return $this->gateway->post('mmpaymkttransfers/sendredpack', $requestData);
+        return $this->forwardToCapableGateway('queryRedPacket', $mchBillNo);
     }
 
     /**
-     * 微信发放裂变红包
+     * 类型安全转发到支持红包的网关原生方法
      *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function sendWechatGroupRedPacket(array $params): array
-    {
-        $requestData = [
-            'nonce_str' => $this->generateNonceStr(),
-            'mch_billno' => $params['mch_billno'],
-            'mch_id' => $this->getGatewayConfig('mch_id'),
-            'wxappid' => $this->getGatewayConfig('app_id'),
-            'send_name' => $params['send_name'],
-            're_openid' => $params['re_openid'],
-            'total_amount' => (int) $params['total_amount'],
-            'total_num' => (int) $params['total_num'],
-            'amt_type' => 'ALL_RAND',
-            'wishing' => $params['wishing'],
-            'act_name' => $params['act_name'],
-            'remark' => $params['remark'],
-            'scene_id' => $params['scene_id'] ?? '',
-        ];
-
-        return $this->gateway->post('mmpaymkttransfers/sendgroupredpack', $requestData);
-    }
-
-    /**
-     * 查询微信红包记录
+     * 微信 / 支付宝的「红包」是其各自网关类内部实现的特色方法
+     * （声明了 {@see RedPacketCapableInterface}）。插件在此只做校验与转发，不重复承载
+     * 平台组装逻辑。网关不支持某方法时抛 {@see PayException::methodNotSupported}（无此方法）。
      *
+     * @param string $method 网关原生红包方法名
+     * @param mixed ...$args 透传参数
      * @return array<string, mixed>
-     */
-    protected function queryWechatRedPacket(string $mchBillNo): array
-    {
-        return $this->gateway->post('mmpaymkttransfers/gethbinfo', [
-            'nonce_str' => $this->generateNonceStr(),
-            'mch_billno' => $mchBillNo,
-            'mch_id' => $this->getGatewayConfig('mch_id'),
-            'appid' => $this->getGatewayConfig('app_id'),
-            'bill_type' => 'MCHT',
-        ]);
-    }
-
-    /* ==================== 支付宝红包实现 ==================== */
-
-    /**
-     * 支付宝发放普通红包
+     * @throws PayException 当网关未实现红包能力接口或不支持该方法时
      *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
+     * @phpstan-assert RedPacketCapableInterface $this->gateway
      */
-    protected function sendAlipayRedPacket(array $params): array
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
     {
-        return $this->gateway->post('', [
-            'method' => 'alipay.fund.coupon.order.app.pay',
-            'biz_content' => json_encode([
-                'out_order_no' => $params['mch_billno'],
-                'out_request_no' => $params['mch_billno'],
-                'order_title' => $params['act_name'],
-                'amount' => number_format($params['total_amount'] / 100, 2),
-                'payer_user_id' => $this->getGatewayConfig('app_id'),
-                'payee_user_id' => $params['re_openid'],
-                'remark' => $params['remark'],
-                'business_params' => json_encode(['sub_biz_scene' => 'CUSTOMIZED']),
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
+        if (!$this->gateway instanceof RedPacketCapableInterface) {
+            throw PayException::invalidArgument(
+                sprintf('网关 %s 未实现红包能力接口（RedPacketCapableInterface）', $this->gateway::getName()),
+            );
+        }
 
-    /**
-     * 支付宝发放群红包（裂变红包）
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function sendAlipayGroupRedPacket(array $params): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.fund.coupon.order.app.pay',
-            'biz_content' => json_encode([
-                'out_order_no' => $params['mch_billno'],
-                'out_request_no' => $params['mch_billno'],
-                'order_title' => $params['act_name'],
-                'amount' => number_format($params['total_amount'] / 100, 2),
-                'payer_user_id' => $this->getGatewayConfig('app_id'),
-                'payee_user_id' => $params['re_openid'],
-                'remark' => $params['remark'],
-                'business_params' => json_encode([
-                    'sub_biz_scene' => 'GROUP_RED_PACKET',
-                    'total_num' => (int) $params['total_num'],
-                ]),
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
 
-    /**
-     * 查询支付宝红包记录
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryAlipayRedPacket(string $mchBillNo): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.fund.coupon.order.query',
-            'biz_content' => json_encode([
-                'out_order_no' => $mchBillNo,
-                'out_request_no' => $mchBillNo,
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
+        /** @var RedPacketCapableInterface $gateway */
+        $gateway = $this->gateway;
 
-    /* ==================== 通用工具方法 ==================== */
+        return $gateway->$method(...$args);
+    }
 
     /**
      * 验证必填参数
@@ -302,35 +184,5 @@ class RedPacketPlugin
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
-    }
-
-    /**
-     * 获取网关配置项
-     *
-     * @param string $key 配置键
-     * @param mixed $default 默认值
-     * @return mixed
-     */
-    protected function getGatewayConfig(string $key, mixed $default = null): mixed
-    {
-        $reflection = new \ReflectionClass($this->gateway);
-
-        if ($reflection->hasProperty('config')) {
-            $property = $reflection->getProperty('config');
-            $property->setAccessible(true);
-            $config = $property->getValue($this->gateway);
-
-            return $config[$key] ?? $default;
-        }
-
-        return $default;
-    }
-
-    /**
-     * 生成随机字符串
-     */
-    protected function generateNonceStr(int $length = 32): string
-    {
-        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

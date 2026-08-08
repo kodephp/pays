@@ -248,11 +248,12 @@ $result = $plugin->cancel('REFUND_20240425000001');
 
 ## 红包插件 (RedPacketPlugin)
 
-支持微信、支付宝的红包能力（裂变红包仅微信支持）。
+支持微信、支付宝的红包能力（普通红包 / 裂变(群)红包 / 查询）。红包逻辑已下沉到各网关原生方法，
+`RedPacketPlugin` 只做「参数校验 + 类型安全转发」，不重复承载平台组装逻辑。
 
 ### 配置
 
-微信红包需开通现金红包产品权限；支付宝需开通红包营销能力。
+微信红包需开通现金红包产品权限；支付宝需开通红包营销能力。网关需声明 `RedPacketCapableInterface`。
 
 ### 使用示例
 
@@ -283,7 +284,7 @@ $result = $plugin->send([
     'scene_id'     => 'PRODUCT_1',  // 可选
 ]);
 
-// 发放裂变红包（群发，用户分享后好友可领）
+// 发放裂变红包（群发，用户分享后好友可领；微信要求 total_num >= 3）
 $result = $plugin->group([
     'mch_billno'   => 'GROUP_' . date('YmdHis'),
     'send_name'    => '某某公司',
@@ -299,12 +300,23 @@ $result = $plugin->group([
 $result = $plugin->query('REDPACK_20240425000001');
 ```
 
+### 统一入口（等价写法）
+
+上述能力同样可由 `Pay` 门面统一派发（内部经 `Pay::call` 调用网关原生红包方法）：
+
+```php
+Pay::redPacketSend('wechat', [/* 同 send 参数 */]);
+Pay::redPacketGroup('alipay', [/* 同 group 参数 */]);
+Pay::redPacketQuery('wechat', 'REDPACK_20240425000001');
+```
+
 ### 注意事项
 
 - 单个红包金额范围：1 元 - 200 元
-- 裂变红包 `total_num` 不能超过 100
+- 裂变(群)红包 `total_num` 微信要求 `>= 3`；支付宝对应 `GROUP_RED_PACKET` 场景
 - 红包发放后 24 小时内未领取会自动退回商户账户
-- 建议配合 `FundConstraintValidator` 的红包约束（`setRedPacketConstraints`）做风控
+- 网关未实现 `RedPacketCapableInterface` 时调用会报「无此方法」
+- 微信现金红包投产前请接入 `Signer::md5` 与 `arrayToXml`（详见 docs/red-packet.md）
 
 ## 订阅插件 (SubscriptionPlugin)
 

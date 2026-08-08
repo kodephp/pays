@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Wechat;
 
+use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -14,7 +15,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -272,6 +273,92 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             "v3/transfer/batches/out-batch-no/{$outBizNo}"
             . "/details/out-detail-no/{$outBizNo}/electronic-receipt",
         );
+    }
+
+    /**
+     * 发放普通现金红包
+     *
+     * 组装现金红包请求并复用基类 HTTP 通道。金额单位为分。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function sendRedPacket(array $params): array
+    {
+        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+
+        $requestData = [
+            'nonce_str' => $this->generateNonceStr(),
+            'mch_billno' => $params['mch_billno'],
+            'mch_id' => $this->getConfig('mch_id'),
+            'wxappid' => $this->getConfig('app_id'),
+            'send_name' => $params['send_name'],
+            're_openid' => $params['re_openid'],
+            'total_amount' => (int) $params['total_amount'],
+            'total_num' => (int) ($params['total_num'] ?? 1),
+            'wishing' => $params['wishing'],
+            'client_ip' => $params['client_ip'] ?? '127.0.0.1',
+            'act_name' => $params['act_name'],
+            'remark' => $params['remark'],
+            'scene_id' => $params['scene_id'] ?? '',
+        ];
+
+        // 注：现金红包接口实际需 XML + MD5 签名，此处沿用既有插件构造，
+        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
+        return $this->post('mmpaymkttransfers/sendredpack', $requestData);
+    }
+
+    /**
+     * 发放裂变红包（群红包）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function groupRedPacket(array $params): array
+    {
+        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+
+        if ((int) $params['total_num'] < 3) {
+            throw PayException::paramError('裂变红包 total_num 必须 >= 3');
+        }
+
+        $requestData = [
+            'nonce_str' => $this->generateNonceStr(),
+            'mch_billno' => $params['mch_billno'],
+            'mch_id' => $this->getConfig('mch_id'),
+            'wxappid' => $this->getConfig('app_id'),
+            'send_name' => $params['send_name'],
+            're_openid' => $params['re_openid'],
+            'total_amount' => (int) $params['total_amount'],
+            'total_num' => (int) $params['total_num'],
+            'amt_type' => 'ALL_RAND',
+            'wishing' => $params['wishing'],
+            'act_name' => $params['act_name'],
+            'remark' => $params['remark'],
+            'scene_id' => $params['scene_id'] ?? '',
+        ];
+
+        // 注：裂变红包接口实际需 XML + MD5 签名，此处沿用既有插件构造，
+        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
+        return $this->post('mmpaymkttransfers/sendgroupredpack', $requestData);
+    }
+
+    /**
+     * 查询红包发放记录
+     *
+     * @return array<string, mixed>
+     */
+    public function queryRedPacket(string $mchBillNo): array
+    {
+        return $this->post('mmpaymkttransfers/gethbinfo', [
+            'nonce_str' => $this->generateNonceStr(),
+            'mch_billno' => $mchBillNo,
+            'mch_id' => $this->getConfig('mch_id'),
+            'appid' => $this->getConfig('app_id'),
+            'bill_type' => 'MCHT',
+        ]);
     }
 
     /**

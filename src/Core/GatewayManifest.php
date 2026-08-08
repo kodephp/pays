@@ -470,7 +470,6 @@ class GatewayManifest
         $domesticFeatures = [
             self::CAP_PROFIT_SHARING => true,
             self::CAP_QR => true,
-            self::CAP_RED_PACKET => true,
             self::CAP_WEBHOOK => true,
         ];
 
@@ -481,6 +480,7 @@ class GatewayManifest
                 'signature' => self::SIGN_MD5,
                 'capabilities' => array_merge($domesticFeatures, [
                     self::CAP_TRANSFER => true,
+                    self::CAP_RED_PACKET => true,
                 ]),
             ],
             'alipay' => [
@@ -489,6 +489,7 @@ class GatewayManifest
                 'signature' => self::SIGN_RSA2,
                 'capabilities' => array_merge($domesticFeatures, [
                     self::CAP_TRANSFER => true,
+                    self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
                 ]),
             ],

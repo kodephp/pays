@@ -132,6 +132,31 @@ Pay::call('wechat', 'singleTransfer', $params);
 > `batchTransfer` / `queryTransfer` / `transferReceipt`）。`Pay::call()` 缺方法时仍抛「无此方法」；
 > 例如 `Pay::transferReceipt('stripe', $no)` 会因 Stripe 不提供电子回单而报「无此方法」。
 
+红包 / 现金红包同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的红包特色方法）：
+
+```php
+// 统一发放普通红包（微信 / 支付宝已接入红包能力的平台）
+Pay::redPacketSend('wechat', [
+    'mch_billno'   => 'REDPACK_' . date('YmdHis'),
+    'send_name'    => '某某公司',
+    're_openid'    => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o',
+    'total_amount' => 100,            // 微信 / 支付宝单位为分
+    'total_num'    => 1,
+    'wishing'      => '恭喜发财',
+    'act_name'     => '新年活动',
+    'remark'       => '参与活动领取红包',
+]);
+Pay::redPacketGroup('alipay', [/* mch_billno + total_num >= 3 + ... */]);
+Pay::redPacketQuery('wechat', 'REDPACK_20240425000001');
+
+// 等价写法：直接用 call 派发网关原生红包方法
+Pay::call('wechat', 'sendRedPacket', $params);
+```
+
+> 红包逻辑下沉到各网关类内部，声明 `RedPacketCapableInterface`（`sendRedPacket` /
+> `groupRedPacket` / `queryRedPacket`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如未实现 `RedPacketCapableInterface` 的平台（如 unionpay / douyin）调用红包入口会报「无此方法」。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php
