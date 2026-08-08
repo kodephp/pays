@@ -482,11 +482,16 @@ if ($diff['is_consistent']) {
 
 支持微信、支付宝、Stripe 的个人收款码、查询记录、提现到银行卡。
 
+> 架构说明：个人收款能力已下沉到各网关原生方法（网关声明 `PersonalReceiveCapableInterface`），
+> 本插件仅做「参数校验 + 类型安全转发」，不再承载平台组装逻辑。Stripe 未提供提现能力，
+> 调用 `withdraw` / `queryWithdraw` 会明确报「无此方法」。完整设计见
+> [个人收款能力设计](personal-receive.md)。
+
 ### 配置
 
-无需额外配置。提现需配置实名信息与银行卡。
+无需额外配置。提现需配置实名信息与银行卡（微信提现需 `bank_public_key` 做 RSA 加密）。
 
-### 使用示例
+### 使用示例（插件）
 
 ```php
 <?php
@@ -510,13 +515,13 @@ $result = $plugin->createQrCode([
 ]);
 
 // 查询收款记录
-$records = $plugin->queryRecords([
+$plugin->queryRecords([
     'start_time' => '2024-04-01 00:00:00',
     'end_time'   => '2024-04-25 23:59:59',
 ]);
 
 // 提现到银行卡
-$result = $plugin->withdraw([
+$plugin->withdraw([
     'amount'       => 5000,
     'bank_card_no' => '622202************',
     'real_name'    => '张三',
@@ -524,7 +529,27 @@ $result = $plugin->withdraw([
 ]);
 
 // 查询提现结果
-$result = $plugin->queryWithdraw('WITHDRAW_20240425000001');
+$plugin->queryWithdraw('WITHDRAW_20240425000001');
+```
+
+### 统一入口（等价写法）
+
+```php
+// 与插件调用等价，内部经 Pay::call 派发到网关原生方法
+Pay::personalReceiveQrCode('wechat', [
+    'amount'      => 100,
+    'description' => '商品付款',
+    'attach'      => ['product_id' => '123'],
+]);
+Pay::personalReceiveWithdraw('wechat', [
+    'amount'       => 5000,
+    'bank_card_no' => '622202************',
+    'real_name'    => '张三',
+    'out_biz_no'   => 'WITHDRAW_' . date('YmdHis'),
+]);
+
+// Stripe 未实现提现能力，调用会报「无此方法」
+Pay::personalReceiveWithdraw('stripe', $params); // 抛 PayException（无此方法）
 ```
 
 ### 注意事项
@@ -533,6 +558,8 @@ $result = $plugin->queryWithdraw('WITHDRAW_20240425000001');
 - 提现到银行卡 T+1 到账，节假日顺延
 - 单笔提现金额上限 50000 元，单日累计上限 200000 元
 - 实名认证姓名必须与银行卡持卡人一致
+- 金额统一以「分」为单位传入（微信 / 支付宝）
+- 收款到账后的真伪校验 / 轮询确认 / 幂等防护由 `PersonalReceiveVerifier` 负责（见同名文档）
 
 ## 自动结算插件 (AutoSettlementPlugin)
 

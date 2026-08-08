@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Facade;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
@@ -201,6 +202,48 @@ class SubscriptionCapableFakeGateway extends FakeGateway implements Subscription
     }
 }
 
+/**
+ * 支持个人收款能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class PersonalReceiveCapableFakeGateway extends FakeGateway implements PersonalReceiveCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $receiveCalls = [];
+
+    public static function getName(): string
+    {
+        return 'recvgw';
+    }
+
+    public function createQrCode(array $params): array
+    {
+        $this->receiveCalls[] = ['createQrCode', $params];
+
+        return ['ok' => true, 'out_trade_no' => 'PERSONAL_1'];
+    }
+
+    public function queryRecords(array $params): array
+    {
+        $this->receiveCalls[] = ['queryRecords', $params];
+
+        return ['ok' => true];
+    }
+
+    public function withdraw(array $params): array
+    {
+        $this->receiveCalls[] = ['withdraw', $params];
+
+        return ['ok' => true];
+    }
+
+    public function queryWithdraw(string $outBizNo): array
+    {
+        $this->receiveCalls[] = ['queryWithdraw', $outBizNo];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -221,6 +264,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('subgw', SubscriptionCapableFakeGateway::class);
         Pay::registerConfig('subgw', []);
+
+        GatewayFactory::register('recvgw', PersonalReceiveCapableFakeGateway::class);
+        Pay::registerConfig('recvgw', []);
     }
 
     protected function tearDown(): void
@@ -231,6 +277,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('transgw');
         GatewayFactory::unregister('redgw');
         GatewayFactory::unregister('subgw');
+        GatewayFactory::unregister('recvgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -518,5 +565,66 @@ class PayDispatchTest extends TestCase
 
         // fakechan 未实现 SubscriptionCapableInterface，无 createPlan 方法
         Pay::subscriptionCreatePlan('fakechan', ['name' => 'x', 'amount' => 1, 'currency' => 'usd', 'interval' => 'month']);
+    }
+
+    /**
+     * 统一个人收款二维码入口 personalReceiveQrCode 派发到网关原生 createQrCode
+     */
+    public function testPersonalReceiveQrCodeUnifiedEntry(): void
+    {
+        $result = Pay::personalReceiveQrCode('recvgw', [
+            'amount' => 100,
+            'description' => '商品付款',
+        ]);
+
+        $this->assertSame(['ok' => true, 'out_trade_no' => 'PERSONAL_1'], $result);
+
+        $gateway = Pay::gateway('recvgw');
+        $this->assertSame('createQrCode', $gateway->receiveCalls[0][0]);
+        $this->assertSame('商品付款', $gateway->receiveCalls[0][1]['description']);
+    }
+
+    /**
+     * 统一个人收款记录查询入口 personalReceiveQueryRecords 派发到网关原生 queryRecords
+     */
+    public function testPersonalReceiveQueryRecordsUnifiedEntry(): void
+    {
+        Pay::personalReceiveQueryRecords('recvgw', [
+            'start_time' => '2024-04-01 00:00:00',
+            'end_time' => '2024-04-25 23:59:59',
+        ]);
+
+        $gateway = Pay::gateway('recvgw');
+        $this->assertSame('queryRecords', $gateway->receiveCalls[0][0]);
+        $this->assertSame('2024-04-01 00:00:00', $gateway->receiveCalls[0][1]['start_time']);
+    }
+
+    /**
+     * 统一个人收款提现入口 personalReceiveWithdraw 派发到网关原生 withdraw
+     */
+    public function testPersonalReceiveWithdrawUnifiedEntry(): void
+    {
+        Pay::personalReceiveWithdraw('recvgw', [
+            'amount' => 5000,
+            'bank_card_no' => '6222',
+            'real_name' => '张三',
+            'out_biz_no' => 'WD_1',
+        ]);
+
+        $gateway = Pay::gateway('recvgw');
+        $this->assertSame('withdraw', $gateway->receiveCalls[0][0]);
+        $this->assertSame('WD_1', $gateway->receiveCalls[0][1]['out_biz_no']);
+    }
+
+    /**
+     * 统一个人收款提现查询入口 personalReceiveQueryWithdraw 派发到网关原生 queryWithdraw
+     */
+    public function testPersonalReceiveQueryWithdrawUnifiedEntry(): void
+    {
+        Pay::personalReceiveQueryWithdraw('recvgw', 'WD_1');
+
+        $gateway = Pay::gateway('recvgw');
+        $this->assertSame('queryWithdraw', $gateway->receiveCalls[0][0]);
+        $this->assertSame('WD_1', $gateway->receiveCalls[0][1]);
     }
 }

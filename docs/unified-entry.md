@@ -183,6 +183,39 @@ Pay::call('stripe', 'createPlan', $params);
 > 例如未实现 `SubscriptionCapableInterface` 的平台调用订阅入口会报「无此方法」。详见
 > [订阅能力设计](subscription.md)。
 
+个人收款同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的个人收款特色方法）：
+
+```php
+// 统一生成个人收款码（微信 / 支付宝 / Stripe 已接入个人收款能力的平台）
+Pay::personalReceiveQrCode('wechat', [
+    'amount'      => 100,
+    'description' => '商品付款',
+    'attach'      => ['product_id' => '123'],
+]);
+Pay::personalReceiveQueryRecords('alipay', [
+    'start_time' => '2024-04-01 00:00:00',
+    'end_time'   => '2024-04-25 23:59:59',
+]);
+Pay::personalReceiveWithdraw('wechat', [
+    'amount'       => 5000,
+    'bank_card_no' => '6222************',
+    'real_name'    => '张三',
+    'out_biz_no'   => 'WITHDRAW_' . date('YmdHis'),
+]);
+Pay::personalReceiveQueryWithdraw('alipay', 'WITHDRAW_20240425000001');
+
+// 等价写法：直接用 call 派发网关原生个人收款方法
+Pay::call('wechat', 'createQrCode', $params);
+
+// Stripe 未提供提现能力，调用会报「无此方法」
+Pay::personalReceiveWithdraw('stripe', $params);
+```
+
+> 个人收款逻辑下沉到各网关类内部，声明 `PersonalReceiveCapableInterface`（`createQrCode` /
+> `queryRecords` / `withdraw` / `queryWithdraw`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如 Stripe 未实现 `withdraw` / `queryWithdraw`，调用个人收款提现入口会报「无此方法」。详见
+> [个人收款能力设计](personal-receive.md)。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php

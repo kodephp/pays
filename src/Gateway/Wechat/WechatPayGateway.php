@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Wechat;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -15,7 +16,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -359,6 +360,128 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'appid' => $this->getConfig('app_id'),
             'bill_type' => 'MCHT',
         ]);
+    }
+
+    /**
+     * 生成个人收款二维码（NATIVE 扫码支付）
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $outTradeNo = 'PERSONAL_' . date('YmdHis') . random_int(1000, 9999);
+
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'body' => $params['description'],
+            'out_trade_no' => $outTradeNo,
+            'total_fee' => (int) $params['amount'],
+            'spbill_create_ip' => $params['client_ip'] ?? '127.0.0.1',
+            'notify_url' => $params['notify_url'] ?? '',
+            'trade_type' => 'NATIVE',
+            'product_id' => $params['product_id'] ?? 'PERSONAL_PAY',
+            'attach' => !empty($params['attach']) ? json_encode($params['attach'], JSON_UNESCAPED_UNICODE) : '',
+        ];
+
+        if (!empty($params['expire_seconds'])) {
+            $requestData['time_expire'] = date('YmdHis', time() + (int) $params['expire_seconds']);
+        }
+
+        // 注：unifiedorder 接口实际需 XML + MD5 签名，此处沿用既有插件构造，
+        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
+        $response = $this->post('pay/unifiedorder', $requestData);
+
+        return [
+            'out_trade_no' => $outTradeNo,
+            'code_url' => $response['code_url'] ?? '',
+            'prepay_id' => $response['prepay_id'] ?? '',
+            'amount' => $params['amount'],
+            'description' => $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录
+     *
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryRecords(array $params): array
+    {
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'bill_date' => date('Ymd', strtotime($params['start_time'] ?? 'today')),
+            'bill_type' => 'ALL',
+        ];
+
+        return $this->post('pay/downloadbill', $requestData);
+    }
+
+    /**
+     * 提现到银行卡（企业付款到银行卡）
+     *
+     * @param array<string, mixed> $params 提现参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function withdraw(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'bank_card_no', 'real_name', 'out_biz_no']);
+
+        return $this->post('mmpaymkttransfers/pay_bank', [
+            'mch_id' => $this->getConfig('mch_id'),
+            'partner_trade_no' => $params['out_biz_no'],
+            'nonce_str' => $this->generateNonceStr(),
+            'enc_bank_no' => $this->encryptBankCard($params['bank_card_no']),
+            'enc_true_name' => $this->encryptBankCard($params['real_name']),
+            'bank_code' => $params['bank_code'] ?? '',
+            'amount' => (int) $params['amount'],
+            'desc' => $params['description'] ?? '个人提现',
+        ]);
+    }
+
+    /**
+     * 查询提现结果
+     *
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryWithdraw(string $outBizNo): array
+    {
+        return $this->post('mmpaymkttransfers/query_bank', [
+            'mch_id' => $this->getConfig('mch_id'),
+            'partner_trade_no' => $outBizNo,
+            'nonce_str' => $this->generateNonceStr(),
+        ]);
+    }
+
+    /**
+     * 加密银行卡/姓名信息（微信支付要求 RSA 加密）
+     *
+     * @param string $data 待加密数据
+     * @return string Base64 编码的密文
+     */
+    protected function encryptBankCard(string $data): string
+    {
+        $publicKey = $this->getConfig('bank_public_key');
+
+        if (empty($publicKey)) {
+            return base64_encode($data);
+        }
+
+        openssl_public_encrypt($data, $encrypted, $publicKey, OPENSSL_PKCS1_OAEP_PADDING);
+
+        return base64_encode($encrypted);
     }
 
     /**

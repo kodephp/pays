@@ -145,6 +145,11 @@ class GatewayManifest
     public const CAP_RED_PACKET = 'red_packet';
 
     /**
+     * 能力：个人收款（收款码 / 记录查询 / 提现）
+     */
+    public const CAP_PERSONAL_RECEIVE = 'personal_receive';
+
+    /**
      * 能力：Webhook 事件订阅
      */
     public const CAP_WEBHOOK = 'webhook';
@@ -386,6 +391,7 @@ class GatewayManifest
             self::CAP_RECONCILIATION => false,
             self::CAP_QR => false,
             self::CAP_RED_PACKET => false,
+            self::CAP_PERSONAL_RECEIVE => false,
             self::CAP_WEBHOOK => false,
         ];
     }
@@ -481,6 +487,7 @@ class GatewayManifest
                 'capabilities' => array_merge($domesticFeatures, [
                     self::CAP_TRANSFER => true,
                     self::CAP_RED_PACKET => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
                 ]),
             ],
             'alipay' => [
@@ -491,6 +498,7 @@ class GatewayManifest
                     self::CAP_TRANSFER => true,
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
                 ]),
             ],
             'wechat_v3' => [
@@ -548,6 +556,7 @@ class GatewayManifest
                     self::CAP_TRANSFER => true,
                     self::CAP_WEBHOOK => true,
                     self::CAP_QR => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
                 ],
             ],
             'square' => [

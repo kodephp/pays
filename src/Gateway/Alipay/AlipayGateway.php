@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Alipay;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -15,7 +16,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -375,6 +376,108 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
         ];
 
         $requestParams = $this->buildRequestParams('alipay.fund.coupon.order.query', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 生成个人收款码（当面付扫码）
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $outTradeNo = 'PERSONAL_' . date('YmdHis') . random_int(1000, 9999);
+
+        $bizContent = [
+            'out_trade_no' => $outTradeNo,
+            'total_amount' => number_format($params['amount'] / 100, 2),
+            'subject' => $params['description'],
+            'body' => !empty($params['attach']) ? json_encode($params['attach'], JSON_UNESCAPED_UNICODE) : '',
+            'timeout_express' => isset($params['expire_seconds']) ? ($params['expire_seconds'] . 's') : '30m',
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.trade.precreate', $bizContent);
+
+        $response = $this->post('', $requestParams);
+
+        return [
+            'out_trade_no' => $outTradeNo,
+            'qr_code' => $response['qr_code'] ?? '',
+            'amount' => $params['amount'],
+            'description' => $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录
+     *
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryRecords(array $params): array
+    {
+        $bizContent = [
+            'start_time' => $params['start_time'] ?? '',
+            'end_time' => $params['end_time'] ?? '',
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.trade.query', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 提现到银行卡（转账到银行卡）
+     *
+     * @param array<string, mixed> $params 提现参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function withdraw(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'bank_card_no', 'real_name', 'out_biz_no']);
+
+        $bizContent = [
+            'out_biz_no' => $params['out_biz_no'],
+            'trans_amount' => number_format($params['amount'] / 100, 2),
+            'product_code' => 'TRANS_BANKCARD_NO_PWD',
+            'biz_scene' => 'DIRECT_TRANSFER',
+            'order_title' => '个人提现',
+            'payee_info' => [
+                'identity_type' => 'BANKCARD_ACCOUNT',
+                'identity' => $params['bank_card_no'],
+                'name' => $params['real_name'],
+                'bank_code' => $params['bank_code'] ?? '',
+            ],
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.uni.transfer', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 查询提现结果
+     *
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryWithdraw(string $outBizNo): array
+    {
+        $bizContent = [
+            'product_code' => 'TRANS_BANKCARD_NO_PWD',
+            'biz_scene' => 'DIRECT_TRANSFER',
+            'out_biz_no' => $outBizNo,
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.fund.trans.common.query', $bizContent);
 
         return $this->post('', $requestParams);
     }

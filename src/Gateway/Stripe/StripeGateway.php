@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Stripe;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -15,7 +16,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -423,6 +424,82 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
     public function getSubscription(string $subscriptionId): array
     {
         return $this->get("v1/subscriptions/{$subscriptionId}", [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 创建个人收款 Payment Link
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $price = $this->post('v1/prices', [
+            'unit_amount' => (int) $params['amount'],
+            'currency' => strtolower($params['currency'] ?? 'usd'),
+            'product_data' => [
+                'name' => $params['description'],
+            ],
+        ], $this->buildAuthHeaders());
+
+        $link = $this->post('v1/payment_links', [
+            'line_items' => [
+                ['price' => $price['id'], 'quantity' => 1],
+            ],
+            'metadata' => array_merge(
+                $params['attach'] ?? [],
+                ['out_trade_no' => 'PERSONAL_' . date('YmdHis')]
+            ),
+        ], $this->buildAuthHeaders());
+
+        return [
+            'out_trade_no' => $link['metadata']['out_trade_no'] ?? '',
+            'payment_link' => $link['url'] ?? '',
+            'amount' => $params['amount'],
+            'description' => $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录
+     *
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryRecords(array $params): array
+    {
+        $startTime = strtotime($params['start_time'] ?? '-30 days');
+        $endTime = strtotime($params['end_time'] ?? 'now');
+
+        return $this->get('v1/payment_intents', [
+            'created[gte]' => $startTime,
+            'created[lte]' => $endTime,
+            'limit' => $params['limit'] ?? 100,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 提现到银行卡（Stripe 不支持个人收款提现）
+     *
+     * @throws PayException
+     */
+    public function withdraw(array $params): array
+    {
+        throw PayException::methodNotSupported('stripe', 'withdraw');
+    }
+
+    /**
+     * 查询提现结果（Stripe 不支持个人收款提现）
+     *
+     * @throws PayException
+     */
+    public function queryWithdraw(string $outBizNo): array
+    {
+        throw PayException::methodNotSupported('stripe', 'queryWithdraw');
     }
 
     /**

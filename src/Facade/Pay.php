@@ -644,6 +644,56 @@ class Pay
     }
 
     /**
+     * 统一个人收款二维码入口
+     *
+     * 经 {@see self::call()} 派发到网关原生方法；网关未实现个人收款能力时抛「无此方法」。
+     *
+     * @param string $gateway 网关标识（如 wechat / alipay / stripe）
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     */
+    public static function personalReceiveQrCode(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createQrCode', $params);
+    }
+
+    /**
+     * 统一个人收款记录查询入口
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     */
+    public static function personalReceiveQueryRecords(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'queryRecords', $params);
+    }
+
+    /**
+     * 统一个人收款提现入口
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 提现参数
+     * @return array<string, mixed>
+     */
+    public static function personalReceiveWithdraw(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'withdraw', $params);
+    }
+
+    /**
+     * 统一个人收款提现查询入口
+     *
+     * @param string $gateway 网关标识
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     */
+    public static function personalReceiveQueryWithdraw(string $gateway, string $outBizNo): array
+    {
+        return self::call($gateway, 'queryWithdraw', $outBizNo);
+    }
+
+    /**
      * 统一异步通知校验（安全入口）
      *
      * 先经过 {@see NotifyGuard} 做通用安全过滤（签名字段、防重放等），
