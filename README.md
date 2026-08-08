@@ -17,6 +17,8 @@ Kode Pays 是一个面向 PHP 8.3+ 的企业级多平台聚合支付 SDK，支�
 - **响应类型化访问器**：`PayResponse` 直接提供 `getAmountMoney()` / `getCurrencyEnum()` / `getTradeTypeEnum()` 等类型安全访问器，免去手工解析与币种换算
 - **分账能力完善**：`ProfitSharingPlugin` 提供微信/支付宝/Stripe 的完整分账 API 集合（增删接收方、分账、回退、查询、配置查询、解冻），配套 `Receiver` 值对象（Money 承载金额）与 `Result` 归一化结果
 - **统一收款码**：`UnifiedQrRouter` 一码聚合多支付通道，`QrEntry` 不可变值对象承载入口（状态机 pending→ordered→paid/closed）、`PayResponse::getQrContent()` 归一化各网关二维码字段（qr_code/code_url/payment_link/pay_url）
+- **统一入口与平台清单**：`GatewayManifest` 把各平台「域名、签名方案、能力开关、区域」集中声明到一个 registry，调用方只查清单即可；`Pay::call($gateway, $method, ...)` 一个方法即可调用任意已接入平台的任意方法（含各平台特色方法），`Pay::extend()` 一次登记即可新增平台
+- **回调安全校验**：`NotifyGuard` 统一拦截异步通知（必填字段、签名字段、时间戳/nonce 防重放），`Pay::verify()` 先过安全校验再走平台级验签，杜绝畸形/重放数据直达业务
 - **异常细分**：6 种具体异常子类，便于精确捕获和差异化处理
 - **中文注释**：所有代码和文档均为中文，降低国内开发者学习成本
 - **生态兼容**：预留 kode 系列扩展点（二维码、协程、缓存、数据库等）
@@ -97,6 +99,69 @@ $result = $wechat->createOrder([
 
 // 获取支付二维码链接
 $codeUrl = $result['code_url'] ?? '';
+```
+
+### 统一入口：一个方法调用任意平台
+
+不论接入的是哪个平台、调用的是标准方法还是各平台「特色方法」，都可以通过统一入口 `Pay::call()` 完成，无需关心具体网关类：
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+
+// 1) 统一下单：标准方法也能用一个入口发起
+$result = Pay::call('wechat', 'createOrder', [
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_fee'    => 100,
+    'body'         => '测试商品',
+    'trade_type'   => 'NATIVE',
+]);
+
+// 2) 语义化快捷方法（等价于 call）
+$result = Pay::createOrder('alipay', [/* ... */]);
+$result = Pay::refund('wechat', [/* ... */]);
+
+// 3) 各平台「特色方法」同样可直接调用
+$result = Pay::call('wechat', 'someWechatSpecificMethod', $arg1, $arg2);
+
+// 4) 拿到强类型实例，自由调用
+$wechat = Pay::gateway('wechat', $config);
+$wechat->createOrder([/* ... */]);
+
+// 5) 安全校验回调（先过 NotifyGuard 再走平台级验签）
+$ok = Pay::verify('wechat', $_POST, [
+    'timestamp' => (int) ($_POST['timestamp'] ?? 0),
+    'nonce'     => $_POST['nonce'] ?? null,
+    'seen_nonces' => $alreadySeenNonces, // 由调用方维护，防重放
+]);
+
+// 6) 查询平台能力 / 域名（无需创建实例）
+if (Pay::supports('wechat', \Kode\Pays\Core\GatewayManifest::CAP_PROFIT_SHARING)) {
+    // 该平台支持分账
+}
+$domain = Pay::baseUrl('wechat'); // 生产域名
+```
+
+新增一个支付平台也只需「一次登记」即可纳入统一入口：
+
+```php
+<?php
+
+use Kode\Pays\Core\GatewayManifest;
+use Kode\Pays\Facade\Pay;
+
+Pay::extend('mypay', [
+    'label'         => 'MyPay',
+    'region'        => GatewayManifest::REGION_DOMESTIC,
+    'signature'     => GatewayManifest::SIGN_MD5,
+    'base_url'      => 'https://api.mypay.com/',
+    'sandbox_url'   => 'https://sandbox.mypay.com/',
+    'capabilities'  => [GatewayManifest::CAP_PROFIT_SHARING => true],
+], MyPayGateway::class, MyPayConfig::class);
+
+// 登记后即可通过统一入口调用
+Pay::createOrder('mypay', [/* ... */]);
 ```
 
 ### 支付宝

@@ -10,26 +10,27 @@ use Kode\Pays\Core\PayException;
 use Kode\Pays\Support\HttpClient;
 
 /**
- * SDK 统一入口类
+ * SDK 统一入口类（根命名空间别名）
  *
- * 提供简洁的静态方法快速创建支付网关实例
+ * 直接继承 {@see \Kode\Pays\Facade\Pay}，因此同时具备门面类的全部能力
+ * （统一入口 call / 平台清单 manifest / 安全校验 verify / 一次扩展 extend 等），
+ * 调用方无论引用 `Kode\Pays\Pay` 还是 `Kode\Pays\Facade\Pay` 都指向同一套统一入口。
  *
  * 示例：
  * ```php
- * $gateway = Pay::create('wechat', [
- *     'app_id' => 'wx123456',
- *     'mch_id' => '1234567890',
- *     'api_key' => 'your-api-key',
- * ]);
- *
- * $result = $gateway->createOrder([
+ * // 统一入口：一个方法调用任意已接入平台
+ * $result = Pay::call('wechat', 'createOrder', [
  *     'out_trade_no' => 'ORDER_202404240001',
  *     'total_fee' => 100,
  *     'body' => '商品描述',
  * ]);
+ *
+ * // 或拿到强类型实例，调用平台特色方法
+ * $wechat = Pay::gateway('wechat', $config);
+ * $result = $wechat->createOrder([...]);
  * ```
  */
-class Pay
+class Pay extends \Kode\Pays\Facade\Pay
 {
     /**
      * 创建支付网关实例

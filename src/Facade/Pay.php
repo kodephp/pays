@@ -8,7 +8,9 @@ use Kode\Pays\Config\ConfigLoader;
 use Kode\Pays\Contract\ConfigInterface;
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Core\GatewayFactory;
+use Kode\Pays\Core\GatewayManifest;
 use Kode\Pays\Core\IdempotencyGuard;
+use Kode\Pays\Core\NotifyGuard;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\PaymentPoller;
 use Kode\Pays\Event\EventDispatcher;
@@ -277,6 +279,260 @@ class Pay
     public static function has(string $gateway): bool
     {
         return GatewayFactory::has($gateway);
+    }
+
+    /**
+     * 解析并返回强类型网关实例
+     *
+     * 优先使用预注册配置（{@see registerConfig}），其次使用传入配置；实例按标识缓存。
+     * 返回的实例可调用标准接口方法，也可直接调用该平台的「特色方法」。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed>|null $config 网关配置（可选，缺省使用预注册配置）
+     * @return GatewayInterface
+     * @throws PayException
+     */
+    public static function gateway(string $gateway, ?array $config = null): GatewayInterface
+    {
+        $cacheKey = $gateway;
+
+        if (isset(self::$gatewayCache[$cacheKey])) {
+            return self::$gatewayCache[$cacheKey];
+        }
+
+        if ($config !== null) {
+            $resolved = $config;
+        } elseif (isset(self::$configCache[$gateway])) {
+            $resolved = self::$configCache[$gateway];
+        } else {
+            throw PayException::configError(
+                "创建 {$gateway} 网关时必须传入配置参数，或先调用 Pay::registerConfig('{$gateway}', ...)",
+            );
+        }
+
+        $instance = GatewayFactory::create($gateway, $resolved, self::$httpClient);
+
+        if (self::$dispatcher !== null && method_exists($instance, 'setDispatcher')) {
+            $instance->setDispatcher(self::$dispatcher);
+        }
+
+        self::$gatewayCache[$cacheKey] = $instance;
+
+        return $instance;
+    }
+
+    /**
+     * 统一入口：调用任意已接入平台的任意方法
+     *
+     * 无论是标准接口方法（createOrder/refund/...）还是各平台「特色方法」，
+     * 均可通过本方法以统一方式调用，实现「接入哪个平台都可使用」的设计目标。
+     *
+     * @param string $gateway 网关标识
+     * @param string $method 方法名（接口方法或平台特色方法）
+     * @param mixed ...$args 方法参数
+     * @return mixed 被调用方法的返回值
+     * @throws PayException
+     */
+    public static function call(string $gateway, string $method, mixed ...$args): mixed
+    {
+        $instance = self::gateway($gateway);
+
+        if (!method_exists($instance, $method)) {
+            throw PayException::paramError("网关 {$gateway} 不支持方法：{$method}");
+        }
+
+        return $instance->$method(...$args);
+    }
+
+    /**
+     * 统一创建订单
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 订单参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function createOrder(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createOrder', $params);
+    }
+
+    /**
+     * 统一查询订单
+     *
+     * @param string $gateway 网关标识
+     * @param string $orderId 商户订单号或平台订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function queryOrder(string $gateway, string $orderId): array
+    {
+        return self::call($gateway, 'queryOrder', $orderId);
+    }
+
+    /**
+     * 统一申请退款
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 退款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function refund(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'refund', $params);
+    }
+
+    /**
+     * 统一查询退款
+     *
+     * @param string $gateway 网关标识
+     * @param string $refundId 退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function queryRefund(string $gateway, string $refundId): array
+    {
+        return self::call($gateway, 'queryRefund', $refundId);
+    }
+
+    /**
+     * 统一关闭订单
+     *
+     * @param string $gateway 网关标识
+     * @param string $orderId 商户订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function closeOrder(string $gateway, string $orderId): array
+    {
+        return self::call($gateway, 'closeOrder', $orderId);
+    }
+
+    /**
+     * 统一异步通知校验（安全入口）
+     *
+     * 先经过 {@see NotifyGuard} 做通用安全过滤（签名字段、防重放等），
+     * 再委托给对应平台的 verifyNotify 进行平台级签名验证。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $data 通知数据
+     * @param array<string, mixed> $options NotifyGuard 校验选项（见 NotifyGuard::guard）
+     * @return bool 验证结果
+     * @throws PayException
+     */
+    public static function verify(string $gateway, array $data, array $options = []): bool
+    {
+        NotifyGuard::guard($data, $options);
+
+        return self::call($gateway, 'verifyNotify', $data);
+    }
+
+    /**
+     * 一次登记新支付平台（统一扩展入口）
+     *
+     * 同时把平台元数据登记到 {@see GatewayManifest} 与 {@see GatewayFactory}，
+     * 后续即可通过统一入口直接调用，满足「后续增加新的也要增加个」的扩展诉求。
+     *
+     * @param string $name 平台标识
+     * @param array<string, mixed> $manifest 平台清单（见 GatewayManifest::register）
+     * @param class-string<GatewayInterface>|null $gatewayClass 网关实现类（可选）
+     * @param class-string<ConfigInterface>|null $configClass 配置 DTO 类（可选）
+     * @throws PayException
+     */
+    public static function extend(
+        string $name,
+        array $manifest,
+        ?string $gatewayClass = null,
+        ?string $configClass = null,
+    ): void {
+        if ($gatewayClass !== null) {
+            $manifest['gateway_class'] = $gatewayClass;
+        }
+
+        if ($configClass !== null) {
+            $manifest['config_class'] = $configClass;
+        }
+
+        GatewayManifest::register($name, $manifest);
+
+        if ($gatewayClass !== null) {
+            GatewayFactory::register($name, $gatewayClass, $configClass);
+        }
+    }
+
+    /**
+     * 获取统一平台清单（全部或指定平台）
+     *
+     * @param string|null $name 平台标识，null 表示返回全部
+     * @return array<string, mixed>|array<string, array<string, mixed>>
+     * @throws PayException
+     */
+    public static function manifest(?string $name = null): array
+    {
+        if ($name === null) {
+            return GatewayManifest::all();
+        }
+
+        return GatewayManifest::get($name);
+    }
+
+    /**
+     * 获取平台能力开关集合
+     *
+     * @param string $name 平台标识
+     * @return array<string, bool>
+     * @throws PayException
+     */
+    public static function capabilities(string $name): array
+    {
+        return GatewayManifest::capabilities($name);
+    }
+
+    /**
+     * 判断平台是否支持某项能力
+     *
+     * @param string $name 平台标识
+     * @param string $capability 能力常量（见 GatewayManifest::CAP_*）
+     * @throws PayException
+     */
+    public static function supports(string $name, string $capability): bool
+    {
+        return GatewayManifest::supports($name, $capability);
+    }
+
+    /**
+     * 获取平台基础域名
+     *
+     * @param string $name 平台标识
+     * @param bool $sandbox 是否沙箱域名
+     * @throws PayException
+     */
+    public static function baseUrl(string $name, bool $sandbox = false): string
+    {
+        return GatewayManifest::baseUrl($name, $sandbox);
+    }
+
+    /**
+     * 获取平台签名方案（提示性）
+     *
+     * @param string $name 平台标识
+     * @throws PayException
+     */
+    public static function signatureScheme(string $name): string
+    {
+        return GatewayManifest::signatureScheme($name);
+    }
+
+    /**
+     * 获取平台所属区域
+     *
+     * @param string $name 平台标识
+     * @throws PayException
+     */
+    public static function region(string $name): string
+    {
+        return GatewayManifest::region($name);
     }
 
     /**

@@ -257,6 +257,17 @@ class GatewayFactory
     }
 
     /**
+     * 获取网关对应的实现类全限定名
+     *
+     * @param string $name 网关标识
+     * @return class-string<GatewayInterface>|null
+     */
+    public static function getGatewayClass(string $name): ?string
+    {
+        return self::$gateways[$name] ?? null;
+    }
+
+    /**
      * 将配置 DTO 转换为数组
      *
      * @param ConfigInterface $config
