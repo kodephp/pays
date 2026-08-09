@@ -156,32 +156,35 @@ final class Receiver
     }
 
     /**
-     * 转为抖音分账接收方参数（amount 为分，与微信一致）
+     * 转为抖音 ecpay 分账接收方参数
+     *
+     * 抖音 ecpay「发起结算及分账」(settle) 的 settle_params 仅使用
+     * merchant_uid（分账方商户号，即进件商户 id）+ amount（分），
+     * 故只映射这两个字段。
      *
      * @return array<string, mixed>
      */
     public function toDouyinArray(): array
     {
         return [
-            'type' => $this->type,
-            'account' => $this->account,
+            'merchant_uid' => $this->account,
             'amount' => $this->amount->getMinorAmount(),
-            'description' => $this->description,
         ];
     }
 
     /**
-     * 转为银联分账接收方参数（amount 为分，txnAmt 同最小货币单位）
+     * 转为银联全渠道 accSplitData 分账域接收方参数
+     *
+     * 银联全渠道无独立接收方结构，分账接收方经 accSplitData 分账域承载，
+     * 仅使用 merchant_uid（分账方商户号）+ amount（分，与 txnAmt 同最小货币单位）。
      *
      * @return array<string, mixed>
      */
     public function toUnionPayArray(): array
     {
         return [
-            'type' => $this->type,
-            'account' => $this->account,
+            'merchant_uid' => $this->account,
             'amount' => $this->amount->getMinorAmount(),
-            'description' => $this->description,
         ];
     }
 }

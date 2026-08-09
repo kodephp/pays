@@ -13,6 +13,12 @@ use Kode\Pays\Tests\TestCase;
 
 /**
  * 抖音支付网关单元测试（含分账特色方法）
+ *
+ * 分账已对齐抖音 ecpay 真实规范：
+ * - 发起分账 → api/apps/ecpay/v1/settle（out_settle_no / out_order_no / settle_desc / settle_params）
+ * - 查询分账 → api/apps/ecpay/v1/query_settle（out_settle_no）
+ * - 退分账   → 经退款触发（api/apps/ecpay/v1/create_refund）
+ * - 解冻     → settle(finish=true)
  */
 class DouyinPayGatewayTest extends TestCase
 {
@@ -53,12 +59,12 @@ class DouyinPayGatewayTest extends TestCase
     }
 
     /**
-     * 发起分账：端点正确、请求携带签名与接收方（金额按分）
+     * 发起分账：端点正确、请求携带签名与真实字段（out_settle_no / out_order_no / settle_params）
      */
-    public function testCreateProfitSharingPostsToCorrectEndpointAndSigns(): void
+    public function testCreateProfitSharingPostsToSettleEndpointAndSigns(): void
     {
         $ok = json_encode(['err_no' => 0, 'err_tips' => 'ok']);
-        $gateway = $this->createGateway(['create_profit_sharing' => $ok]);
+        $gateway = $this->createGateway(['settle' => $ok]);
 
         $result = $gateway->createProfitSharing([
             'transaction_id' => 'T100',
@@ -73,62 +79,76 @@ class DouyinPayGatewayTest extends TestCase
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
-        $this->assertStringContainsString('api/apps/ecpay/v1/create_profit_sharing', $last['url']);
+        $this->assertStringContainsString('api/apps/ecpay/v1/settle', $last['url']);
         $this->assertArrayHasKey('sign', $last['data']);
         $this->assertArrayHasKey('timestamp', $last['data']);
         $this->assertSame('tt123', $last['data']['app_id']);
+        // 通用参数 → 抖音真实字段映射
+        $this->assertSame('SHARE_1', $last['data']['out_settle_no']);
+        $this->assertSame('T100', $last['data']['out_order_no']);
+        $this->assertSame('分账结算', $last['data']['settle_desc']);
 
-        $receivers = json_decode((string) $last['data']['receivers'], true);
+        $receivers = json_decode((string) $last['data']['settle_params'], true);
         $this->assertSame(100, $receivers[0]['amount']);
-        $this->assertSame('MERCHANT_ID', $receivers[0]['type']);
+        $this->assertSame('123', $receivers[0]['merchant_uid']);
     }
 
     /**
-     * 查询分账：转发到正确端点并携带分账单号
+     * 查询分账：转发到 query_settle 端点并携带分账单号（out_settle_no）
      */
     public function testQueryProfitSharing(): void
     {
         $ok = json_encode(['err_no' => 0, 'err_tips' => 'ok']);
-        $gateway = $this->createGateway(['query_profit_sharing' => $ok]);
+        $gateway = $this->createGateway(['query_settle' => $ok]);
 
         $gateway->queryProfitSharing('SHARE_1');
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('query_profit_sharing', $last['url']);
-        $this->assertSame('SHARE_1', $last['data']['out_order_no']);
+        $this->assertStringContainsString('query_settle', $last['url']);
+        $this->assertSame('SHARE_1', $last['data']['out_settle_no']);
     }
 
     /**
-     * 分账回退：转发到正确端点并携带回退金额
+     * 分账回退：抖音无独立退分账接口，映射为退款请求（create_refund）
      */
-    public function testReturnProfitSharing(): void
+    public function testReturnProfitSharingMapsToRefund(): void
     {
         $ok = json_encode(['err_no' => 0, 'err_tips' => 'ok']);
-        $gateway = $this->createGateway(['return_profit_sharing' => $ok]);
+        $gateway = $this->createGateway(['create_refund' => $ok]);
 
-        $gateway->returnProfitSharing(['out_order_no' => 'SHARE_1', 'out_return_no' => 'R1', 'return_amount' => 50]);
+        $gateway->returnProfitSharing([
+            'out_order_no' => 'SHARE_1',
+            'out_return_no' => 'R1',
+            'return_amount' => 50,
+        ]);
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('return_profit_sharing', $last['url']);
-        $this->assertSame(50, $last['data']['return_amount']);
+        $this->assertStringContainsString('create_refund', $last['url']);
+        $this->assertSame('R1', $last['data']['out_refund_no']);
+        $this->assertSame(50, $last['data']['refund_amount']);
+        $this->assertSame('SHARE_1', $last['data']['out_order_no']);
+        $this->assertSame('退分账', $last['data']['reason']);
     }
 
     /**
-     * 解冻剩余资金：转发到正确端点并携带解冻单号
+     * 解冻剩余资金：转发到 settle 端点，finish=true 且 settle_params 为空数组
      */
     public function testUnfreezeProfitSharing(): void
     {
         $ok = json_encode(['err_no' => 0, 'err_tips' => 'ok']);
-        $gateway = $this->createGateway(['finish_profit_sharing' => $ok]);
+        $gateway = $this->createGateway(['settle' => $ok]);
 
         $gateway->unfreezeProfitSharing('T100', 'FINISH_9');
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('finish_profit_sharing', $last['url']);
-        $this->assertSame('FINISH_9', $last['data']['out_order_no']);
+        $this->assertStringContainsString('api/apps/ecpay/v1/settle', $last['url']);
+        $this->assertSame('T100', $last['data']['out_order_no']);
+        $this->assertSame('FINISH_9', $last['data']['out_settle_no']);
+        $this->assertSame('true', $last['data']['finish']);
+        $this->assertSame('[]', $last['data']['settle_params']);
     }
 
     /**
@@ -136,7 +156,7 @@ class DouyinPayGatewayTest extends TestCase
      */
     public function testCreateProfitSharingValidation(): void
     {
-        $gateway = $this->createGateway(['create_profit_sharing' => json_encode(['err_no' => 0])]);
+        $gateway = $this->createGateway(['settle' => json_encode(['err_no' => 0])]);
 
         $this->expectException(PayException::class);
         $this->expectExceptionMessage('缺少必填参数：out_order_no');

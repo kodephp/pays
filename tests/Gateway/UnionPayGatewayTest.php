@@ -14,8 +14,10 @@ use Kode\Pays\Tests\TestCase;
 /**
  * 云闪付网关单元测试（含分账特色方法）
  *
- * 银联使用 RSA 签名，需要证书文件；测试在 setUp 中临时生成 RSA 私钥供签名使用，
- * tearDown 中清理，不落盘到仓库。
+ * 银联分账已对齐全渠道真实规范：
+ * - 发起/回退/解冻分账 → 后台交易 gateway/api/backTransReq.do（内嵌 accSplitData 分账域）
+ * - 查询分账/回退     → gateway/api/queryTrans.do
+ * 使用 RSA 签名，需证书文件；测试在 setUp 中临时生成 RSA 私钥，tearDown 清理。
  */
 class UnionPayGatewayTest extends TestCase
 {
@@ -85,12 +87,12 @@ class UnionPayGatewayTest extends TestCase
     }
 
     /**
-     * 发起分账：端点正确、请求携带 RSA 签名与接收方（金额按分）
+     * 发起分账：端点正确、请求携带 RSA 签名、accSplitData 分账域与真实字段
      */
-    public function testCreateProfitSharingPostsToCorrectEndpointAndSigns(): void
+    public function testCreateProfitSharingPostsToBackTransAndBuildsAccSplitData(): void
     {
         $ok = json_encode(['respCode' => '00', 'respMsg' => 'success']);
-        $gateway = $this->createGateway(['profitSharing.do' => $ok]);
+        $gateway = $this->createGateway(['backTransReq.do' => $ok]);
 
         $result = $gateway->createProfitSharing([
             'transaction_id' => 'T100',
@@ -105,63 +107,71 @@ class UnionPayGatewayTest extends TestCase
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
-        $this->assertStringContainsString('gateway/api/profitSharing.do', $last['url']);
+        $this->assertStringContainsString('gateway/api/backTransReq.do', $last['url']);
         $this->assertNotEmpty($last['data']['signature']);
         $this->assertSame('m1', $last['data']['merId']);
         $this->assertSame('SHARE_1', $last['data']['orderId']);
         $this->assertSame('T100', $last['data']['origQryId']);
-
-        $receivers = json_decode((string) $last['data']['receivers'], true);
-        $this->assertSame(200, $receivers[0]['amount']);
+        // accSplitData 分账域：笔数^接收方(商户号|金额)…
+        $this->assertSame('1^123|200', $last['data']['accSplitData']);
     }
 
     /**
-     * 查询分账：转发到正确端点并携带分账单号
+     * 查询分账：转发到 queryTrans 端点并携带分账单号
      */
     public function testQueryProfitSharing(): void
     {
         $ok = json_encode(['respCode' => '00']);
-        $gateway = $this->createGateway(['queryProfitSharing.do' => $ok]);
+        $gateway = $this->createGateway(['queryTrans.do' => $ok]);
 
         $gateway->queryProfitSharing('SHARE_1');
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('queryProfitSharing.do', $last['url']);
+        $this->assertStringContainsString('queryTrans.do', $last['url']);
         $this->assertSame('SHARE_1', $last['data']['orderId']);
     }
 
     /**
-     * 分账回退：转发到正确端点并携带回退金额
+     * 分账回退：转发到 backTrans 端点并携带回退金额与空分账域
      */
     public function testReturnProfitSharing(): void
     {
         $ok = json_encode(['respCode' => '00']);
-        $gateway = $this->createGateway(['backProfitSharing.do' => $ok]);
+        $gateway = $this->createGateway(['backTransReq.do' => $ok]);
 
-        $gateway->returnProfitSharing(['out_order_no' => 'SHARE_1', 'out_return_no' => 'R1', 'return_amount' => 50]);
+        $gateway->returnProfitSharing([
+            'out_order_no' => 'SHARE_1',
+            'out_return_no' => 'R1',
+            'return_amount' => 50,
+        ]);
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('backProfitSharing.do', $last['url']);
+        $this->assertStringContainsString('backTransReq.do', $last['url']);
+        $this->assertSame('R1', $last['data']['orderId']);
+        $this->assertSame('SHARE_1', $last['data']['origQryId']);
         $this->assertSame(50, $last['data']['txnAmt']);
+        // 无分账接收方时 accSplitData 为 "0^"
+        $this->assertSame('0^', $last['data']['accSplitData']);
     }
 
     /**
-     * 解冻剩余资金：转发到正确端点并携带解冻单号与交易流水
+     * 解冻剩余资金：转发到 backTrans 端点并携带解冻单号与交易流水（无 accSplitData）
      */
     public function testUnfreezeProfitSharing(): void
     {
         $ok = json_encode(['respCode' => '00']);
-        $gateway = $this->createGateway(['finishProfitSharing.do' => $ok]);
+        $gateway = $this->createGateway(['backTransReq.do' => $ok]);
 
         $gateway->unfreezeProfitSharing('T100', 'FINISH_9');
 
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
-        $this->assertStringContainsString('finishProfitSharing.do', $last['url']);
+        $this->assertStringContainsString('backTransReq.do', $last['url']);
         $this->assertSame('FINISH_9', $last['data']['orderId']);
         $this->assertSame('T100', $last['data']['origQryId']);
+        $this->assertArrayNotHasKey('accSplitData', $last['data']);
     }
 
     /**
@@ -169,7 +179,7 @@ class UnionPayGatewayTest extends TestCase
      */
     public function testCreateProfitSharingValidation(): void
     {
-        $gateway = $this->createGateway(['profitSharing.do' => json_encode(['respCode' => '00'])]);
+        $gateway = $this->createGateway(['backTransReq.do' => json_encode(['respCode' => '00'])]);
 
         $this->expectException(PayException::class);
         $this->expectExceptionMessage('缺少必填参数：out_order_no');

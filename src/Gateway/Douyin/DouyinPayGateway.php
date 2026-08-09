@@ -197,14 +197,21 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     }
 
     /**
-     * 发起抖音分账
+     * 发起抖音分账（结算及分账）
      *
-     * 将一笔已支付订单的金额按接收方列表进行分账。接收方金额统一按最小货币单位（分）上报。
+     * 对应抖音 ecpay「发起结算及分账」接口（api/apps/ecpay/v1/settle）。
+     * 一笔订单到达结算周期后，通过本接口将资金结算给各分账方（settle_params）。
+     *
+     * 通用接口参数 → 抖音 ecpay 真实字段映射：
+     * - out_order_no   → out_settle_no  （开发者侧分账单号，幂等，仅数字/大小写字母/_-*）
+     * - transaction_id → out_order_no   （原支付订单的商户单号 out_order_no）
+     * - receivers      → settle_params  （JSON 数组：[{merchant_uid, amount(分)}]）
+     * - settle_desc    → settle_desc    （结算描述，缺省 "分账结算"）
+     * - finish         → finish         （'true' 时剩余未分账金额一并结算给商户）
+     *
+     * ⚠️ 签名沿用 ecpay 家族 MD5 方案；若商户分账服务要求 RSA 签名需切换算法。
      *
      * @param array<string, mixed> $params 分账参数
-     *        - transaction_id: 原支付订单号
-     *        - out_order_no: 商户分账订单号
-     *        - receivers: 接收方列表 [{type, account, amount(分), description}]
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -215,27 +222,36 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
         $requestData = [
             'app_id' => $this->getConfig('app_id'),
             'merchant_id' => $this->getConfig('merchant_id'),
-            'out_order_no' => $params['out_order_no'],
-            'transaction_id' => $params['transaction_id'],
-            'receivers' => json_encode(
+            'out_settle_no' => $params['out_order_no'],
+            'out_order_no' => $params['transaction_id'],
+            'settle_desc' => $params['settle_desc'] ?? '分账结算',
+            'settle_params' => json_encode(
                 $this->mapReceivers((array) $params['receivers'], 'douyin'),
                 JSON_UNESCAPED_UNICODE,
             ),
         ];
 
+        foreach (['cp_extra', 'notify_url', 'finish'] as $optional) {
+            if (isset($params[$optional])) {
+                $requestData[$optional] = $params[$optional];
+            }
+        }
+
         $requestData['sign'] = $this->sign($requestData);
         $requestData['timestamp'] = (string) time();
 
-        // 注：抖音分账 Endpoint 与字段命名请以官方文档为准，投产前联调确认。
-        return $this->post('api/apps/ecpay/v1/create_profit_sharing', $requestData, [
+        return $this->post('api/apps/ecpay/v1/settle', $requestData, [
             'Content-Type' => 'application/json',
         ]);
     }
 
     /**
-     * 查询抖音分账结果
+     * 查询抖音分账结果（结算及分账结果查询）
      *
-     * @param string $outOrderNo 商户分账订单号
+     * 对应抖音 ecpay「结算及分账结果查询」接口（api/apps/ecpay/v1/query_settle）。
+     * 使用开发者侧分账单号 out_settle_no 查询。
+     *
+     * @param string $outOrderNo 商户分账订单号（out_settle_no）
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -244,13 +260,13 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
         $requestData = [
             'app_id' => $this->getConfig('app_id'),
             'merchant_id' => $this->getConfig('merchant_id'),
-            'out_order_no' => $outOrderNo,
+            'out_settle_no' => $outOrderNo,
         ];
 
         $requestData['sign'] = $this->sign($requestData);
         $requestData['timestamp'] = (string) time();
 
-        return $this->post('api/apps/ecpay/v1/query_profit_sharing', $requestData, [
+        return $this->post('api/apps/ecpay/v1/query_settle', $requestData, [
             'Content-Type' => 'application/json',
         ]);
     }
@@ -258,10 +274,16 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     /**
      * 抖音分账回退
      *
+     * 抖音 ecpay 无独立「退分账」接口；分账回退由「退款」触发
+     * （平台在退款时自动将已分账资金退回商户可提现账户）。
+     * 故本方法映射为退款请求：out_return_no→out_refund_no、return_amount→refund_amount、
+     * out_order_no→out_order_no，reason 默认「退分账」。
+     *
      * @param array<string, mixed> $params 回退参数
-     *        - out_order_no: 商户分账订单号
+     *        - out_order_no: 原支付商户订单号
      *        - out_return_no: 商户回退单号
      *        - return_amount: 回退金额（分）
+     *        - reason: 退款原因（可选，默认「退分账」）
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -269,24 +291,19 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     {
         $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
 
-        $requestData = [
-            'app_id' => $this->getConfig('app_id'),
-            'merchant_id' => $this->getConfig('merchant_id'),
+        return $this->refund([
             'out_order_no' => $params['out_order_no'],
-            'out_return_no' => $params['out_return_no'],
-            'return_amount' => (int) $params['return_amount'],
-        ];
-
-        $requestData['sign'] = $this->sign($requestData);
-        $requestData['timestamp'] = (string) time();
-
-        return $this->post('api/apps/ecpay/v1/return_profit_sharing', $requestData, [
-            'Content-Type' => 'application/json',
+            'out_refund_no' => $params['out_return_no'],
+            'refund_amount' => $params['return_amount'],
+            'reason' => $params['reason'] ?? '退分账',
         ]);
     }
 
     /**
      * 查询抖音分账回退结果
+     *
+     * 抖音分账回退经由退款触发，故回退结果查询映射为退款查询
+     * （api/apps/ecpay/v1/query_refund），以商户回退单号（out_refund_no）查询。
      *
      * @param string $outReturnNo 商户回退单号
      * @return array<string, mixed>
@@ -294,41 +311,39 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      */
     public function queryProfitSharingReturn(string $outReturnNo): array
     {
-        $requestData = [
-            'app_id' => $this->getConfig('app_id'),
-            'merchant_id' => $this->getConfig('merchant_id'),
-            'out_return_no' => $outReturnNo,
-        ];
-
-        $requestData['sign'] = $this->sign($requestData);
-        $requestData['timestamp'] = (string) time();
-
-        return $this->post('api/apps/ecpay/v1/query_return_profit_sharing', $requestData, [
-            'Content-Type' => 'application/json',
-        ]);
+        return $this->queryRefund($outReturnNo);
     }
 
     /**
-     * 解冻抖音未分账的剩余资金
+     * 解冻抖音未分账的剩余资金（完结分账）
      *
-     * @param string $transactionId 原支付订单号
+     * 抖音 ecpay 通过「发起结算及分账」接口的 finish=true 将剩余未分账金额
+     * 一并结算给本商户，等价于完结/解冻。此处以原订单号 + 新分账单号发起一次
+     * 不带外部分账方（settle_params 为空数组）的结算。
+     *
+     * @param string $transactionId 原支付订单号（out_order_no）
      * @param string|null $outOrderNo 商户解冻单号（可选，缺省自动生成）
      * @return array<string, mixed>
      * @throws PayException
      */
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
+        $outSettleNo = $outOrderNo ?? ('UNFREEZE_' . $transactionId . '_' . time());
+
         $requestData = [
             'app_id' => $this->getConfig('app_id'),
             'merchant_id' => $this->getConfig('merchant_id'),
-            'transaction_id' => $transactionId,
-            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
+            'out_settle_no' => $outSettleNo,
+            'out_order_no' => $transactionId,
+            'settle_desc' => '解冻剩余资金',
+            'settle_params' => json_encode([], JSON_UNESCAPED_UNICODE),
+            'finish' => 'true',
         ];
 
         $requestData['sign'] = $this->sign($requestData);
         $requestData['timestamp'] = (string) time();
 
-        return $this->post('api/apps/ecpay/v1/finish_profit_sharing', $requestData, [
+        return $this->post('api/apps/ecpay/v1/settle', $requestData, [
             'Content-Type' => 'application/json',
         ]);
     }

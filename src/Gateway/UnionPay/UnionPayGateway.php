@@ -29,6 +29,22 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     protected const PROD_BASE_URL = 'https://gateway.95516.com/';
 
     /**
+     * 分账（商户分账）全渠道交易类型/子类/产品码
+     *
+     * 银联全渠道「商户分账」采用后台交易（backTransReq.do）报文内嵌 accSplitData 分账域，
+     * 无独立 /profitSharing.do 端点。下方交易类型为「资金类/代收」族，具体产品码（bizType）
+     * 与各收单机构/银联商户分账服务配置强相关，
+     * ⚠️ 投产前须按本商户签约的「商户分账」产品参数联调确认。
+     */
+    private const PS_TXN_TYPE = '11';
+    private const PS_TXN_SUB_TYPE = '00';
+    private const PS_BIZ_TYPE = '000000';
+    private const PS_RETURN_TXN_TYPE = '04';
+    private const PS_RETURN_SUB_TYPE = '00';
+    private const PS_FINISH_TXN_TYPE = '11';
+    private const PS_FINISH_SUB_TYPE = '00';
+
+    /**
      * 初始化
      */
     protected function initialize(): void
@@ -203,22 +219,21 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
             'version' => '5.1.0',
             'encoding' => 'utf-8',
             'signMethod' => '01',
-            'txnType' => '11',
-            'txnSubType' => '00',
-            'bizType' => '000000',
+            'txnType' => self::PS_TXN_TYPE,
+            'txnSubType' => self::PS_TXN_SUB_TYPE,
+            'bizType' => self::PS_BIZ_TYPE,
             'accessType' => '0',
             'merId' => $this->getConfig('mer_id'),
             'orderId' => $params['out_order_no'],
             'origQryId' => $params['transaction_id'],
             'txnTime' => date('YmdHis'),
             'txnAmt' => $txnAmt,
-            'receivers' => json_encode($receivers, JSON_UNESCAPED_UNICODE),
+            'accSplitData' => $this->buildAccSplitData($receivers),
         ];
 
         $requestData['signature'] = $this->sign($requestData);
 
-        // 注：银联分账 Endpoint 与字段命名请以官方文档为准，投产前联调确认。
-        return $this->post('gateway/api/profitSharing.do', $requestData);
+        return $this->post('gateway/api/backTransReq.do', $requestData);
     }
 
     /**
@@ -236,7 +251,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
             'signMethod' => '01',
             'txnType' => '00',
             'txnSubType' => '00',
-            'bizType' => '000000',
+            'bizType' => self::PS_BIZ_TYPE,
             'accessType' => '0',
             'merId' => $this->getConfig('mer_id'),
             'orderId' => $outOrderNo,
@@ -245,7 +260,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
 
         $requestData['signature'] = $this->sign($requestData);
 
-        return $this->post('gateway/api/queryProfitSharing.do', $requestData);
+        return $this->post('gateway/api/queryTrans.do', $requestData);
     }
 
     /**
@@ -263,24 +278,29 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     {
         $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
 
+        $receivers = isset($params['receivers'])
+            ? $this->mapReceivers((array) $params['receivers'], 'unionpay')
+            : [];
+
         $requestData = [
             'version' => '5.1.0',
             'encoding' => 'utf-8',
             'signMethod' => '01',
-            'txnType' => '04',
-            'txnSubType' => '00',
-            'bizType' => '000000',
+            'txnType' => self::PS_RETURN_TXN_TYPE,
+            'txnSubType' => self::PS_RETURN_SUB_TYPE,
+            'bizType' => self::PS_BIZ_TYPE,
             'accessType' => '0',
             'merId' => $this->getConfig('mer_id'),
-            'orderId' => $params['out_order_no'],
-            'origQryId' => $params['transaction_id'] ?? '',
+            'orderId' => $params['out_return_no'],
+            'origQryId' => $params['out_order_no'],
             'txnTime' => date('YmdHis'),
             'txnAmt' => (int) $params['return_amount'],
+            'accSplitData' => $this->buildAccSplitData($receivers),
         ];
 
         $requestData['signature'] = $this->sign($requestData);
 
-        return $this->post('gateway/api/backProfitSharing.do', $requestData);
+        return $this->post('gateway/api/backTransReq.do', $requestData);
     }
 
     /**
@@ -298,7 +318,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
             'signMethod' => '01',
             'txnType' => '00',
             'txnSubType' => '00',
-            'bizType' => '000000',
+            'bizType' => self::PS_BIZ_TYPE,
             'accessType' => '0',
             'merId' => $this->getConfig('mer_id'),
             'orderId' => $outReturnNo,
@@ -307,7 +327,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
 
         $requestData['signature'] = $this->sign($requestData);
 
-        return $this->post('gateway/api/queryProfitSharingReturn.do', $requestData);
+        return $this->post('gateway/api/queryTrans.do', $requestData);
     }
 
     /**
@@ -324,19 +344,19 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
             'version' => '5.1.0',
             'encoding' => 'utf-8',
             'signMethod' => '01',
-            'txnType' => '04',
-            'txnSubType' => '00',
-            'bizType' => '000000',
+            'txnType' => self::PS_FINISH_TXN_TYPE,
+            'txnSubType' => self::PS_FINISH_SUB_TYPE,
+            'bizType' => self::PS_BIZ_TYPE,
             'accessType' => '0',
             'merId' => $this->getConfig('mer_id'),
-            'orderId' => $outOrderNo ?? ('UNFREEZE_' . time()),
+            'orderId' => $outOrderNo ?? ('UNFREEZE_' . $transactionId . '_' . time()),
             'origQryId' => $transactionId,
             'txnTime' => date('YmdHis'),
         ];
 
         $requestData['signature'] = $this->sign($requestData);
 
-        return $this->post('gateway/api/finishProfitSharing.do', $requestData);
+        return $this->post('gateway/api/backTransReq.do', $requestData);
     }
 
     /**
@@ -454,10 +474,8 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
             }
 
             return [
-                'type' => $r['type'] ?? '',
-                'account' => $r['account'] ?? '',
+                'merchant_uid' => $r['merchant_uid'] ?? $r['account'] ?? '',
                 'amount' => (int) ($r['amount'] ?? 0),
-                'description' => $r['description'] ?? '分账',
             ];
         }, $receivers);
     }
@@ -476,5 +494,27 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
         }
 
         return $sum;
+    }
+
+    /**
+     * 构建银联全渠道 accSplitData 分账域
+     *
+     * 分账接收方经 accSplitData 分账域承载，格式为「笔数^接收方1^接收方2…」，
+     * 每个接收方以「商户号|分账金额(分)」表示（字段分隔符 |，接收方分隔符 ^）：
+     *   accSplitData = "{cnt}^{merchant_uid1}|{amount1}^{merchant_uid2}|{amount2}"
+     *
+     * ⚠️ 该子格式为银联商户分账服务配置相关项，投产前须按签约产品参数联调确认。
+     *
+     * @param array<int, array<string, mixed>> $receivers
+     * @return string
+     */
+    protected function buildAccSplitData(array $receivers): string
+    {
+        $items = [];
+        foreach ($receivers as $r) {
+            $items[] = ($r['merchant_uid'] ?? $r['account'] ?? '') . '|' . ($r['amount'] ?? 0);
+        }
+
+        return count($receivers) . '^' . implode('^', $items);
     }
 }

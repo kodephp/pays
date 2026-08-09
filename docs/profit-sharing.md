@@ -20,7 +20,14 @@
 > 在这些平台的分支只做「参数校验 + 类型安全转发」（`forwardToCapableGateway`），不重复承载平台组装逻辑；
 > 微信 / 支付宝 / Stripe 的分账逻辑仍由插件内的分支承载。两者对调用方透明。
 >
-> ⚠️ 抖音 / 云闪付的分账 Endpoint 与字段命名以官方文档为准，投产前请按官方接口联调确认。
+> **v1.37.0 真实端点联调对齐**：抖音 / 云闪付分账已实现并对接官方规范——抖音 ecpay 对齐
+> `settle` / `query_settle`（out_settle_no / out_order_no / settle_desc / settle_params=JSON[{merchant_uid,amount}]，
+> 退分账经退款触发，解冻=settle(finish=true)）；银联全渠道摒弃虚构的 `/profitSharing.do`，改为
+> `backTransReq.do` 报文内嵌 `accSplitData` 分账域 + `queryTrans.do` 查询。
+>
+> ⚠️ 投产前仍需按商户签约配置确认：① 抖音 ecpay 沿用 MD5 签名，若商户分账服务要求 RSA 需切换算法；
+> ② 银联 `txnType`/`bizType` 产品码与 `accSplitData` 子格式为收单机构 / 银联商户分账服务配置相关项，
+> 需按签约产品参数联调确认。
 
 ## 快速开始
 
