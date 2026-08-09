@@ -81,11 +81,12 @@ class MockHttpClient extends HttpClient implements HttpClientInterface
      * @param string $url 请求地址
      * @param string $body 原始请求体
      * @param array<string, string> $headers 请求头
+     * @param array<string, mixed> $options 透传的 Guzzle 请求选项（如 cert / ssl_key）
      * @return string 响应体
      */
-    public function postRaw(string $url, string $body, array $headers = []): string
+    public function postRaw(string $url, string $body, array $headers = [], array $options = []): string
     {
-        $this->record('POST_RAW', $url, ['body' => $body], $headers);
+        $this->record('POST_RAW', $url, ['body' => $body, 'options' => $options], $headers);
 
         return $this->getResponse($url);
     }

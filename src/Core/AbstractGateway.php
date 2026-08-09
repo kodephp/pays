@@ -154,11 +154,12 @@ abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
      * @param string $endpoint API 端点
      * @param string $body 原始请求体
      * @param array<string, string> $headers 请求头
+     * @param array<string, mixed> $options 透传的 Guzzle 请求选项（如 cert / ssl_key）
      * @return array<string, mixed> 解析后的响应
      * @throws PayException
      */
     #[\Override]
-    public function postRaw(string $endpoint, string $body, array $headers = []): array
+    public function postRaw(string $endpoint, string $body, array $headers = [], array $options = []): array
     {
         $url = $this->getBaseUrl() . $endpoint;
 
@@ -170,7 +171,7 @@ abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
         ]);
 
         try {
-            $response = $this->httpClient->postRaw($url, $body, $headers);
+            $response = $this->httpClient->postRaw($url, $body, $headers, $options);
         } catch (\Throwable $e) {
             throw PayException::networkError('请求发送失败：' . $e->getMessage(), $e);
         }

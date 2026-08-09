@@ -111,15 +111,16 @@ class HttpClient implements HttpClientInterface
      * @param string $url 请求地址
      * @param string $body 原始请求体
      * @param array<string, string> $headers 请求头
+     * @param array<string, mixed> $options 透传的 Guzzle 请求选项（如 cert / ssl_key）
      * @return string 响应体
      * @throws GuzzleException
      */
-    public function postRaw(string $url, string $body, array $headers = []): string
+    public function postRaw(string $url, string $body, array $headers = [], array $options = []): string
     {
-        return $this->requestWithRetry('POST', $url, [
+        return $this->requestWithRetry('POST', $url, array_merge([
             'body' => $body,
             'headers' => $headers,
-        ]);
+        ], $options));
     }
 
     /**

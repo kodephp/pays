@@ -192,9 +192,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'spbill_create_ip' => $params['client_ip'] ?? '127.0.0.1',
         ];
 
-        // 注：企业付款到零钱接口实际需 XML + MD5 签名，此处沿用既有插件构造，
-        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
-        return $this->post('mmpaymkttransfers/promotion/transfers', $requestData);
+        return $this->signedV2Post('mmpaymkttransfers/promotion/transfers', $requestData, true);
     }
 
     /**
@@ -284,12 +282,13 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'client_ip' => $params['client_ip'] ?? '127.0.0.1',
             'act_name' => $params['act_name'],
             'remark' => $params['remark'],
-            'scene_id' => $params['scene_id'] ?? '',
         ];
 
-        // 注：现金红包接口实际需 XML + MD5 签名，此处沿用既有插件构造，
-        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
-        return $this->post('mmpaymkttransfers/sendredpack', $requestData);
+        if (!empty($params['scene_id'])) {
+            $requestData['scene_id'] = $params['scene_id'];
+        }
+
+        return $this->signedV2Post('mmpaymkttransfers/sendredpack', $requestData, true);
     }
 
     /**
@@ -320,12 +319,13 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'wishing' => $params['wishing'],
             'act_name' => $params['act_name'],
             'remark' => $params['remark'],
-            'scene_id' => $params['scene_id'] ?? '',
         ];
 
-        // 注：裂变红包接口实际需 XML + MD5 签名，此处沿用既有插件构造，
-        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
-        return $this->post('mmpaymkttransfers/sendgroupredpack', $requestData);
+        if (!empty($params['scene_id'])) {
+            $requestData['scene_id'] = $params['scene_id'];
+        }
+
+        return $this->signedV2Post('mmpaymkttransfers/sendgroupredpack', $requestData, true);
     }
 
     /**
@@ -335,13 +335,13 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
      */
     public function queryRedPacket(string $mchBillNo): array
     {
-        return $this->post('mmpaymkttransfers/gethbinfo', [
+        return $this->signedV2Post('mmpaymkttransfers/gethbinfo', [
             'nonce_str' => $this->generateNonceStr(),
             'mch_billno' => $mchBillNo,
             'mch_id' => $this->getConfig('mch_id'),
             'appid' => $this->getConfig('app_id'),
             'bill_type' => 'MCHT',
-        ]);
+        ], true);
     }
 
     /**
@@ -375,9 +375,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             $requestData['time_expire'] = date('YmdHis', time() + (int) $params['expire_seconds']);
         }
 
-        // 注：unifiedorder 接口实际需 XML + MD5 签名，此处沿用既有插件构造，
-        // 投产前如需严格合规请在此接入 Signer::md5 与 arrayToXml。
-        $response = $this->post('pay/unifiedorder', $requestData);
+        $response = $this->signedV2Post('pay/unifiedorder', $requestData);
 
         return [
             'out_trade_no' => $outTradeNo,
@@ -405,7 +403,14 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'bill_type' => 'ALL',
         ];
 
-        return $this->post('pay/downloadbill', $requestData);
+        $raw = $this->signedV2Raw('pay/downloadbill', $requestData);
+
+        return [
+            'bill_date' => $requestData['bill_date'],
+            'bill_type' => 'ALL',
+            'raw_data' => $raw,
+            'records' => $this->parseWechatBill($this->extractBillRawText(['data' => $raw])),
+        ];
     }
 
     /**
@@ -419,7 +424,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     {
         $this->validateRequired($params, ['amount', 'bank_card_no', 'real_name', 'out_biz_no']);
 
-        return $this->post('mmpaymkttransfers/pay_bank', [
+        return $this->signedV2Post('mmpaymkttransfers/pay_bank', [
             'mch_id' => $this->getConfig('mch_id'),
             'partner_trade_no' => $params['out_biz_no'],
             'nonce_str' => $this->generateNonceStr(),
@@ -428,7 +433,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'bank_code' => $params['bank_code'] ?? '',
             'amount' => (int) $params['amount'],
             'desc' => $params['description'] ?? '个人提现',
-        ]);
+        ], true);
     }
 
     /**
@@ -440,11 +445,11 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
      */
     public function queryWithdraw(string $outBizNo): array
     {
-        return $this->post('mmpaymkttransfers/query_bank', [
+        return $this->signedV2Post('mmpaymkttransfers/query_bank', [
             'mch_id' => $this->getConfig('mch_id'),
             'partner_trade_no' => $outBizNo,
             'nonce_str' => $this->generateNonceStr(),
-        ]);
+        ], true);
     }
 
     /**
@@ -626,6 +631,56 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
         openssl_public_encrypt($data, $encrypted, $publicKey, OPENSSL_PKCS1_OAEP_PADDING);
 
         return base64_encode($encrypted);
+    }
+
+    /**
+     * 以微信 V2「XML + MD5 签名」规范发起 POST 并解析 XML 响应
+     *
+     * 现金红包、企业付款、付款到银行卡等 V2 现金类接口要求请求体为 XML、
+     * 字段经 MD5 签名，且部分接口需携带商户 SSL 证书。本方法统一封装，
+     * 确保「参与签名的字节」与「实际发送的字节」一致。
+     *
+     * @param array<string, mixed> $data 已组装的请求字段（不含 sign）
+     * @param bool $withCert 是否携带商户 SSL 证书（红包 / 企业付款 / 付款到银行卡需 true）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    protected function signedV2Post(string $endpoint, array $data, bool $withCert = false): array
+    {
+        $data['sign'] = Signer::md5($data, (string) $this->getConfig('api_key'));
+
+        $options = [];
+        if ($withCert) {
+            $cert = $this->getConfig('cert_path');
+            $key = $this->getConfig('key_path');
+            if (is_string($cert) && $cert !== '' && is_string($key) && $key !== '') {
+                $options['cert'] = $cert;
+                $options['ssl_key'] = $key;
+            }
+        }
+
+        return $this->postRaw($endpoint, $this->arrayToXml($data), ['Content-Type' => 'text/xml'], $options);
+    }
+
+    /**
+     * 以微信 V2「XML + MD5 签名」规范发起 POST 并返回原始响应体
+     *
+     * 用于对账单等返回 CSV（非 XML）的接口：签名与发送一致，但绕过 XML 解析，
+     * 交由调用方自行解析。
+     *
+     * @param array<string, mixed> $data 已组装的请求字段（不含 sign）
+     * @return string 原始响应体
+     * @throws PayException
+     */
+    protected function signedV2Raw(string $endpoint, array $data): string
+    {
+        $data['sign'] = Signer::md5($data, (string) $this->getConfig('api_key'));
+
+        return $this->httpClient->postRaw(
+            $this->getBaseUrl() . $endpoint,
+            $this->arrayToXml($data),
+            ['Content-Type' => 'text/xml'],
+        );
     }
 
     /**

@@ -57,6 +57,19 @@ class WechatPayGatewayTest extends TestCase
     }
 
     /**
+     * 将微信 XML 请求/响应体解析为关联数组（与网关 xmlToArray 一致）
+     */
+    private function parseXml(string $xml): array
+    {
+        $element = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NOCDATA);
+        $decoded = json_decode((string) json_encode($element), true);
+        $result = is_array($decoded) ? $decoded : [];
+
+        // 微信空元素经 SimpleXML + JSON 会退化为空数组，归一为空字符串以对齐 MD5 签名计算
+        return array_map(static fn ($v) => is_array($v) && $v === [] ? '' : $v, $result);
+    }
+
+    /**
      * 测试创建订单：验证返回值与请求参数
      */
     public function testCreateOrder(): void
@@ -235,7 +248,10 @@ class WechatPayGatewayTest extends TestCase
             . '<result_code><![CDATA[SUCCESS]]></result_code>'
             . '<partner_trade_no><![CDATA[T1]]></partner_trade_no></xml>';
 
-        $gateway = $this->createGateway(['mmpaymkttransfers/promotion/transfers' => $xml]);
+        $gateway = $this->createGateway(
+            ['mmpaymkttransfers/promotion/transfers' => $xml],
+            ['cert_path' => '/tmp/apiclient_cert.pem', 'key_path' => '/tmp/apiclient_key.pem'],
+        );
 
         $result = $gateway->singleTransfer([
             'out_biz_no' => 'T1',
@@ -247,15 +263,22 @@ class WechatPayGatewayTest extends TestCase
 
         $this->assertSame('SUCCESS', $result['return_code']);
 
-        $client = $this->getMockClient($gateway);
-        $last = $client->getLastRequest();
+        $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('mmpaymkttransfers/promotion/transfers', $last['url']);
-        $this->assertSame('openid123', $last['data']['openid'] ?? '');
-        $this->assertSame('T1', $last['data']['partner_trade_no'] ?? '');
-        $this->assertSame(100, $last['data']['amount'] ?? 0);
-        $this->assertSame('wx123', $last['data']['mch_appid'] ?? '');
-        $this->assertSame('m1', $last['data']['mchid'] ?? '');
+        $this->assertSame(['Content-Type' => 'text/xml'], $last['headers']);
+
+        $body = $last['data']['body'];
+        $this->assertIsString($body);
+        $parsed = $this->parseXml($body);
+        $this->assertSame('openid123', $parsed['openid']);
+        $this->assertSame('T1', $parsed['partner_trade_no']);
+        $this->assertSame('100', (string) ($parsed['amount'] ?? ''));
+        $this->assertSame('wx123', $parsed['mch_appid']);
+        $this->assertSame('m1', $parsed['mchid']);
+        $this->assertTrue(Signer::verifyMd5($parsed, 'testkey'), '企业付款请求 MD5 签名应校验通过');
+        // 企业付款到零钱需携带商户 SSL 证书
+        $this->assertSame('/tmp/apiclient_cert.pem', $last['data']['options']['cert'] ?? null);
     }
 
     /**
@@ -424,7 +447,10 @@ class WechatPayGatewayTest extends TestCase
         $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
             . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
 
-        $gateway = $this->createGateway(['promotion/transfers' => $xml]);
+        $gateway = $this->createGateway(
+            ['promotion/transfers' => $xml],
+            ['cert_path' => '/tmp/apiclient_cert.pem', 'key_path' => '/tmp/apiclient_key.pem'],
+        );
 
         $gateway->settleToWallet([
             'out_biz_no' => 'SETTLE_1',
@@ -437,10 +463,14 @@ class WechatPayGatewayTest extends TestCase
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('mmpaymkttransfers/promotion/transfers', $last['url']);
-        $this->assertSame('openid_1', $last['data']['openid']);
-        $this->assertSame('张三', $last['data']['re_user_name']);
-        $this->assertSame(500, $last['data']['amount']);
-        $this->assertSame('SETTLE_1', $last['data']['partner_trade_no']);
+
+        $parsed = $this->parseXml($last['data']['body']);
+        $this->assertSame('openid_1', $parsed['openid']);
+        $this->assertSame('张三', $parsed['re_user_name']);
+        $this->assertSame('500', (string) ($parsed['amount'] ?? ''));
+        $this->assertSame('SETTLE_1', $parsed['partner_trade_no']);
+        $this->assertTrue(Signer::verifyMd5($parsed, 'testkey'));
+        $this->assertSame('/tmp/apiclient_cert.pem', $last['data']['options']['cert'] ?? null);
     }
 
     /**
@@ -464,7 +494,10 @@ class WechatPayGatewayTest extends TestCase
         $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
             . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
 
-        $gateway = $this->createGateway(['pay_bank' => $xml]);
+        $gateway = $this->createGateway(
+            ['pay_bank' => $xml],
+            ['cert_path' => '/tmp/apiclient_cert.pem', 'key_path' => '/tmp/apiclient_key.pem'],
+        );
 
         $gateway->settleToBankCard([
             'out_biz_no' => 'SETTLE_2',
@@ -477,12 +510,16 @@ class WechatPayGatewayTest extends TestCase
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('mmpaymkttransfers/pay_bank', $last['url']);
-        $this->assertSame('SETTLE_2', $last['data']['partner_trade_no']);
-        $this->assertSame(10000, $last['data']['amount']);
-        $this->assertSame('1002', $last['data']['bank_code']);
+
+        $parsed = $this->parseXml($last['data']['body']);
+        $this->assertSame('SETTLE_2', $parsed['partner_trade_no']);
+        $this->assertSame('10000', (string) ($parsed['amount'] ?? ''));
+        $this->assertSame('1002', $parsed['bank_code']);
+        $this->assertTrue(Signer::verifyMd5($parsed, 'testkey'));
         // 卡号与姓名不得明文出现
-        $this->assertNotSame('6222021234567890', $last['data']['enc_bank_no']);
-        $this->assertNotSame('李四', $last['data']['enc_true_name']);
+        $this->assertNotSame('6222021234567890', $parsed['enc_bank_no']);
+        $this->assertNotSame('李四', $parsed['enc_true_name']);
+        $this->assertSame('/tmp/apiclient_cert.pem', $last['data']['options']['cert'] ?? null);
     }
 
     /**
