@@ -8,7 +8,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 |------|------|----------|----------|
 | 分账插件 | `ProfitSharingPlugin` | 微信、支付宝、Stripe、抖音、云闪付 | 创建分账、查询分账、分账回退、解冻资金（网关原生方法 + 插件校验转发） |
 | 转账插件 | `TransferPlugin` | 微信、支付宝、Stripe | 单笔转账、批量转账、查询转账、电子回单 |
-| 退款插件 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请退款、查询退款、取消退款 |
+| 退款插件 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal、Adyen、Revolut | 申请退款、查询退款、取消退款 |
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
 | 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划、订阅管理、暂停/恢复/取消 |
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
@@ -202,7 +202,7 @@ Pay::transferReceipt('alipay', 'TRANSFER_20240425000001');
 
 ## 退款插件 (RefundPlugin)
 
-支持微信、支付宝、Stripe、PayPal 的退款能力。退款逻辑已下沉到各网关原生方法，网关声明
+支持微信、支付宝、Stripe、PayPal、Adyen、Revolut 的退款能力。退款逻辑已下沉到各网关原生方法，网关声明
 `RefundCapableInterface`（`applyRefund` / `queryRefund` / `cancelRefund`），`RefundPlugin`
 仅做「参数校验 + 类型安全转发」，不承载平台组装逻辑。
 

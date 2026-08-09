@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Adyen;
 
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -16,7 +17,11 @@ use Kode\Pays\Core\PayException;
  * 支持 Adyen Payments API，覆盖全球 200+ 个国家/地区，支持 250+ 种支付方式。
  * 提供统一的全球支付、本地支付、订阅支付能力。
  */
-class AdyenGateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface, SettlementCapableInterface
+class AdyenGateway extends AbstractGateway implements
+    TransferCapableInterface,
+    ReconciliationCapableInterface,
+    RefundCapableInterface,
+    SettlementCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -137,6 +142,7 @@ class AdyenGateway extends AbstractGateway implements TransferCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -145,6 +151,44 @@ class AdyenGateway extends AbstractGateway implements TransferCapableInterface, 
             'merchantAccount' => $this->getConfig('merchant_account'),
             'originalReference' => $refundId,
         ], $headers);
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款（RefundCapableInterface）
+     *
+     * 将退款能力接口标准参数（out_refund_no / refund_fee(分) / out_trade_no|transaction_id）
+     * 映射到 Adyen 退款请求（originalReference / amount / currency / reference），复用 {@see refund()}。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function applyRefund(array $params): array
+    {
+        $originalReference = $params['transaction_id'] ?? ($params['out_trade_no'] ?? '');
+
+        return $this->refund([
+            'original_reference' => $originalReference,
+            'amount' => (int) ($params['refund_fee'] ?? 0),
+            'currency' => strtoupper((string) ($params['refund_currency'] ?? $params['currency'] ?? 'EUR')),
+            'reference' => $params['out_refund_no'] ?? uniqid('adyen_refund_', true),
+        ]);
+    }
+
+    /**
+     * 取消退款（Adyen 不支持，统一报「无此方法」）
+     *
+     * @param string $outRefundNo 商户退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('adyen', 'cancelRefund');
     }
 
     /**

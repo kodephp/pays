@@ -191,6 +191,28 @@ $gateway->settleToWallet([
 $gateway->querySettlement('SETTLE_20260809000001');
 ```
 
+### 退款能力（RefundCapableInterface）
+
+> 退款对齐 Revolut 真实退款规范：申请退款 `POST /api/1.0/orders/{order_id}/refund`，
+> 查询退款 `GET /api/orders/{refundOrderId}`（退款生成新的 refund 类型 order，检索该退款订单）。
+> 金额按分传入，网关内部 `×100` 转最小货币单位。Revolut 不支持取消退款，`cancelRefund` 统一抛 `PayException`（无此方法）。
+
+```php
+// 申请退款（金额单位：分）
+$result = $gateway->applyRefund([
+    'out_refund_no'  => 'R_' . date('YmdHis'),
+    'refund_fee'     => 10000,                  // 分（= 100.00 主单位）
+    'transaction_id' => 'ORD_5512',             // 原支付订单号（或 out_trade_no）
+    'refund_desc'    => '商品质量问题',
+]);
+
+// 查询退款（按退款订单 ID，退款创建时返回）
+$result = $gateway->queryRefund('REF_ORD_7722');
+
+// 取消退款：Revolut 不支持，调用报「无此方法」
+$gateway->cancelRefund('R_20260809000001');
+```
+
 ## 常见问题
 
 ### 1. 沙箱环境

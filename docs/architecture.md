@@ -172,7 +172,7 @@ interface GatewayInterface
 |------|----------|----------|
 | `ProfitSharingPlugin` | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 | 分账创建/查询/回退/解冻（网关原生方法 + 插件校验转发） |
 | `TransferPlugin` | 微信、支付宝、Stripe、美团、京东、Adyen、Revolut | 单笔/批量转账、电子回单（网关原生方法 + 插件校验转发） |
-| `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请/查询/取消退款（网关原生方法 + 插件校验转发） |
+| `RefundPlugin` | 微信、支付宝、Stripe、PayPal、Adyen、Revolut | 申请/查询/取消退款（网关原生方法 + 插件校验转发） |
 | `RedPacketPlugin` | 微信、支付宝、美团、京东 | 普通/裂变红包、查询记录（网关原生方法 + 插件校验转发） |
 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划与周期扣款管理（网关原生方法 + 插件校验转发） |
 | `ReconciliationPlugin` | 微信、支付宝、Stripe、美团、京东、Adyen、Revolut | 对账单下载/解析/差异比对（网关原生方法 + 插件校验转发） |

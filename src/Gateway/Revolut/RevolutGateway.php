@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Revolut;
 
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -20,6 +21,7 @@ use Kode\Pays\Core\SandboxManager;
 class RevolutGateway extends AbstractGateway implements
     TransferCapableInterface,
     ReconciliationCapableInterface,
+    RefundCapableInterface,
     SettlementCapableInterface
 {
     /**
@@ -151,18 +153,59 @@ class RevolutGateway extends AbstractGateway implements
     }
 
     /**
-     * 查询退款
+     * 查询退款（RefundCapableInterface）
      *
-     * @param string $refundId 退款单号
+     * Revolut 退款会生成一个新的 refund 类型 order，查询即检索该退款订单：
+     * GET /api/orders/{refundOrderId}。
+     *
+     * @param string $refundId 退款订单 ID（退款创建时返回）
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
-        // TODO: Revolut 退款查询端点，使用独立的 refunds 端点而非 orders 端点
-        return $this->get("refunds/{$refundId}", [], [
+        return $this->get("api/orders/{$refundId}", [], [
             'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
         ]);
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款（RefundCapableInterface）
+     *
+     * 将退款能力接口标准参数（out_refund_no / refund_fee(分) / out_trade_no|transaction_id）
+     * 映射到 Revolut 退款请求（order_id / amount / description），复用 {@see refund()}。
+     * 金额按分传入，refund() 内部 ×100 转最小货币单位。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function applyRefund(array $params): array
+    {
+        $orderId = $params['transaction_id'] ?? ($params['out_trade_no'] ?? '');
+
+        return $this->refund([
+            'order_id' => $orderId,
+            'refund_amount' => ((int) ($params['refund_fee'] ?? 0)) / 100,
+            'description' => $params['refund_desc'] ?? '',
+        ]);
+    }
+
+    /**
+     * 取消退款（Revolut 不支持，统一报「无此方法」）
+     *
+     * @param string $outRefundNo 商户退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('revolut', 'cancelRefund');
     }
 
     /**

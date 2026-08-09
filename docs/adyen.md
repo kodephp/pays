@@ -222,6 +222,28 @@ $gateway->querySettlement('SETTLE_20260809000001');
 $gateway->settleToWallet('SETTLE_20260809000001');
 ```
 
+### 退款能力（RefundCapableInterface）
+
+> 退款对齐 Adyen 真实退款规范：申请退款 `POST /pal/servlet/Payment/v68/refund`，
+> 查询退款 `POST /pal/servlet/Payment/v68/refundWithData`。Adyen 不支持取消退款，
+> `cancelRefund` 统一抛 `PayException`（无此方法）。
+
+```php
+// 申请退款（金额单位：分）
+$result = $gateway->applyRefund([
+    'out_refund_no'   => 'R_' . date('YmdHis'),
+    'refund_fee'      => 5000,                  // 分
+    'transaction_id'  => 'PSP_882211',          // 原支付 PSP 参考号（或 out_trade_no）
+    'refund_currency' => 'EUR',
+]);
+
+// 查询退款（按原支付 PSP 参考号）
+$result = $gateway->queryRefund('PSP_882211');
+
+// 取消退款：Adyen 不支持，调用报「无此方法」
+$gateway->cancelRefund('R_20260809000001');
+```
+
 ## 异步通知处理
 
 ```php
