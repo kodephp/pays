@@ -212,4 +212,109 @@ class StripeGatewayTest extends TestCase
         $this->assertSame('SUCCESS', $result['status']);
         $this->assertSame('pi_1', $result['payment_intent']);
     }
+
+    /* ==================== 自动结算能力 ==================== */
+
+    /**
+     * 结算到 Connect 账户：验证 v1/transfers 端点、destination、金额与鉴权头
+     */
+    public function testSettleToPayoutPostsToTransfers(): void
+    {
+        $resp = json_encode(['id' => 'tr_1', 'amount' => 2000]);
+
+        $gateway = $this->createGateway(['v1/transfers' => $resp]);
+
+        $result = $gateway->settleToPayout([
+            'out_biz_no' => 'SETTLE_1',
+            'amount' => 2000,
+            'account' => 'acct_1',
+            'description' => 'Auto settlement',
+        ]);
+
+        $this->assertSame('tr_1', $result['id']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/transfers', $last['url']);
+        $this->assertSame('acct_1', $last['data']['destination'] ?? '');
+        $this->assertSame(2000, $last['data']['amount'] ?? 0);
+        $this->assertSame('usd', $last['data']['currency'] ?? '');
+        $this->assertSame('SETTLE_1', $last['data']['metadata']['out_biz_no'] ?? '');
+        $this->assertSame('Bearer sk_test_123', $last['headers']['Authorization'] ?? '');
+    }
+
+    /**
+     * 结算到 Connect 账户：币种可覆盖且统一转小写
+     */
+    public function testSettleToPayoutNormalizesCurrency(): void
+    {
+        $gateway = $this->createGateway(['v1/transfers' => json_encode(['id' => 'tr_2'])]);
+
+        $gateway->settleToPayout([
+            'out_biz_no' => 'SETTLE_2',
+            'amount' => 100,
+            'account' => 'acct_2',
+            'currency' => 'EUR',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('eur', $last['data']['currency'] ?? '');
+    }
+
+    /**
+     * 结算到 Connect 账户：缺 account 抛 PayException
+     */
+    public function testSettleToPayoutMissingAccount(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('缺少必填参数：account');
+
+        $gateway->settleToPayout(['out_biz_no' => 'SETTLE_3', 'amount' => 100]);
+    }
+
+    /**
+     * 查询结算结果：按 Transfer ID 查询
+     */
+    public function testQuerySettlementGetsTransferById(): void
+    {
+        $gateway = $this->createGateway(['v1/transfers/tr_1' => json_encode(['id' => 'tr_1'])]);
+
+        $result = $gateway->querySettlement('tr_1');
+
+        $this->assertSame('tr_1', $result['id']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/transfers/tr_1', $last['url']);
+        $this->assertSame('Bearer sk_test_123', $last['headers']['Authorization'] ?? '');
+    }
+
+    /**
+     * Stripe 无平台内钱包结算语义，调用即报「无此方法」
+     */
+    public function testSettleToWalletNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        $gateway->settleToWallet(['out_biz_no' => 'S', 'amount' => 1, 'account' => 'a']);
+    }
+
+    /**
+     * Stripe 不支持直连银行卡结算，调用即报「无此方法」
+     */
+    public function testSettleToBankCardNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        $gateway->settleToBankCard(['out_biz_no' => 'S', 'amount' => 1, 'bank_card_no' => '1', 'real_name' => 'a']);
+    }
 }

@@ -10,6 +10,7 @@ use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
@@ -109,6 +110,48 @@ class TransferCapableFakeGateway extends FakeGateway implements TransferCapableI
     public function transferReceipt(string $outBizNo): array
     {
         $this->transferCalls[] = ['receipt', $outBizNo];
+
+        return ['ok' => true];
+    }
+}
+
+/**
+ * 支持自动结算能力的假网关：用于验证统一入口对结算「特色方法」的动态派发
+ */
+class SettlementCapableFakeGateway extends FakeGateway implements SettlementCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $settlementCalls = [];
+
+    public static function getName(): string
+    {
+        return 'settlegw';
+    }
+
+    public function settleToWallet(array $params): array
+    {
+        $this->settlementCalls[] = ['wallet', $params];
+
+        return ['ok' => true, 'out_biz_no' => $params['out_biz_no'] ?? ''];
+    }
+
+    public function settleToBankCard(array $params): array
+    {
+        $this->settlementCalls[] = ['bank_card', $params];
+
+        return ['ok' => true];
+    }
+
+    public function settleToPayout(array $params): array
+    {
+        $this->settlementCalls[] = ['payout', $params];
+
+        return ['ok' => true];
+    }
+
+    public function querySettlement(string $outBizNo): array
+    {
+        $this->settlementCalls[] = ['query', $outBizNo];
 
         return ['ok' => true];
     }
@@ -419,6 +462,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('cryptogw', CryptoCapableFakeGateway::class);
         Pay::registerConfig('cryptogw', []);
+
+        GatewayFactory::register('settlegw', SettlementCapableFakeGateway::class);
+        Pay::registerConfig('settlegw', []);
     }
 
     protected function tearDown(): void
@@ -433,6 +479,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('recongw');
         GatewayFactory::unregister('refundgw');
         GatewayFactory::unregister('cryptogw');
+        GatewayFactory::unregister('settlegw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -532,6 +579,80 @@ class PayDispatchTest extends TestCase
         $gateway = Pay::gateway('profitgw');
         $this->assertSame('queryReturn', $gateway->psCalls[0][0]);
         $this->assertSame('R1', $gateway->psCalls[0][1]);
+    }
+
+    /**
+     * 统一结算入口 settlementToWallet 经 call 派发到网关原生方法
+     */
+    public function testSettlementToWalletUnifiedEntry(): void
+    {
+        $result = Pay::settlementToWallet('settlegw', [
+            'out_biz_no' => 'SETTLE_1',
+            'amount' => 500,
+            'account' => 'openid_1',
+        ]);
+
+        $this->assertSame(['ok' => true, 'out_biz_no' => 'SETTLE_1'], $result);
+
+        $gateway = Pay::gateway('settlegw');
+        $this->assertSame('wallet', $gateway->settlementCalls[0][0]);
+        $this->assertSame('SETTLE_1', $gateway->settlementCalls[0][1]['out_biz_no']);
+    }
+
+    /**
+     * 统一结算入口 settlementToBankCard 经 call 派发到网关原生方法
+     */
+    public function testSettlementToBankCardUnifiedEntry(): void
+    {
+        Pay::settlementToBankCard('settlegw', [
+            'out_biz_no' => 'SETTLE_2',
+            'amount' => 10000,
+            'bank_card_no' => '6222021234567890',
+            'real_name' => '李四',
+        ]);
+
+        $gateway = Pay::gateway('settlegw');
+        $this->assertSame('bank_card', $gateway->settlementCalls[0][0]);
+        $this->assertSame('6222021234567890', $gateway->settlementCalls[0][1]['bank_card_no']);
+    }
+
+    /**
+     * 统一结算入口 settlementToPayout 经 call 派发到网关原生方法
+     */
+    public function testSettlementToPayoutUnifiedEntry(): void
+    {
+        Pay::settlementToPayout('settlegw', [
+            'out_biz_no' => 'SETTLE_3',
+            'amount' => 2000,
+            'account' => 'acct_1',
+        ]);
+
+        $gateway = Pay::gateway('settlegw');
+        $this->assertSame('payout', $gateway->settlementCalls[0][0]);
+        $this->assertSame('acct_1', $gateway->settlementCalls[0][1]['account']);
+    }
+
+    /**
+     * 统一结算查询入口 settlementQuery 经 call 派发到网关原生方法
+     */
+    public function testSettlementQueryUnifiedEntry(): void
+    {
+        Pay::settlementQuery('settlegw', 'SETTLE_4');
+
+        $gateway = Pay::gateway('settlegw');
+        $this->assertSame('query', $gateway->settlementCalls[0][0]);
+        $this->assertSame('SETTLE_4', $gateway->settlementCalls[0][1]);
+    }
+
+    /**
+     * 网关未实现结算能力时，统一入口报「无此方法」
+     */
+    public function testSettlementMethodNotSupported(): void
+    {
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        Pay::settlementToWallet('fakechan', ['out_biz_no' => 'S', 'amount' => 1, 'account' => 'a']);
     }
 
     /**

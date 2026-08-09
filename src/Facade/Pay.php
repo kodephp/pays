@@ -479,6 +479,61 @@ class Pay
     }
 
     /**
+     * 统一结算到平台内钱包余额
+     *
+     * 经统一入口动态派发到目标网关的 `settleToWallet` 特色方法
+     * （网关需声明 {@see \Kode\Pays\Contract\SettlementCapableInterface}）。
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / account 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function settlementToWallet(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'settleToWallet', $params);
+    }
+
+    /**
+     * 统一结算到银行卡
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / bank_card_no / real_name 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function settlementToBankCard(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'settleToBankCard', $params);
+    }
+
+    /**
+     * 统一结算到外部账户（Payout / Connect 转账）
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / account / currency 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function settlementToPayout(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'settleToPayout', $params);
+    }
+
+    /**
+     * 统一查询结算结果
+     *
+     * @param string $gateway 网关标识
+     * @param string $outBizNo 商户结算单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function settlementQuery(string $gateway, string $outBizNo): array
+    {
+        return self::call($gateway, 'querySettlement', $outBizNo);
+    }
+
+    /**
      * 统一发起单笔转账
      *
      * 经统一入口动态派发到目标网关的 `singleTransfer` 特色方法，

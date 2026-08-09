@@ -9,6 +9,7 @@ use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -20,7 +21,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -879,5 +880,77 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
                 ],
             ], JSON_UNESCAPED_UNICODE),
         ]);
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * 结算到支付宝余额（复用单笔转账通道）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'recipient' => [
+                'type' => $params['identity_type'] ?? 'ALIPAY_USER_ID',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? '自动结算',
+        ]);
+    }
+
+    /**
+     * 结算到银行卡（复用无密转账到银行卡通道）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'bank_card_no', 'real_name']);
+
+        return $this->withdraw([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'bank_card_no' => $params['bank_card_no'],
+            'real_name' => $params['real_name'],
+            'bank_code' => $params['bank_code'] ?? '',
+        ]);
+    }
+
+    /**
+     * 支付宝无外部账户 Payout 语义，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        throw PayException::methodNotSupported('alipay', 'settleToPayout');
+    }
+
+    /**
+     * 查询结算结果（复用转账查询）
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
     }
 }

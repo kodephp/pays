@@ -135,6 +135,46 @@ Pay::call('wechat', 'singleTransfer', $params);
 > `batchTransfer` / `queryTransfer` / `transferReceipt`）。`Pay::call()` 缺方法时仍抛「无此方法」；
 > 例如 `Pay::transferReceipt('stripe', $no)` 会因 Stripe 不提供电子回单而报「无此方法」。
 
+自动结算同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的结算特色方法）：
+
+```php
+// 结算到平台内钱包余额（微信零钱 / 支付宝余额）
+Pay::settlementToWallet('wechat', [
+    'out_biz_no' => 'SETTLE_' . date('YmdHis'),
+    'amount'     => 500,              // 统一以分为单位
+    'account'    => 'oUpF8u...',      // openid / 支付宝账号
+    'real_name'  => '张三',
+]);
+
+// 结算到银行卡（微信企业付款到银行卡 / 支付宝无密转账到银行卡）
+Pay::settlementToBankCard('alipay', [
+    'out_biz_no'   => 'SETTLE_' . date('YmdHis'),
+    'amount'       => 10000,
+    'bank_card_no' => '622202************',
+    'real_name'    => '张三',
+    'bank_code'    => 'ICBC',
+]);
+
+// 结算到外部账户（Stripe Connect 转账 / PayPal Payouts）
+Pay::settlementToPayout('stripe', [
+    'out_biz_no' => 'SETTLE_' . date('YmdHis'),
+    'amount'     => 2000,
+    'account'    => 'acct_1234567890',
+    'currency'   => 'usd',
+]);
+
+Pay::settlementQuery('wechat', 'SETTLE_20240425000001');
+
+// 等价写法：直接用 call 派发网关原生结算方法
+Pay::call('wechat', 'settleToWallet', $params);
+```
+
+> 结算逻辑下沉到各网关类内部，声明 `SettlementCapableInterface`（`settleToWallet` /
+> `settleToBankCard` / `settleToPayout` / `querySettlement`）。各平台按自身语义多态实现，
+> 不支持的语义报「无此方法」：微信/支付宝不支持 `settleToPayout`，Stripe/PayPal 不支持
+> `settleToWallet` 与 `settleToBankCard`。若需按用户钱包绑定规则自动判定结算目标，
+> 请改用 `AutoSettlementPlugin`（内部转发到同一批网关原生方法）。
+
 红包 / 现金红包同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的红包特色方法）：
 
 ```php

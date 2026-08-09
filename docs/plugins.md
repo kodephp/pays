@@ -13,7 +13,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 | 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划、订阅管理、暂停/恢复/取消 |
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
 | 个人收款插件 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
-| 自动结算插件 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动提现到钱包 |
+| 自动结算插件 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动提现到钱包（网关原生方法 + 插件编排转发） |
 | 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询（网关原生方法 + 插件校验转发） |
 
 ## 插件架构
@@ -657,6 +657,27 @@ Pay::reconciliationDownloadFundFlow('stripe', $params); // 抛 PayException（�
 
 支持微信、支付宝、Stripe、PayPal 的支付后自动结算能力。需配合 `WalletManager` 使用。
 
+> 架构说明：结算能力已下沉到各网关原生方法（网关声明 `SettlementCapableInterface`，含
+> `settleToWallet` / `settleToBankCard` / `settleToPayout` / `querySettlement`）。本插件仅承担
+> 「编排 + 类型安全转发」：先由 `WalletManager` 判定结算条件与目标账户，再把领域语义的结算目标类型
+> 映射到网关能力方法。插件内不再有任何 `match($gateway::getName())` 平台内联分支，也不再通过反射
+> 读取网关私有配置。未实现 `SettlementCapableInterface` 的网关调用结算方法会统一报「无此方法」；
+> 平台不支持的结算语义（如微信/支付宝的 `settleToPayout`、Stripe/PayPal 的 `settleToWallet`）
+> 由网关自身抛出同类异常。
+
+### 结算目标类型与网关能力映射
+
+| 钱包目标类型 | 网关能力方法 | 支持网关 |
+|--------------|--------------|----------|
+| `wechat_wallet` | `settleToWallet` | 微信（企业付款到零钱） |
+| `alipay_balance` | `settleToWallet` | 支付宝（单笔转账到账户） |
+| `bank_card` | `settleToBankCard` | 微信（企业付款到银行卡）、支付宝（无密转账到银行卡） |
+| `stripe_connect` | `settleToPayout` | Stripe（Connect 转账） |
+| `paypal_wallet` | `settleToPayout` | PayPal（Payouts 批次） |
+
+该映射描述的是「结算语义」而非「网关品牌」，新增网关只需实现 `SettlementCapableInterface`，
+无需改动插件代码。
+
 ### 配置
 
 需先实例化 `WalletManager` 并绑定用户钱包账户。
@@ -732,6 +753,9 @@ $result = $plugin->query('SETTLE_20240425000001');
 - 结算失败会保留记录，可重新调用 `settle` 重试
 - 批量结算最多 100 笔，超过请分批调用
 - 结算操作建议配合 `IdempotencyGuard` 防止重复结算
+- 结算金额入参统一为**分**，网关内部按平台要求换算（支付宝/PayPal 自动转两位小数）
+- 也可绕过钱包规则，直接通过统一入口调用结算能力：
+  `Pay::settlementToWallet()` / `Pay::settlementToBankCard()` / `Pay::settlementToPayout()` / `Pay::settlementQuery()`
 
 ## 加密货币插件 (CryptoPlugin)
 

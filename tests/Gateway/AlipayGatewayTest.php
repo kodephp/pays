@@ -247,4 +247,105 @@ class AlipayGatewayTest extends TestCase
         $this->assertSame('SUCCESS', $result['status']);
         $this->assertSame('T100', $result['trade_no']);
     }
+
+    /* ==================== 自动结算能力 ==================== */
+
+    /**
+     * 结算到支付宝余额：复用单笔转账通道，验证方法名与金额换算
+     */
+    public function testSettleToWalletUsesUniTransfer(): void
+    {
+        $resp = json_encode(['alipay_fund_trans_uni_transfer_response' => ['code' => '10000']]);
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $gateway->settleToWallet([
+            'out_biz_no' => 'SETTLE_1',
+            'amount' => 12345,
+            'account' => '2088000000000001',
+            'real_name' => '张三',
+            'description' => '自动结算',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('alipay.fund.trans.uni.transfer', $last['data']['method']);
+
+        $bizContent = json_decode($last['data']['biz_content'], true);
+        $this->assertSame('SETTLE_1', $bizContent['out_biz_no']);
+        $this->assertSame('123.45', $bizContent['trans_amount']);
+        $this->assertSame('ALIPAY_USER_ID', $bizContent['payee_info']['identity_type']);
+        $this->assertSame('2088000000000001', $bizContent['payee_info']['identity']);
+        $this->assertSame('张三', $bizContent['payee_info']['name']);
+    }
+
+    /**
+     * 结算到支付宝余额：缺 account 抛 PayException
+     */
+    public function testSettleToWalletMissingAccount(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('缺少必填参数：account');
+
+        $gateway->settleToWallet(['out_biz_no' => 'SETTLE_1', 'amount' => 100]);
+    }
+
+    /**
+     * 结算到银行卡：走 TRANS_BANKCARD_NO_PWD 产品码
+     */
+    public function testSettleToBankCardUsesBankCardProductCode(): void
+    {
+        $resp = json_encode(['alipay_fund_trans_uni_transfer_response' => ['code' => '10000']]);
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $gateway->settleToBankCard([
+            'out_biz_no' => 'SETTLE_2',
+            'amount' => 10000,
+            'bank_card_no' => '6222021234567890',
+            'real_name' => '李四',
+            'bank_code' => 'ICBC',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+
+        $bizContent = json_decode($last['data']['biz_content'], true);
+        $this->assertSame('TRANS_BANKCARD_NO_PWD', $bizContent['product_code']);
+        $this->assertSame('BANKCARD_ACCOUNT', $bizContent['payee_info']['identity_type']);
+        $this->assertSame('6222021234567890', $bizContent['payee_info']['identity']);
+        $this->assertSame('ICBC', $bizContent['payee_info']['bank_code']);
+        $this->assertSame('100.00', $bizContent['trans_amount']);
+    }
+
+    /**
+     * 查询结算结果：复用转账查询
+     */
+    public function testQuerySettlementUsesCommonQuery(): void
+    {
+        $resp = json_encode(['alipay_fund_trans_common_query_response' => ['code' => '10000']]);
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $gateway->querySettlement('SETTLE_3');
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('alipay.fund.trans.common.query', $last['data']['method']);
+
+        $bizContent = json_decode($last['data']['biz_content'], true);
+        $this->assertSame('SETTLE_3', $bizContent['out_biz_no']);
+    }
+
+    /**
+     * 支付宝无外部账户 Payout 语义，调用即报「无此方法」
+     */
+    public function testSettleToPayoutNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        $gateway->settleToPayout(['out_biz_no' => 'S', 'amount' => 1, 'account' => 'a']);
+    }
 }

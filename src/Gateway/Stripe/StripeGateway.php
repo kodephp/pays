@@ -8,6 +8,7 @@ use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -20,7 +21,7 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -807,5 +808,68 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
             'status' => 'SUCCESS',
             'message' => 'Stripe 无资金冻结机制，Transfer 即时到账',
         ];
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * Stripe 无平台内钱包余额语义，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        throw PayException::methodNotSupported('stripe', 'settleToWallet');
+    }
+
+    /**
+     * Stripe 结算到银行卡须经由 Connect 账户 Payout，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        throw PayException::methodNotSupported('stripe', 'settleToBankCard');
+    }
+
+    /**
+     * 结算到 Stripe Connect 账户（平台向关联账户划转）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->post('v1/transfers', [
+            'amount' => (int) $params['amount'],
+            'currency' => strtolower((string) ($params['currency'] ?? $this->getConfig('currency', 'usd'))),
+            'destination' => $params['account'],
+            'description' => $params['description'] ?? 'Auto settlement',
+            'metadata' => [
+                'out_biz_no' => $params['out_biz_no'],
+            ],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 查询结算结果（按 Transfer ID 查询）
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->get("v1/transfers/{$outBizNo}", [], $this->buildAuthHeaders());
     }
 }

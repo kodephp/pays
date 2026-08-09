@@ -9,6 +9,7 @@ use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -20,7 +21,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -928,5 +929,79 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
                 'account' => $receiver['account'],
             ], JSON_UNESCAPED_UNICODE),
         ]);
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * 结算到微信零钱（复用企业付款到零钱通道）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'recipient' => [
+                'type' => 'openid',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? '自动结算',
+            'client_ip' => $params['client_ip'] ?? '127.0.0.1',
+        ]);
+    }
+
+    /**
+     * 结算到银行卡（复用企业付款到银行卡通道，卡号与姓名走 RSA 加密）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'bank_card_no', 'real_name']);
+
+        return $this->withdraw([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'bank_card_no' => $params['bank_card_no'],
+            'real_name' => $params['real_name'],
+            'bank_code' => $params['bank_code'] ?? '',
+            'description' => $params['description'] ?? '自动结算到银行卡',
+        ]);
+    }
+
+    /**
+     * 微信支付无外部账户 Payout 语义，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        throw PayException::methodNotSupported('wechat', 'settleToPayout');
+    }
+
+    /**
+     * 查询结算结果（复用转账批次查询）
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
     }
 }

@@ -413,4 +413,105 @@ class WechatPayGatewayTest extends TestCase
         $this->assertStringContainsString('secapi/pay/profitsharingfinish', $last['url']);
         $this->assertSame('FINISH_9', $last['data']['out_order_no']);
     }
+
+    /* ==================== 自动结算能力 ==================== */
+
+    /**
+     * 结算到零钱：复用企业付款通道，验证端点与 openid / 金额
+     */
+    public function testSettleToWalletPostsToTransfers(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['promotion/transfers' => $xml]);
+
+        $gateway->settleToWallet([
+            'out_biz_no' => 'SETTLE_1',
+            'amount' => 500,
+            'account' => 'openid_1',
+            'real_name' => '张三',
+            'description' => '自动结算',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('mmpaymkttransfers/promotion/transfers', $last['url']);
+        $this->assertSame('openid_1', $last['data']['openid']);
+        $this->assertSame('张三', $last['data']['re_user_name']);
+        $this->assertSame(500, $last['data']['amount']);
+        $this->assertSame('SETTLE_1', $last['data']['partner_trade_no']);
+    }
+
+    /**
+     * 结算到零钱：缺 account 抛 PayException
+     */
+    public function testSettleToWalletMissingAccount(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('缺少必填参数：account');
+
+        $gateway->settleToWallet(['out_biz_no' => 'SETTLE_1', 'amount' => 500]);
+    }
+
+    /**
+     * 结算到银行卡：复用企业付款到银行卡通道，卡号与姓名加密后传输
+     */
+    public function testSettleToBankCardPostsToPayBank(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['pay_bank' => $xml]);
+
+        $gateway->settleToBankCard([
+            'out_biz_no' => 'SETTLE_2',
+            'amount' => 10000,
+            'bank_card_no' => '6222021234567890',
+            'real_name' => '李四',
+            'bank_code' => '1002',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('mmpaymkttransfers/pay_bank', $last['url']);
+        $this->assertSame('SETTLE_2', $last['data']['partner_trade_no']);
+        $this->assertSame(10000, $last['data']['amount']);
+        $this->assertSame('1002', $last['data']['bank_code']);
+        // 卡号与姓名不得明文出现
+        $this->assertNotSame('6222021234567890', $last['data']['enc_bank_no']);
+        $this->assertNotSame('李四', $last['data']['enc_true_name']);
+    }
+
+    /**
+     * 查询结算结果：复用转账批次查询
+     */
+    public function testQuerySettlementUsesTransferBatchQuery(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['transfer/batches' => $xml]);
+
+        $gateway->querySettlement('SETTLE_3');
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v3/transfer/batches/out-batch-no/SETTLE_3', $last['url']);
+    }
+
+    /**
+     * 微信无外部账户 Payout 语义，调用即报「无此方法」
+     */
+    public function testSettleToPayoutNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        $gateway->settleToPayout(['out_biz_no' => 'S', 'amount' => 1, 'account' => 'a']);
+    }
 }

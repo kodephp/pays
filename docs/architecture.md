@@ -168,38 +168,54 @@ interface GatewayInterface
 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划与周期扣款管理（网关原生方法 + 插件校验转发） |
 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 对账单下载/解析/差异比对（网关原生方法 + 插件校验转发） |
 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 个人收款码/记录查询/提现（网关原生方法 + 插件校验转发） |
-| `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动结算到钱包 |
+| `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动结算到钱包（网关原生方法 + 插件编排转发） |
 | `CryptoPlugin` | Coinbase | 加密货币订单/链上确认/汇率（网关原生方法 + 插件校验转发） |
 
-插件通过组合（构造函数接收 `GatewayInterface`）而非继承扩展网关能力。两类实现模式并存：
-
-- **下沉式能力（分账 / 转账 / 红包 / 订阅 / 个人收款 / 对账 / 退款）**：平台组装逻辑下沉到各网关原生方法，网关声明
-  对应能力接口（`ProfitSharingCapableInterface` / `TransferCapableInterface` /
-  `RedPacketCapableInterface` / `SubscriptionCapableInterface` /
-  `PersonalReceiveCapableInterface` / `ReconciliationCapableInterface` /
-  `RefundCapableInterface` / `CryptoCapableInterface`），插件只做「参数校验 + 类型安全转发」，
-  不承载平台组装逻辑。
-- **内联分发能力（自动结算等）**：平台差异在插件内部通过 `match` 表达式按网关名称分发到具体实现：
+插件通过组合（构造函数接收 `GatewayInterface`）而非继承扩展网关能力。**所有插件统一采用「能力下沉 +
+类型安全转发」模式**：平台组装逻辑下沉到各网关原生方法，网关声明对应能力接口
+（`ProfitSharingCapableInterface` / `TransferCapableInterface` / `RedPacketCapableInterface` /
+`SubscriptionCapableInterface` / `PersonalReceiveCapableInterface` /
+`ReconciliationCapableInterface` / `RefundCapableInterface` / `CryptoCapableInterface` /
+`SettlementCapableInterface`），插件只做「参数校验 + 类型安全转发」，不承载平台组装逻辑，
+也不通过反射读取网关私有配置。
 
 ```php
 class ExamplePlugin
 {
-    public function __construct(
-        protected GatewayInterface $gateway,
-        protected ?FundConstraintValidator $validator = null,
-    ) {
-    }
+    use InteractsWithGateway;
 
     public function doSomething(array $params): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->doWechatSomething($params),
-            'alipay' => $this->doAlipaySomething($params),
-            default  => throw PayException::invalidArgument('当前网关不支持此功能'),
-        };
+        $this->validateRequired($params, ['out_biz_no', 'amount']);
+
+        return $this->forwardToCapableGateway('doSomething', $params);
+    }
+
+    /**
+     * @phpstan-assert ExampleCapableInterface $this->gateway
+     */
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
+    {
+        if (!$this->gateway instanceof ExampleCapableInterface) {
+            throw PayException::invalidArgument('网关未实现该能力接口');
+        }
+
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
+
+        /** @var mixed $gateway */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
 }
 ```
+
+`AutoSettlementPlugin` 在此基础上额外承担**编排**职责：先由 `WalletManager` 判定结算条件与目标账户，
+再把领域语义的结算目标类型（`wechat_wallet` / `alipay_balance` / `bank_card` / `stripe_connect` /
+`paypal_wallet`）映射到 `SettlementCapableInterface` 的能力方法（`settleToWallet` /
+`settleToBankCard` / `settleToPayout`）。该映射描述的是「结算语义」而非「网关品牌」，新增网关无需改动插件。
 
 ### 2.9 管理层
 

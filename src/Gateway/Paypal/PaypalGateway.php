@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Paypal;
 
 use Kode\Pays\Contract\RefundCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -14,7 +15,7 @@ use Kode\Pays\Core\PayException;
  *
  * 支持 PayPal Checkout、订阅等支付场景
  */
-class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterface, RefundCapableInterface
+class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterface, RefundCapableInterface, SettlementCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -433,5 +434,90 @@ class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterf
         $this->accessToken = $data['access_token'];
 
         return $this->accessToken;
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * PayPal 无平台内钱包余额划拨语义，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        throw PayException::methodNotSupported('paypal', 'settleToWallet');
+    }
+
+    /**
+     * PayPal 不支持直接结算到银行卡，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        throw PayException::methodNotSupported('paypal', 'settleToBankCard');
+    }
+
+    /**
+     * 结算到 PayPal 收款账户（Payouts 批次）
+     *
+     * 金额入参统一为最小货币单位（分），此处换算为 PayPal 要求的两位小数金额。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        $outBizNo = (string) $params['out_biz_no'];
+        $currency = strtoupper((string) ($params['currency'] ?? $this->getConfig('currency', 'USD')));
+
+        return $this->post('v1/payments/payouts', [
+            'sender_batch_header' => [
+                'sender_batch_id' => $outBizNo,
+                'email_subject' => 'Auto Settlement',
+                'email_message' => $params['description'] ?? 'Your payment has been settled.',
+            ],
+            'items' => [
+                [
+                    'recipient_type' => $params['recipient_type'] ?? 'EMAIL',
+                    'amount' => [
+                        'value' => number_format((int) $params['amount'] / 100, 2, '.', ''),
+                        'currency' => $currency,
+                    ],
+                    'receiver' => $params['account'],
+                    'sender_item_id' => $outBizNo,
+                    'note' => $params['description'] ?? 'Auto settlement',
+                ],
+            ],
+        ], [
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+            'Content-Type' => 'application/json',
+        ]);
+    }
+
+    /**
+     * 查询结算结果（按 Payouts 批次号查询）
+     *
+     * @param string $outBizNo PayPal 返回的 payout_batch_id
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->get("v1/payments/payouts/{$outBizNo}", [], [
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+            'Content-Type' => 'application/json',
+        ]);
     }
 }

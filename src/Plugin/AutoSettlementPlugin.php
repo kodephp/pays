@@ -6,6 +6,7 @@ namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\WalletManager;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
@@ -16,6 +17,16 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  * 支付成功后自动将资金结算到用户绑定的钱包账户。
  * 支持实时结算、定时结算、按金额阈值结算等多种模式。
  * 自动关联对应渠道：微信支付→微信零钱、支付宝→支付宝余额、银行卡→银行卡转账。
+ *
+ * 设计说明：各平台的结算报文组装、签名与端点已下沉到网关原生方法（网关声明
+ * {@see SettlementCapableInterface}），本插件只承担「编排」职责：
+ * 1. 通过 {@see WalletManager} 判定结算条件与目标账户；
+ * 2. 把领域语义的结算目标类型（钱包 / 银行卡 / 外部账户）映射到网关能力方法；
+ * 3. 归一化结算结果、附加业务上下文并触发回调。
+ *
+ * 插件内不再存在任何 `match($gateway::getName())` 平台内联分支，也不再通过反射
+ * 读取网关私有配置。未实现 {@see SettlementCapableInterface} 的网关调用结算方法
+ * 会统一报「无此方法」，平台不支持的结算语义由网关自身抛出同类异常。
  *
  * 使用示例：
  * ```php
@@ -42,6 +53,23 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 class AutoSettlementPlugin
 {
     use InteractsWithGateway;
+
+    /**
+     * 结算目标类型 → 网关能力方法映射
+     *
+     * 键为 {@see WalletManager} 定义的领域目标类型，值为
+     * {@see SettlementCapableInterface} 声明的原生方法名。
+     * 该映射描述的是「结算语义」而非「网关品牌」，因此新增网关无需改动此表。
+     *
+     * @var array<string, string>
+     */
+    protected const TARGET_METHOD_MAP = [
+        'wechat_wallet' => 'settleToWallet',
+        'alipay_balance' => 'settleToWallet',
+        'bank_card' => 'settleToBankCard',
+        'stripe_connect' => 'settleToPayout',
+        'paypal_wallet' => 'settleToPayout',
+    ];
 
     /**
      * 支付网关实例（必须具备 HTTP 通道能力）
@@ -124,15 +152,7 @@ class AutoSettlementPlugin
             ];
         }
 
-        // 根据目标账户类型执行对应的结算方式
-        $result = match ($target['type']) {
-            'wechat_wallet' => $this->settleToWechatWallet($target, $params),
-            'alipay_balance' => $this->settleToAlipayBalance($target, $params),
-            'bank_card' => $this->settleToBankCard($target, $params),
-            'stripe_connect' => $this->settleToStripeConnect($target, $params),
-            'paypal_wallet' => $this->settleToPaypalWallet($target, $params),
-            default => throw PayException::invalidArgument("不支持的结算目标类型：{$target['type']}"),
-        };
+        $result = $this->dispatchSettlement($target, $params, $amount);
 
         $result['settled'] = $result['success'] ?? false;
         $result['target_type'] = $target['type'];
@@ -189,21 +209,11 @@ class AutoSettlementPlugin
      */
     public function query(string $outBizNo): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->gateway->post('mmpaymkttransfers/promotion/transfers', [
-                'partner_trade_no' => $outBizNo,
-            ]),
-            'alipay' => $this->gateway->post('', [
-                'method' => 'alipay.fund.trans.common.query',
-                'biz_content' => json_encode([
-                    'out_biz_no' => $outBizNo,
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-            'stripe' => $this->gateway->get("v1/transfers/{$outBizNo}", [], [
-                'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-            ]),
-            default => throw PayException::invalidArgument('当前网关不支持结算查询'),
-        };
+        if ($outBizNo === '') {
+            throw PayException::paramError('缺少必填参数：out_biz_no');
+        }
+
+        return $this->forwardToCapableGateway('querySettlement', $outBizNo);
     }
 
     /**
@@ -226,164 +236,68 @@ class AutoSettlementPlugin
         $this->onSettlementFailed = $callback;
     }
 
-    /* ==================== 各渠道结算实现 ==================== */
+    /* ==================== 结算编排 ==================== */
 
     /**
-     * 结算到微信零钱
+     * 按结算目标语义派发到网关原生结算方法
      *
-     * @param array<string, mixed> $target
-     * @param array<string, mixed> $params
+     * @param array<string, mixed> $target 钱包管理器解析出的结算目标
+     * @param array<string, mixed> $params 结算参数
+     * @param int $amount 结算金额（分）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    protected function dispatchSettlement(array $target, array $params, int $amount): array
+    {
+        $type = (string) $target['type'];
+        $method = self::TARGET_METHOD_MAP[$type] ?? null;
+
+        if ($method === null) {
+            throw PayException::invalidArgument("不支持的结算目标类型：{$type}");
+        }
+
+        return $this->forwardToCapableGateway(
+            $method,
+            $this->buildSettlementPayload($method, $target, $params, $amount),
+        );
+    }
+
+    /**
+     * 构造网关结算入参（统一口径：金额为分，账户信息来自钱包绑定）
+     *
+     * @param string $method 目标网关方法名
+     * @param array<string, mixed> $target 结算目标
+     * @param array<string, mixed> $params 结算参数
+     * @param int $amount 结算金额（分）
      * @return array<string, mixed>
      */
-    protected function settleToWechatWallet(array $target, array $params): array
+    protected function buildSettlementPayload(string $method, array $target, array $params, int $amount): array
     {
-        $transferPlugin = new TransferPlugin($this->gateway);
-
-        return $transferPlugin->single([
+        $payload = [
             'out_biz_no' => $params['out_biz_no'],
-            'amount' => (int) $params['amount'],
-            'recipient' => [
-                'type' => 'openid',
-                'account' => $target['account'],
-                'name' => $target['real_name'] ?? '',
-            ],
+            'amount' => $amount,
             'description' => $params['description'] ?? '自动结算',
-        ]);
-    }
+        ];
 
-    /**
-     * 结算到支付宝余额
-     *
-     * @param array<string, mixed> $target
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function settleToAlipayBalance(array $target, array $params): array
-    {
-        $transferPlugin = new TransferPlugin($this->gateway);
+        if ($method === 'settleToBankCard') {
+            $payload['bank_card_no'] = $target['account'];
+            $payload['real_name'] = $target['real_name'] ?? '';
+            $payload['bank_code'] = $target['bank_code'] ?? '';
 
-        return $transferPlugin->single([
-            'out_biz_no' => $params['out_biz_no'],
-            'amount' => (int) $params['amount'],
-            'recipient' => [
-                'type' => 'ALIPAY_USER_ID',
-                'account' => $target['account'],
-                'name' => $target['real_name'] ?? '',
-            ],
-            'description' => $params['description'] ?? '自动结算',
-        ]);
-    }
+            return $payload;
+        }
 
-    /**
-     * 结算到银行卡
-     *
-     * @param array<string, mixed> $target
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function settleToBankCard(array $target, array $params): array
-    {
-        $gatewayName = $this->gateway::getName();
+        $payload['account'] = $target['account'];
+        $payload['real_name'] = $target['real_name'] ?? '';
 
-        return match ($gatewayName) {
-            'wechat' => $this->gateway->post('mmpaymkttransfers/pay_bank', [
-                'partner_trade_no' => $params['out_biz_no'],
-                'enc_bank_no' => $this->encryptBankCard($target['account']),
-                'enc_true_name' => $this->encryptBankCard($target['real_name'] ?? ''),
-                'bank_code' => $target['bank_code'] ?? '',
-                'amount' => (int) $params['amount'],
-                'desc' => $params['description'] ?? '自动结算到银行卡',
-            ]),
-            'alipay' => $this->gateway->post('', [
-                'method' => 'alipay.fund.trans.uni.transfer',
-                'biz_content' => json_encode([
-                    'out_biz_no' => $params['out_biz_no'],
-                    'trans_amount' => number_format($params['amount'] / 100, 2),
-                    'product_code' => 'TRANS_BANKCARD_NO_PWD',
-                    'biz_scene' => 'DIRECT_TRANSFER',
-                    'order_title' => '自动结算',
-                    'payee_info' => [
-                        'identity_type' => 'BANKCARD_ACCOUNT',
-                        'identity' => $target['account'],
-                        'name' => $target['real_name'] ?? '',
-                        'bank_code' => $target['bank_code'] ?? '',
-                    ],
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-            default => throw PayException::invalidArgument("网关 {$gatewayName} 不支持结算到银行卡"),
-        };
-    }
+        if (isset($target['currency'])) {
+            $payload['currency'] = $target['currency'];
+        }
 
-    /**
-     * 结算到 Stripe Connect 账户
-     *
-     * @param array<string, mixed> $target
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function settleToStripeConnect(array $target, array $params): array
-    {
-        return $this->gateway->post('v1/transfers', [
-            'amount' => (int) $params['amount'],
-            'currency' => 'usd',
-            'destination' => $target['account'],
-            'description' => $params['description'] ?? 'Auto settlement',
-            'metadata' => [
-                'out_biz_no' => $params['out_biz_no'],
-            ],
-        ], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-        ]);
-    }
-
-    /**
-     * 结算到 PayPal 钱包
-     *
-     * @param array<string, mixed> $target
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function settleToPaypalWallet(array $target, array $params): array
-    {
-        return $this->gateway->post('v1/payments/payouts', [
-            'sender_batch_header' => [
-                'sender_batch_id' => $params['out_biz_no'],
-                'email_subject' => 'Auto Settlement',
-                'email_message' => $params['description'] ?? 'Your payment has been settled.',
-            ],
-            'items' => [
-                [
-                    'recipient_type' => 'EMAIL',
-                    'amount' => [
-                        'value' => number_format($params['amount'] / 100, 2),
-                        'currency' => 'USD',
-                    ],
-                    'receiver' => $target['account'],
-                    'sender_item_id' => $params['out_biz_no'],
-                ],
-            ],
-        ], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('access_token', ''),
-        ]);
+        return $payload;
     }
 
     /* ==================== 通用工具方法 ==================== */
-
-    /**
-     * 加密银行卡信息
-     */
-    protected function encryptBankCard(string $data): string
-    {
-        $publicKey = $this->getGatewayConfig('bank_public_key');
-
-        if (empty($publicKey)) {
-            return base64_encode($data);
-        }
-
-        openssl_public_encrypt($data, $encrypted, $publicKey, OPENSSL_PKCS1_OAEP_PADDING);
-
-        return base64_encode($encrypted);
-    }
 
     /**
      * 验证必填参数
@@ -402,24 +316,33 @@ class AutoSettlementPlugin
     }
 
     /**
-     * 获取网关配置项
+     * 类型安全转发到支持结算的网关原生方法
      *
-     * @param string $key 配置键
-     * @param mixed $default 默认值
-     * @return mixed
+     * 平台组装逻辑已下沉到各网关类内部（声明 {@see SettlementCapableInterface}）。
+     * 本插件只做能力断言与转发，不重复承载平台组装逻辑，也不通过反射读取网关配置。
+     *
+     * @param string $method 网关原生结算方法名
+     * @param mixed ...$args 透传参数
+     * @return array<string, mixed>
+     * @throws PayException
+     *
+     * @phpstan-assert SettlementCapableInterface $this->gateway
      */
-    protected function getGatewayConfig(string $key, mixed $default = null): mixed
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
     {
-        $reflection = new \ReflectionClass($this->gateway);
-
-        if ($reflection->hasProperty('config')) {
-            $property = $reflection->getProperty('config');
-            $property->setAccessible(true);
-            $config = $property->getValue($this->gateway);
-
-            return $config[$key] ?? $default;
+        if (!$this->gateway instanceof SettlementCapableInterface) {
+            throw PayException::invalidArgument(
+                sprintf('网关 %s 未实现结算能力接口（SettlementCapableInterface）', $this->gateway::getName()),
+            );
         }
 
-        return $default;
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
+
+        /** @var mixed $gateway 允许转发接口声明之外的网关扩展结算方法 */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
 }

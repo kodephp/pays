@@ -150,6 +150,11 @@ class GatewayManifest
     public const CAP_PERSONAL_RECEIVE = 'personal_receive';
 
     /**
+     * 能力：自动结算（钱包余额 / 银行卡 / 外部账户 Payout）
+     */
+    public const CAP_SETTLEMENT = 'settlement';
+
+    /**
      * 能力：Webhook 事件订阅
      */
     public const CAP_WEBHOOK = 'webhook';
@@ -399,6 +404,7 @@ class GatewayManifest
             self::CAP_PERSONAL_RECEIVE => false,
             self::CAP_WEBHOOK => false,
             self::CAP_CRYPTO => false,
+            self::CAP_SETTLEMENT => false,
         ];
     }
 
@@ -495,6 +501,7 @@ class GatewayManifest
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_SETTLEMENT => true,
                 ]),
             ],
             'alipay' => [
@@ -506,6 +513,7 @@ class GatewayManifest
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_SETTLEMENT => true,
                 ]),
             ],
             'wechat_v3' => [
@@ -563,7 +571,7 @@ class GatewayManifest
                 'label' => 'PayPal',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_SUBSCRIPTION => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_SUBSCRIPTION => true, self::CAP_WEBHOOK => true, self::CAP_SETTLEMENT => true],
             ],
             'stripe' => [
                 'label' => 'Stripe',
@@ -576,6 +584,7 @@ class GatewayManifest
                     self::CAP_QR => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_PROFIT_SHARING => true,
+                    self::CAP_SETTLEMENT => true,
                 ],
             ],
             'square' => [
