@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Wechat;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
 
 /**
@@ -18,7 +20,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -776,5 +778,155 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     protected function generateNonceStr(int $length = 32): string
     {
         return bin2hex(random_bytes(max(1, intdiv($length, 2))));
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起微信分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createProfitSharing(array $params): array
+    {
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
+        $mapped = array_map(static function ($r): array {
+            return $r instanceof Receiver
+                ? $r->toWechatArray()
+                : [
+                    'type' => $r['type'],
+                    'account' => $r['account'],
+                    'amount' => (int) $r['amount'],
+                    'description' => $r['description'] ?? '分账',
+                ];
+        }, $receivers);
+
+        return $this->post('secapi/pay/profitsharing', [
+            'transaction_id' => $params['transaction_id'],
+            'out_order_no' => $params['out_order_no'],
+            'receivers' => json_encode($mapped, JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 查询微信分账结果
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        return $this->post('pay/profitsharingquery', [
+            'transaction_id' => '',
+            'out_order_no' => $outOrderNo,
+        ]);
+    }
+
+    /**
+     * 微信分账回退
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function returnProfitSharing(array $params): array
+    {
+        return $this->post('secapi/pay/profitsharingreturn', [
+            'out_order_no' => $params['out_order_no'],
+            'out_return_no' => $params['out_return_no'],
+            'return_account_type' => $params['return_account_type'] ?? 'MERCHANT_ID',
+            'return_account' => $params['return_account'] ?? '',
+            'return_amount' => (int) $params['return_amount'],
+            'description' => $params['description'] ?? '分账回退',
+        ]);
+    }
+
+    /**
+     * 查询微信分账回退结果
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        return $this->post('pay/profitsharingreturnquery', [
+            'out_return_no' => $outReturnNo,
+        ]);
+    }
+
+    /**
+     * 解冻微信未分账的剩余资金
+     *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选）
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        return $this->post('secapi/pay/profitsharingfinish', [
+            'transaction_id' => $transactionId,
+            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
+            'description' => '解冻剩余资金',
+        ]);
+    }
+
+    /**
+     * 微信分账配置查询（最大分账比例与分账关系）
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号
+     * @return array<string, mixed>
+     */
+    public function queryProfitSharingConfig(string $outOrderNo, ?string $transactionId = null): array
+    {
+        $data = ['out_order_no' => $outOrderNo];
+        if ($transactionId !== null) {
+            $data['transaction_id'] = $transactionId;
+        }
+
+        return $this->post('pay/profitsharingconfigquery', $data);
+    }
+
+    /**
+     * 添加微信分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
+     */
+    public function addProfitSharingReceiver(array $receiver): array
+    {
+        $this->validateRequired($receiver, ['type', 'account', 'name']);
+
+        return $this->post('pay/profitsharingaddreceiver', [
+            'receiver' => json_encode([
+                'type' => $receiver['type'],
+                'account' => $receiver['account'],
+                'name' => $receiver['name'],
+                'relation_type' => $receiver['relation_type'] ?? 'SERVICE_PROVIDER',
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 删除微信分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
+     */
+    public function removeProfitSharingReceiver(array $receiver): array
+    {
+        $this->validateRequired($receiver, ['type', 'account']);
+
+        return $this->post('pay/profitsharingremovereceiver', [
+            'receiver' => json_encode([
+                'type' => $receiver['type'],
+                'account' => $receiver['account'],
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
     }
 }

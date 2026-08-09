@@ -452,6 +452,19 @@ class Pay
     }
 
     /**
+     * 统一查询分账回退结果
+     *
+     * @param string $gateway 网关标识
+     * @param string $outReturnNo 商户回退单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function profitSharingQueryReturn(string $gateway, string $outReturnNo): array
+    {
+        return self::call($gateway, 'queryProfitSharingReturn', $outReturnNo);
+    }
+
+    /**
      * 统一解冻未分账的剩余资金
      *
      * @param string $gateway 网关标识

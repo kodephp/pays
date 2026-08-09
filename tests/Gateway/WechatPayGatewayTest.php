@@ -6,6 +6,8 @@ namespace Kode\Pays\Tests\Gateway;
 
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Wechat\WechatPayGateway;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
+use Kode\Pays\Support\Money;
 use Kode\Pays\Support\Signer;
 use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
@@ -333,5 +335,82 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('electronic-receipt', $last['url']);
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起分账：端点正确、Receiver DTO 金额按分上报
+     */
+    public function testCreateProfitSharingPostsToCorrectEndpoint(): void
+    {
+        $gateway = $this->createGateway(['profitsharing' => '<xml><return_code><![CDATA[SUCCESS]]></return_code><result_code><![CDATA[SUCCESS]]></result_code></xml>']);
+
+        $gateway->createProfitSharing([
+            'transaction_id' => 'T100',
+            'out_order_no' => 'SHARE_1',
+            'receivers' => [
+                new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(100, 'CNY'), '分账', 'SERVICE_PROVIDER'),
+            ],
+        ]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('secapi/pay/profitsharing', $last['url']);
+
+        $receivers = json_decode($last['data']['receivers'], true);
+        $this->assertSame(100, $receivers[0]['amount']);
+        $this->assertSame('MERCHANT_ID', $receivers[0]['type']);
+    }
+
+    /**
+     * 分账配置查询：端点正确、参数透传
+     */
+    public function testQueryProfitSharingConfigPostsToCorrectEndpoint(): void
+    {
+        $gateway = $this->createGateway(['profitsharing' => '<xml><return_code><![CDATA[SUCCESS]]></return_code><result_code><![CDATA[SUCCESS]]></result_code></xml>']);
+
+        $gateway->queryProfitSharingConfig('SHARE_1', 'T100');
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('pay/profitsharingconfigquery', $last['url']);
+        $this->assertSame('SHARE_1', $last['data']['out_order_no']);
+        $this->assertSame('T100', $last['data']['transaction_id']);
+    }
+
+    /**
+     * 添加分账接收方：端点正确、参数 JSON 化
+     */
+    public function testAddProfitSharingReceiverPostsToCorrectEndpoint(): void
+    {
+        $gateway = $this->createGateway(['profitsharing' => '<xml><return_code><![CDATA[SUCCESS]]></return_code><result_code><![CDATA[SUCCESS]]></result_code></xml>']);
+
+        $gateway->addProfitSharingReceiver(['type' => 'MERCHANT_ID', 'account' => '123', 'name' => '供应商']);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('pay/profitsharingaddreceiver', $last['url']);
+        $receiver = json_decode($last['data']['receiver'], true);
+        $this->assertSame('123', $receiver['account']);
+    }
+
+    /**
+     * 解冻剩余资金：端点正确、out_order_no 透传
+     */
+    public function testUnfreezeProfitSharingPostsToCorrectEndpoint(): void
+    {
+        $gateway = $this->createGateway(['profitsharing' => '<xml><return_code><![CDATA[SUCCESS]]></return_code><result_code><![CDATA[SUCCESS]]></result_code></xml>']);
+
+        $gateway->unfreezeProfitSharing('T100', 'FINISH_9');
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('secapi/pay/profitsharingfinish', $last['url']);
+        $this->assertSame('FINISH_9', $last['data']['out_order_no']);
     }
 }

@@ -6,6 +6,8 @@ namespace Kode\Pays\Tests\Gateway;
 
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Alipay\AlipayGateway;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
+use Kode\Pays\Support\Money;
 use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
 
@@ -187,5 +189,62 @@ class AlipayGatewayTest extends TestCase
         $gateway = $this->createGateway();
 
         $this->assertSame('alipay', AlipayGateway::getName());
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起分账：method 正确、Receiver DTO 金额转为主单位元
+     */
+    public function testCreateProfitSharingUsesSettleMethodAndYuanAmount(): void
+    {
+        $resp = json_encode(['alipay_trade_order_settle_response' => ['code' => '10000', 'msg' => 'Success']]);
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $gateway->createProfitSharing([
+            'transaction_id' => 'T100',
+            'out_order_no' => 'SHARE_1',
+            'receivers' => [
+                new Receiver('MERCHANT_ID', '123', '供应商', Money::fromMinor(100, 'CNY'), '分账', 'SERVICE_PROVIDER'),
+            ],
+        ]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+
+        $data = $last['data'];
+        $this->assertSame('alipay.trade.order.settle', $data['method']);
+        $biz = json_decode($data['biz_content'], true);
+        $this->assertSame('1.00', $biz['royalty_parameters'][0]['amount']);
+    }
+
+    /**
+     * 绑定分账关系：端点正确
+     */
+    public function testAddProfitSharingReceiverUsesBindMethod(): void
+    {
+        $resp = json_encode(['alipay_trade_royalty_relation_bind_response' => ['code' => '10000', 'msg' => 'Success']]);
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $gateway->addProfitSharingReceiver(['type' => 'userId', 'account' => '123', 'name' => '供应商']);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('alipay.trade.royalty.relation.bind', $last['data']['method']);
+    }
+
+    /**
+     * 解冻剩余资金：支付宝无冻结，返回成功占位
+     */
+    public function testUnfreezeProfitSharingReturnsSuccessPlaceholder(): void
+    {
+        $gateway = $this->createGateway();
+
+        $result = $gateway->unfreezeProfitSharing('T100');
+
+        $this->assertSame('SUCCESS', $result['status']);
+        $this->assertSame('T100', $result['trade_no']);
     }
 }

@@ -6,6 +6,8 @@ namespace Kode\Pays\Tests\Gateway;
 
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Stripe\StripeGateway;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
+use Kode\Pays\Support\Money;
 use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
 
@@ -153,5 +155,61 @@ class StripeGatewayTest extends TestCase
         $gateway = $this->createGateway();
 
         $this->assertSame('stripe', StripeGateway::getName());
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起分账：逐接收方发起 Transfer，携带 Bearer 头与 source_transaction
+     */
+    public function testCreateProfitSharingPostsTransfersWithAuthHeader(): void
+    {
+        $gateway = $this->createGateway(['v1/transfers' => json_encode(['id' => 'tr_1'])]);
+
+        $gateway->createProfitSharing([
+            'transaction_id' => 'pi_1',
+            'out_order_no' => 'SHARE_1',
+            'receivers' => [
+                new Receiver('MERCHANT_ID', 'acct_1', null, Money::fromMinor(300, 'USD'), '分账', 'SERVICE_PROVIDER'),
+            ],
+        ]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/transfers', $last['url']);
+        $this->assertSame(300, $last['data']['amount']);
+        $this->assertSame('usd', $last['data']['currency']);
+        $this->assertSame('pi_1', $last['data']['source_transaction']);
+        $this->assertSame('Bearer sk_test_123', $last['headers']['Authorization']);
+    }
+
+    /**
+     * 分账回退：创建 Reversal 端点正确
+     */
+    public function testReturnProfitSharingPostsReversal(): void
+    {
+        $gateway = $this->createGateway(['v1/transfers/tr_1/reversals' => json_encode(['id' => 'rev_1'])]);
+
+        $gateway->returnProfitSharing(['transfer_id' => 'tr_1', 'return_amount' => 100]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/transfers/tr_1/reversals', $last['url']);
+        $this->assertSame(100, $last['data']['amount']);
+    }
+
+    /**
+     * 解冻剩余资金：Stripe 无冻结，返回成功占位
+     */
+    public function testUnfreezeProfitSharingReturnsSuccessPlaceholder(): void
+    {
+        $gateway = $this->createGateway();
+
+        $result = $gateway->unfreezeProfitSharing('pi_1');
+
+        $this->assertSame('SUCCESS', $result['status']);
+        $this->assertSame('pi_1', $result['payment_intent']);
     }
 }

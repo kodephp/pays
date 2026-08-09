@@ -24,9 +24,12 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  * - 抖音支付（分账，网关原生方法实现）
  * - 云闪付（分账，网关原生方法实现）
  *
- * 设计说明：抖音 / 云闪付的「分账」是其各自网关的「特色方法」，已在网关类内部实现
- * （复用基类配置、签名与 HTTP 通道）并声明 {@see ProfitSharingCapableInterface}；
- * 本插件在对应分支只做「校验 + 类型安全转发」，不重复承载平台组装逻辑，保证单一职责。
+ * 设计说明：分账的平台组装逻辑已下沉到各网关原生方法（网关声明
+ * {@see ProfitSharingCapableInterface}），本插件只做「参数校验 + 类型安全转发」，
+ * 不再承载任何 `match($gateway::getName())` 平台内联分支。未实现
+ * {@see ProfitSharingCapableInterface} 的网关调用分账方法会统一报「无此方法」；
+ * 可选能力（如 `addProfitSharingReceiver` / `queryProfitSharingConfig`）若网关未实现，
+ * 同样报「无此方法」。
  *
  * 使用示例：
  * ```php
@@ -124,13 +127,7 @@ class ProfitSharingPlugin
         }
         $params['receivers'] = $receivers;
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->createWechatSharing($params),
-            'alipay' => $this->createAlipaySharing($params),
-            'stripe' => $this->createStripeSharing($params),
-            'douyin', 'unionpay' => $this->forwardToCapableGateway('createProfitSharing', $params),
-            default => throw PayException::invalidArgument('当前网关不支持分账功能'),
-        };
+        return $this->forwardToCapableGateway('createProfitSharing', $params);
     }
 
     /**
@@ -142,13 +139,7 @@ class ProfitSharingPlugin
      */
     public function query(string $outOrderNo): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->queryWechatSharing($outOrderNo),
-            'alipay' => $this->queryAlipaySharing($outOrderNo),
-            'stripe' => $this->queryStripeSharing($outOrderNo),
-            'douyin', 'unionpay' => $this->forwardToCapableGateway('queryProfitSharing', $outOrderNo),
-            default => throw PayException::invalidArgument('当前网关不支持分账查询'),
-        };
+        return $this->forwardToCapableGateway('queryProfitSharing', $outOrderNo);
     }
 
     /**
@@ -168,13 +159,7 @@ class ProfitSharingPlugin
     {
         $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->returnWechatSharing($params),
-            'alipay' => $this->returnAlipaySharing($params),
-            'stripe' => $this->returnStripeSharing($params),
-            'douyin', 'unionpay' => $this->forwardToCapableGateway('returnProfitSharing', $params),
-            default => throw PayException::invalidArgument('当前网关不支持分账回退'),
-        };
+        return $this->forwardToCapableGateway('returnProfitSharing', $params);
     }
 
     /**
@@ -186,20 +171,13 @@ class ProfitSharingPlugin
      */
     public function queryReturn(string $outReturnNo): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->queryWechatReturn($outReturnNo),
-            'alipay' => $this->queryAlipayReturn($outReturnNo),
-            'stripe' => $this->queryStripeReturn($outReturnNo),
-            'douyin', 'unionpay' => $this->forwardToCapableGateway('queryProfitSharingReturn', $outReturnNo),
-            default => throw PayException::invalidArgument('当前网关不支持分账回退查询'),
-        };
+        return $this->forwardToCapableGateway('queryProfitSharingReturn', $outReturnNo);
     }
 
     /**
      * 查询分账配置（最大分账比例与分账关系）
      *
-     * 目前微信支付提供该能力：返回该商户号允许的最大分账比例、当前已配置的分账关系等，
-     * 便于分账前校验比例是否超限。其他网关暂不支持。
+     * 目前微信支付提供该能力；其他网关未实现，调用会报「无此方法」。
      *
      * @param string $outOrderNo 商户分账订单号
      * @param string|null $transactionId 原支付订单号（可选，与 out_order_no 至少其一）
@@ -208,10 +186,7 @@ class ProfitSharingPlugin
      */
     public function queryConfig(string $outOrderNo, ?string $transactionId = null): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->queryWechatConfig($outOrderNo, $transactionId),
-            default => throw PayException::invalidArgument('当前网关不支持分账配置查询'),
-        };
+        return $this->forwardToCapableGateway('queryProfitSharingConfig', $outOrderNo, $transactionId);
     }
 
     /**
@@ -226,23 +201,13 @@ class ProfitSharingPlugin
      */
     public function unfreeze(string $transactionId, ?string $outOrderNo = null): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->unfreezeWechat($transactionId, $outOrderNo),
-            'alipay' => $this->unfreezeAlipay($transactionId),
-            'stripe' => $this->unfreezeStripe($transactionId),
-            'douyin', 'unionpay' => $this->forwardToCapableGateway(
-                'unfreezeProfitSharing',
-                $transactionId,
-                $outOrderNo,
-            ),
-            default => throw PayException::invalidArgument('当前网关不支持资金解冻'),
-        };
+        return $this->forwardToCapableGateway('unfreezeProfitSharing', $transactionId, $outOrderNo);
     }
 
     /**
      * 添加分账接收方
      *
-     * 在分账前将接收方添加到网关的接收方列表中。
+     * 在分账前将接收方添加到网关的接收方列表中。目前微信 / 支付宝支持。
      *
      * @param array<string, mixed> $receiver 接收方信息
      * @return array<string, mixed>
@@ -250,11 +215,7 @@ class ProfitSharingPlugin
      */
     public function addReceiver(array $receiver): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->addWechatReceiver($receiver),
-            'alipay' => $this->addAlipayReceiver($receiver),
-            default => throw PayException::invalidArgument('当前网关不支持添加分账接收方'),
-        };
+        return $this->forwardToCapableGateway('addProfitSharingReceiver', $receiver);
     }
 
     /**
@@ -266,413 +227,7 @@ class ProfitSharingPlugin
      */
     public function removeReceiver(array $receiver): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->removeWechatReceiver($receiver),
-            'alipay' => $this->removeAlipayReceiver($receiver),
-            default => throw PayException::invalidArgument('当前网关不支持删除分账接收方'),
-        };
-    }
-
-    /* ==================== 微信支付分账实现 ==================== */
-
-    /**
-     * 创建微信分账
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function createWechatSharing(array $params): array
-    {
-        /** @var array<int, Receiver|array<string, mixed>> $receivers */
-        $receivers = $params['receivers'];
-        $mapped = array_map(static function ($r): array {
-            return $r instanceof Receiver
-                ? $r->toWechatArray()
-                : [
-                    'type' => $r['type'],
-                    'account' => $r['account'],
-                    'amount' => (int) $r['amount'],
-                    'description' => $r['description'] ?? '分账',
-                ];
-        }, $receivers);
-
-        return $this->gateway->post('secapi/pay/profitsharing', [
-            'transaction_id' => $params['transaction_id'],
-            'out_order_no' => $params['out_order_no'],
-            'receivers' => json_encode($mapped, JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 查询微信分账结果
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryWechatSharing(string $outOrderNo): array
-    {
-        return $this->gateway->post('pay/profitsharingquery', [
-            'transaction_id' => '',
-            'out_order_no' => $outOrderNo,
-        ]);
-    }
-
-    /**
-     * 微信分账回退
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function returnWechatSharing(array $params): array
-    {
-        return $this->gateway->post('secapi/pay/profitsharingreturn', [
-            'out_order_no' => $params['out_order_no'],
-            'out_return_no' => $params['out_return_no'],
-            'return_account_type' => $params['return_account_type'] ?? 'MERCHANT_ID',
-            'return_account' => $params['return_account'] ?? '',
-            'return_amount' => (int) $params['return_amount'],
-            'description' => $params['description'] ?? '分账回退',
-        ]);
-    }
-
-    /**
-     * 查询微信分账回退结果
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryWechatReturn(string $outReturnNo): array
-    {
-        return $this->gateway->post('pay/profitsharingreturnquery', [
-            'out_return_no' => $outReturnNo,
-        ]);
-    }
-
-    /**
-     * 微信解冻剩余资金
-     *
-     * @param string $transactionId 原支付订单号
-     * @param string|null $outOrderNo 商户解冻单号（可选）
-     * @return array<string, mixed>
-     */
-    protected function unfreezeWechat(string $transactionId, ?string $outOrderNo): array
-    {
-        return $this->gateway->post('secapi/pay/profitsharingfinish', [
-            'transaction_id' => $transactionId,
-            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
-            'description' => '解冻剩余资金',
-        ]);
-    }
-
-    /**
-     * 微信分账配置查询（最大分账比例与分账关系）
-     *
-     * @param string $outOrderNo 商户分账订单号
-     * @param string|null $transactionId 原支付订单号
-     * @return array<string, mixed>
-     */
-    protected function queryWechatConfig(string $outOrderNo, ?string $transactionId): array
-    {
-        $data = ['out_order_no' => $outOrderNo];
-        if ($transactionId !== null) {
-            $data['transaction_id'] = $transactionId;
-        }
-
-        return $this->gateway->post('pay/profitsharingconfigquery', $data);
-    }
-
-    /**
-     * 添加微信分账接收方
-     *
-     * @param array<string, mixed> $receiver
-     * @return array<string, mixed>
-     */
-    protected function addWechatReceiver(array $receiver): array
-    {
-        $this->validateRequired($receiver, ['type', 'account', 'name']);
-
-        return $this->gateway->post('pay/profitsharingaddreceiver', [
-            'receiver' => json_encode([
-                'type' => $receiver['type'],
-                'account' => $receiver['account'],
-                'name' => $receiver['name'],
-                'relation_type' => $receiver['relation_type'] ?? 'SERVICE_PROVIDER',
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 删除微信分账接收方
-     *
-     * @param array<string, mixed> $receiver
-     * @return array<string, mixed>
-     */
-    protected function removeWechatReceiver(array $receiver): array
-    {
-        $this->validateRequired($receiver, ['type', 'account']);
-
-        return $this->gateway->post('pay/profitsharingremovereceiver', [
-            'receiver' => json_encode([
-                'type' => $receiver['type'],
-                'account' => $receiver['account'],
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /* ==================== 支付宝分账实现 ==================== */
-
-    /**
-     * 创建支付宝分账
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function createAlipaySharing(array $params): array
-    {
-        /** @var array<int, Receiver|array<string, mixed>> $receivers */
-        $receivers = $params['receivers'];
-        $royaltyParameters = array_map(static function ($r): array {
-            if ($r instanceof Receiver) {
-                return $r->toAlipayArray();
-            }
-
-            return [
-                'trans_out_type' => $r['trans_out_type'] ?? 'userId',
-                'trans_out' => $r['trans_out'] ?? '',
-                'trans_in_type' => $r['trans_in_type'] ?? 'userId',
-                'trans_in' => $r['trans_in'],
-                'amount' => (float) $r['amount'],
-                'desc' => $r['desc'] ?? $r['description'] ?? '分账',
-            ];
-        }, $receivers);
-
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.order.settle',
-            'biz_content' => json_encode([
-                'out_request_no' => $params['out_order_no'],
-                'trade_no' => $params['transaction_id'],
-                'royalty_parameters' => $royaltyParameters,
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 查询支付宝分账结果
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryAlipaySharing(string $outOrderNo): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.order.settle.query',
-            'biz_content' => json_encode([
-                'out_request_no' => $outOrderNo,
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 支付宝分账回退
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function returnAlipaySharing(array $params): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.refund',
-            'biz_content' => json_encode([
-                'out_request_no' => $params['out_return_no'],
-                'trade_no' => $params['transaction_id'] ?? '',
-                'refund_amount' => (float) $params['return_amount'],
-                'refund_reason' => $params['description'] ?? '分账回退',
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 查询支付宝分账回退结果
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryAlipayReturn(string $outReturnNo): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.fastpay.refund.query',
-            'biz_content' => json_encode([
-                'out_request_no' => $outReturnNo,
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 支付宝解冻剩余资金
-     *
-     * @return array<string, mixed>
-     */
-    protected function unfreezeAlipay(string $transactionId): array
-    {
-        // 支付宝分账完成后自动解冻，无需额外操作
-        return [
-            'trade_no' => $transactionId,
-            'status' => 'SUCCESS',
-            'message' => '支付宝分账完成后自动解冻剩余资金',
-        ];
-    }
-
-    /**
-     * 添加支付宝分账接收方
-     *
-     * @param array<string, mixed> $receiver
-     * @return array<string, mixed>
-     */
-    protected function addAlipayReceiver(array $receiver): array
-    {
-        $this->validateRequired($receiver, ['account', 'name']);
-
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.royalty.relation.bind',
-            'biz_content' => json_encode([
-                'receiver_list' => [
-                    [
-                        'type' => $receiver['type'] ?? 'userId',
-                        'account' => $receiver['account'],
-                        'name' => $receiver['name'],
-                    ],
-                ],
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 删除支付宝分账接收方
-     *
-     * @param array<string, mixed> $receiver
-     * @return array<string, mixed>
-     */
-    protected function removeAlipayReceiver(array $receiver): array
-    {
-        $this->validateRequired($receiver, ['account']);
-
-        return $this->gateway->post('', [
-            'method' => 'alipay.trade.royalty.relation.unbind',
-            'biz_content' => json_encode([
-                'receiver_list' => [
-                    [
-                        'type' => $receiver['type'] ?? 'userId',
-                        'account' => $receiver['account'],
-                    ],
-                ],
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /* ==================== Stripe Connect 分账实现 ==================== */
-
-    /**
-     * 创建 Stripe Transfer 分账
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function createStripeSharing(array $params): array
-    {
-        /** @var array<int, Receiver|array<string, mixed>> $receivers */
-        $receivers = $params['receivers'];
-        $results = [];
-
-        foreach ($receivers as $receiver) {
-            if ($receiver instanceof Receiver) {
-                $transferData = $receiver->toStripeArray();
-                if (isset($params['transaction_id'])) {
-                    $transferData['source_transaction'] = $params['transaction_id'];
-                }
-            } else {
-                $this->validateRequired($receiver, ['account', 'amount']);
-
-                $transferData = [
-                    'amount' => (int) $receiver['amount'],
-                    'currency' => strtolower($receiver['currency'] ?? 'usd'),
-                    'destination' => $receiver['account'],
-                ];
-
-                if (isset($receiver['source_transaction'])) {
-                    $transferData['source_transaction'] = $receiver['source_transaction'];
-                } elseif (isset($params['transaction_id'])) {
-                    $transferData['source_transaction'] = $params['transaction_id'];
-                }
-            }
-
-            $results[] = $this->gateway->post('v1/transfers', $transferData, [
-                'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-            ]);
-        }
-
-        return [
-            'out_order_no' => $params['out_order_no'],
-            'transfers' => $results,
-            'count' => count($results),
-        ];
-    }
-
-    /**
-     * 查询 Stripe Transfer
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryStripeSharing(string $outOrderNo): array
-    {
-        return $this->gateway->get('v1/transfers', [
-            'metadata[out_order_no]' => $outOrderNo,
-        ], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-        ]);
-    }
-
-    /**
-     * Stripe 分账回退（创建 Reversal）
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function returnStripeSharing(array $params): array
-    {
-        $transferId = $params['transfer_id'] ?? '';
-
-        if ($transferId === '') {
-            throw PayException::paramError('Stripe 分账回退需要提供 transfer_id');
-        }
-
-        return $this->gateway->post("v1/transfers/{$transferId}/reversals", [
-            'amount' => (int) $params['return_amount'],
-        ], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-        ]);
-    }
-
-    /**
-     * 查询 Stripe Reversal
-     *
-     * @return array<string, mixed>
-     */
-    protected function queryStripeReturn(string $outReturnNo): array
-    {
-        return $this->gateway->get('v1/transfer_reversals/' . $outReturnNo, [], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-        ]);
-    }
-
-    /**
-     * Stripe 解冻剩余资金
-     *
-     * @return array<string, mixed>
-     */
-    protected function unfreezeStripe(string $transactionId): array
-    {
-        // Stripe 无冻结概念，Transfer 即时到账
-        return [
-            'payment_intent' => $transactionId,
-            'status' => 'SUCCESS',
-            'message' => 'Stripe 无资金冻结机制，Transfer 即时到账',
-        ];
+        return $this->forwardToCapableGateway('removeProfitSharingReceiver', $receiver);
     }
 
     /* ==================== 通用工具方法 ==================== */
@@ -694,38 +249,16 @@ class ProfitSharingPlugin
     }
 
     /**
-     * 获取网关配置项
-     *
-     * @param string $key 配置键
-     * @param mixed $default 默认值
-     * @return mixed
-     */
-    protected function getGatewayConfig(string $key, mixed $default = null): mixed
-    {
-        // 通过反射获取网关的 config 属性
-        $reflection = new \ReflectionClass($this->gateway);
-
-        if ($reflection->hasProperty('config')) {
-            $property = $reflection->getProperty('config');
-            $property->setAccessible(true);
-            $config = $property->getValue($this->gateway);
-
-            return $config[$key] ?? $default;
-        }
-
-        return $default;
-    }
-
-    /**
      * 类型安全转发到支持分账的网关原生方法
      *
-     * 抖音 / 云闪付的「分账」是各自网关类内部实现的特色方法（声明了
-     * {@see ProfitSharingCapableInterface}）。插件在此只做校验与转发，不重复承载平台组装逻辑。
+     * 分账的平台组装逻辑已下沉到各网关类内部（声明 {@see ProfitSharingCapableInterface}）。
+     * 本插件只做能力断言与转发，不重复承载平台组装逻辑。可选能力（如
+     * `addProfitSharingReceiver` / `queryProfitSharingConfig`）若网关未实现，同样报「无此方法」。
      *
      * @param string $method 网关原生分账方法名
      * @param mixed ...$args 透传参数
      * @return array<string, mixed>
-     * @throws PayException 当网关未实现分账能力接口时
+     * @throws PayException 当网关未实现分账能力接口，或不支持指定方法时
      *
      * @phpstan-assert ProfitSharingCapableInterface $this->gateway
      */
@@ -737,7 +270,11 @@ class ProfitSharingPlugin
             );
         }
 
-        /** @var ProfitSharingCapableInterface $gateway */
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
+
+        /** @var mixed $gateway 允许转发可选方法（如 addProfitSharingReceiver / queryProfitSharingConfig） */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

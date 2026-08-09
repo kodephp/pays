@@ -512,7 +512,18 @@ class GatewayManifest
                 'label' => '微信支付 V3',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_ECDSA,
-                'capabilities' => $domesticFeatures,
+                // 微信 V3 网关暂未实现分账能力，能力清单不排除 CAP_PROFIT_SHARING
+                'capabilities' => [
+                    self::CAP_CREATE_ORDER => true,
+                    self::CAP_QUERY_ORDER => true,
+                    self::CAP_CLOSE_ORDER => true,
+                    self::CAP_VERIFY_NOTIFY => true,
+                    self::CAP_TRANSFER => true,
+                    self::CAP_RED_PACKET => true,
+                    self::CAP_RECONCILIATION => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_WEBHOOK => true,
+                ],
             ],
             'unionpay' => [
                 'label' => '云闪付',
@@ -564,6 +575,7 @@ class GatewayManifest
                     self::CAP_WEBHOOK => true,
                     self::CAP_QR => true,
                     self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_PROFIT_SHARING => true,
                 ],
             ],
             'square' => [

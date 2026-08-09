@@ -96,17 +96,20 @@ Pay::closeOrder('alipay', $orderId);
 
 ```php
 // 统一发起分账（微信 / 支付宝 / Stripe / 抖音 / 云闪付 等已接入分账能力的平台）
-Pay::profitSharingCreate('douyin', $params);
-Pay::profitSharingQuery('douyin', $outOrderNo);
-Pay::profitSharingReturn('douyin', $params);
+Pay::profitSharingCreate('wechat', $params);
+Pay::profitSharingQuery('alipay', $outOrderNo);
+Pay::profitSharingReturn('stripe', $params);
+Pay::profitSharingQueryReturn('wechat', $outReturnNo);
 Pay::profitSharingUnfreeze('douyin', $transactionId, $outOrderNo);
 
 // 等价写法：直接用 call 派发网关原生分账方法
-Pay::call('douyin', 'createProfitSharing', $params);
+Pay::call('wechat', 'createProfitSharing', $params);
 ```
 
 > 平台「特色方法」（如 `createProfitSharing`、`queryProfitSharing`）由各网关类直接实现并声明
 > `ProfitSharingCapableInterface`，因此 `Pay::call()` 与 `ProfitSharingPlugin` 都能类型安全地调用。
+> 微信、支付宝额外实现可选能力 `addProfitSharingReceiver` / `removeProfitSharingReceiver`，微信另实现
+> `queryProfitSharingConfig`；未实现对应能力接口的网关调用会统一报「无此方法」。
 
 转账 / 企业付款同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的转账特色方法）：
 

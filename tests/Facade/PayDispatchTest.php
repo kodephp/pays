@@ -523,6 +523,18 @@ class PayDispatchTest extends TestCase
     }
 
     /**
+     * 统一分账回退查询入口 profitSharingQueryReturn 经 call 派发到网关原生方法
+     */
+    public function testProfitSharingQueryReturnUnifiedEntry(): void
+    {
+        Pay::profitSharingQueryReturn('profitgw', 'R1');
+
+        $gateway = Pay::gateway('profitgw');
+        $this->assertSame('queryReturn', $gateway->psCalls[0][0]);
+        $this->assertSame('R1', $gateway->psCalls[0][1]);
+    }
+
+    /**
      * 安全入口 verify：先过 NotifyGuard，再走平台级验签
      */
     public function testVerifyPassesWithSign(): void

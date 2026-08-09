@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Stripe;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 
 /**
  * Stripe 网关
@@ -18,7 +20,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -693,6 +695,117 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
             'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
             'Content-Type' => 'application/x-www-form-urlencoded',
             'Stripe-Version' => $this->getConfig('api_version', '2024-06-20'),
+        ];
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起 Stripe Transfer 分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createProfitSharing(array $params): array
+    {
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
+        $results = [];
+
+        foreach ($receivers as $receiver) {
+            if ($receiver instanceof Receiver) {
+                $transferData = $receiver->toStripeArray();
+                if (isset($params['transaction_id'])) {
+                    $transferData['source_transaction'] = $params['transaction_id'];
+                }
+            } else {
+                $this->validateRequired($receiver, ['account', 'amount']);
+
+                $transferData = [
+                    'amount' => (int) $receiver['amount'],
+                    'currency' => strtolower($receiver['currency'] ?? 'usd'),
+                    'destination' => $receiver['account'],
+                ];
+
+                if (isset($receiver['source_transaction'])) {
+                    $transferData['source_transaction'] = $receiver['source_transaction'];
+                } elseif (isset($params['transaction_id'])) {
+                    $transferData['source_transaction'] = $params['transaction_id'];
+                }
+            }
+
+            $results[] = $this->post('v1/transfers', $transferData, $this->buildAuthHeaders());
+        }
+
+        return [
+            'out_order_no' => $params['out_order_no'],
+            'transfers' => $results,
+            'count' => count($results),
+        ];
+    }
+
+    /**
+     * 查询 Stripe Transfer
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        return $this->get('v1/transfers', [
+            'metadata[out_order_no]' => $outOrderNo,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * Stripe 分账回退（创建 Reversal）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function returnProfitSharing(array $params): array
+    {
+        $transferId = $params['transfer_id'] ?? '';
+
+        if ($transferId === '') {
+            throw PayException::paramError('Stripe 分账回退需要提供 transfer_id');
+        }
+
+        return $this->post("v1/transfers/{$transferId}/reversals", [
+            'amount' => (int) $params['return_amount'],
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 查询 Stripe Reversal
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        return $this->get('v1/transfer_reversals/' . $outReturnNo, [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 解冻 Stripe 未分账的剩余资金
+     *
+     * Stripe 无冻结概念，Transfer 即时到账。
+     *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选，忽略）
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        return [
+            'payment_intent' => $transactionId,
+            'status' => 'SUCCESS',
+            'message' => 'Stripe 无资金冻结机制，Transfer 即时到账',
         ];
     }
 }

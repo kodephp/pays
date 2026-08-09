@@ -161,7 +161,7 @@ interface GatewayInterface
 
 | 插件 | 支持网关 | 核心功能 |
 |------|----------|----------|
-| `ProfitSharingPlugin` | 微信、支付宝、Stripe | 分账创建/查询/回退/解冻 |
+| `ProfitSharingPlugin` | 微信、支付宝、Stripe、抖音、云闪付 | 分账创建/查询/回退/解冻（网关原生方法 + 插件校验转发） |
 | `TransferPlugin` | 微信、支付宝、Stripe | 单笔/批量转账、电子回单（网关原生方法 + 插件校验转发） |
 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请/查询/取消退款（网关原生方法 + 插件校验转发） |
 | `RedPacketPlugin` | 微信、支付宝 | 普通/裂变红包、查询记录（网关原生方法 + 插件校验转发） |
@@ -288,7 +288,7 @@ src/
 
 ### 4.3 策略模式
 
-各网关实现相同的 `GatewayInterface`，可互换使用。插件通过 `match` 表达式根据网关名称选择对应实现。
+各网关实现相同的 `GatewayInterface`，可互换使用。插件通过「能力接口（`XxxCapableInterface`）+ 类型安全转发（`forwardToCapableGateway`）」选择对应实现，不再依赖 `match` 表达式按网关名称分发。
 
 ### 4.4 观察者模式
 
@@ -375,7 +375,7 @@ $result = (new Pipeline())
 
 1. 创建 `src/Plugin/ExamplePlugin.php`
 2. 通过构造函数接收 `GatewayInterface`（可选注入 `FundConstraintValidator`）
-3. 使用 `match` 根据网关名称实现多网关支持
+3. 平台组装逻辑下沉到网关原生方法（网关声明对应 `XxxCapableInterface`），插件仅做「参数校验 + 类型安全转发」（`forwardToCapableGateway`），不依赖 `match` 按网关名称分发
 4. 在 `docs/plugins.md` 与 `README.md` 添加使用示例
 
 ### 6.3 新增中间件

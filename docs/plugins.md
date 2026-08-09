@@ -6,7 +6,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 
 | 插件 | 类名 | 支持网关 | 核心功能 |
 |------|------|----------|----------|
-| 分账插件 | `ProfitSharingPlugin` | 微信、支付宝、Stripe | 创建分账、查询分账、分账回退、解冻资金 |
+| 分账插件 | `ProfitSharingPlugin` | 微信、支付宝、Stripe、抖音、云闪付 | 创建分账、查询分账、分账回退、解冻资金（网关原生方法 + 插件校验转发） |
 | 转账插件 | `TransferPlugin` | 微信、支付宝、Stripe | 单笔转账、批量转账、查询转账、电子回单 |
 | 退款插件 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请退款、查询退款、取消退款 |
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
@@ -21,8 +21,10 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 所有插件遵循统一的设计模式：
 
 1. **组合而非继承**：构造函数接收 `GatewayInterface`，可选注入 `FundConstraintValidator`
-2. **多网关分发**：使用 `match` 表达式根据 `GatewayInterface::getName()` 分发到具体实现
-3. **统一异常**：不支持的场景抛出 `PayException::invalidArgument()`
+2. **能力下沉 + 类型安全转发**：平台组装逻辑下沉到各网关原生方法（网关声明对应 `XxxCapableInterface`），
+   插件仅做「参数校验 + 类型安全转发」（`forwardToCapableGateway`），不再承载 `match($gateway::getName())`
+   平台内联分支；未实现能力接口或缺少可选方法的网关调用会统一报「无此方法」
+3. **统一异常**：不支持的场景抛出 `PayException::invalidArgument()` / `PayException::methodNotSupported()`
 
 ```php
 <?php
@@ -32,6 +34,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\XxxCapableInterface;
 use Kode\Pays\Core\PayException;
 
 class ExamplePlugin
@@ -43,18 +46,26 @@ class ExamplePlugin
 
     public function doSomething(array $params): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->doWechatSomething($params),
-            'alipay' => $this->doAlipaySomething($params),
-            default  => throw PayException::invalidArgument('当前网关不支持此功能'),
-        };
+        // 直接转发到网关原生方法，由网关自行处理平台差异
+        if (!$this->gateway instanceof XxxCapableInterface) {
+            throw PayException::invalidArgument('当前网关不支持此功能');
+        }
+
+        return $this->gateway->doSomething($params);
     }
 }
 ```
 
 ## 分账插件 (ProfitSharingPlugin)
 
-支持微信、支付宝、Stripe 三个网关的分账能力。
+支持微信、支付宝、Stripe、抖音、云闪付的分账能力。
+
+> 架构说明：分账的平台组装逻辑已下沉到各网关原生方法（网关声明 `ProfitSharingCapableInterface`，
+> 含 `createProfitSharing` / `queryProfitSharing` / `returnProfitSharing` / `queryProfitSharingReturn` /
+> `unfreezeProfitSharing`；微信、支付宝额外实现可选能力 `addProfitSharingReceiver` / `removeProfitSharingReceiver`，
+> 微信另实现 `queryProfitSharingConfig`）。本插件仅做「参数校验 + 类型安全转发」，彻底消除原先的
+> `match($gateway::getName())` 平台内联分支；未实现 `ProfitSharingCapableInterface` 的网关调用分账方法会统一报「无此方法」，
+> 可选能力（如 `queryProfitSharingConfig`）若网关未实现同样报「无此方法」。
 
 ### 配置
 

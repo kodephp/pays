@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Alipay;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
 
 /**
@@ -18,7 +20,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -720,5 +722,162 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
         $params['sign'] = Signer::rsa2($params, $this->getConfig('private_key'));
 
         return $params;
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起支付宝分账
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createProfitSharing(array $params): array
+    {
+        /** @var array<int, Receiver|array<string, mixed>> $receivers */
+        $receivers = $params['receivers'];
+        $royaltyParameters = array_map(static function ($r): array {
+            if ($r instanceof Receiver) {
+                return $r->toAlipayArray();
+            }
+
+            return [
+                'trans_out_type' => $r['trans_out_type'] ?? 'userId',
+                'trans_out' => $r['trans_out'] ?? '',
+                'trans_in_type' => $r['trans_in_type'] ?? 'userId',
+                'trans_in' => $r['trans_in'],
+                'amount' => (float) $r['amount'],
+                'desc' => $r['desc'] ?? $r['description'] ?? '分账',
+            ];
+        }, $receivers);
+
+        return $this->post('', [
+            'method' => 'alipay.trade.order.settle',
+            'biz_content' => json_encode([
+                'out_request_no' => $params['out_order_no'],
+                'trade_no' => $params['transaction_id'],
+                'royalty_parameters' => $royaltyParameters,
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 查询支付宝分账结果
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharing(string $outOrderNo): array
+    {
+        return $this->post('', [
+            'method' => 'alipay.trade.order.settle.query',
+            'biz_content' => json_encode([
+                'out_request_no' => $outOrderNo,
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 支付宝分账回退
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function returnProfitSharing(array $params): array
+    {
+        return $this->post('', [
+            'method' => 'alipay.trade.refund',
+            'biz_content' => json_encode([
+                'out_request_no' => $params['out_return_no'],
+                'trade_no' => $params['transaction_id'] ?? '',
+                'refund_amount' => (float) $params['return_amount'],
+                'refund_reason' => $params['description'] ?? '分账回退',
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 查询支付宝分账回退结果
+     *
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function queryProfitSharingReturn(string $outReturnNo): array
+    {
+        return $this->post('', [
+            'method' => 'alipay.trade.fastpay.refund.query',
+            'biz_content' => json_encode([
+                'out_request_no' => $outReturnNo,
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 解冻支付宝未分账的剩余资金
+     *
+     * 支付宝分账完成后自动解冻，无需额外操作。
+     *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选，忽略）
+     * @return array<string, mixed>
+     */
+    #[\Override]
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        return [
+            'trade_no' => $transactionId,
+            'status' => 'SUCCESS',
+            'message' => '支付宝分账完成后自动解冻剩余资金',
+        ];
+    }
+
+    /**
+     * 添加支付宝分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
+     */
+    public function addProfitSharingReceiver(array $receiver): array
+    {
+        $this->validateRequired($receiver, ['account', 'name']);
+
+        return $this->post('', [
+            'method' => 'alipay.trade.royalty.relation.bind',
+            'biz_content' => json_encode([
+                'receiver_list' => [
+                    [
+                        'type' => $receiver['type'] ?? 'userId',
+                        'account' => $receiver['account'],
+                        'name' => $receiver['name'],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+    }
+
+    /**
+     * 删除支付宝分账接收方
+     *
+     * @param array<string, mixed> $receiver
+     * @return array<string, mixed>
+     */
+    public function removeProfitSharingReceiver(array $receiver): array
+    {
+        $this->validateRequired($receiver, ['account']);
+
+        return $this->post('', [
+            'method' => 'alipay.trade.royalty.relation.unbind',
+            'biz_content' => json_encode([
+                'receiver_list' => [
+                    [
+                        'type' => $receiver['type'] ?? 'userId',
+                        'account' => $receiver['account'],
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
     }
 }
