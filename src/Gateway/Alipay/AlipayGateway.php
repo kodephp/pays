@@ -754,14 +754,13 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
             ];
         }, $receivers);
 
-        return $this->post('', [
-            'method' => 'alipay.trade.order.settle',
-            'biz_content' => json_encode([
-                'out_request_no' => $params['out_order_no'],
-                'trade_no' => $params['transaction_id'],
-                'royalty_parameters' => $royaltyParameters,
-            ], JSON_UNESCAPED_UNICODE),
+        $requestParams = $this->buildRequestParams('alipay.trade.order.settle', [
+            'out_request_no' => $params['out_order_no'],
+            'trade_no' => $params['transaction_id'],
+            'royalty_parameters' => $royaltyParameters,
         ]);
+
+        return $this->post('', $requestParams);
     }
 
     /**
@@ -772,12 +771,11 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
     #[\Override]
     public function queryProfitSharing(string $outOrderNo): array
     {
-        return $this->post('', [
-            'method' => 'alipay.trade.order.settle.query',
-            'biz_content' => json_encode([
-                'out_request_no' => $outOrderNo,
-            ], JSON_UNESCAPED_UNICODE),
+        $requestParams = $this->buildRequestParams('alipay.trade.order.settle.query', [
+            'out_request_no' => $outOrderNo,
         ]);
+
+        return $this->post('', $requestParams);
     }
 
     /**
@@ -789,15 +787,14 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
     #[\Override]
     public function returnProfitSharing(array $params): array
     {
-        return $this->post('', [
-            'method' => 'alipay.trade.refund',
-            'biz_content' => json_encode([
-                'out_request_no' => $params['out_return_no'],
-                'trade_no' => $params['transaction_id'] ?? '',
-                'refund_amount' => (float) $params['return_amount'],
-                'refund_reason' => $params['description'] ?? '分账回退',
-            ], JSON_UNESCAPED_UNICODE),
+        $requestParams = $this->buildRequestParams('alipay.trade.refund', [
+            'out_request_no' => $params['out_return_no'],
+            'trade_no' => $params['transaction_id'] ?? '',
+            'refund_amount' => (float) $params['return_amount'],
+            'refund_reason' => $params['description'] ?? '分账回退',
         ]);
+
+        return $this->post('', $requestParams);
     }
 
     /**
@@ -808,12 +805,11 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
     #[\Override]
     public function queryProfitSharingReturn(string $outReturnNo): array
     {
-        return $this->post('', [
-            'method' => 'alipay.trade.fastpay.refund.query',
-            'biz_content' => json_encode([
-                'out_request_no' => $outReturnNo,
-            ], JSON_UNESCAPED_UNICODE),
+        $requestParams = $this->buildRequestParams('alipay.trade.fastpay.refund.query', [
+            'out_request_no' => $outReturnNo,
         ]);
+
+        return $this->post('', $requestParams);
     }
 
     /**

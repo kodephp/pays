@@ -76,15 +76,27 @@ class WechatPayRefundTest extends TestCase
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('secapi/pay/refund', $last['url']);
+        $this->assertSame('POST_RAW', $last['method']);
 
-        $body = $last['data'];
+        $body = $this->parseXml($last['data']['body']);
         $this->assertSame('REFUND_001', $body['out_refund_no']);
-        $this->assertSame(50, $body['refund_fee']);
-        $this->assertSame(100, $body['total_fee']);
+        $this->assertSame('50', $body['refund_fee']);
+        $this->assertSame('100', $body['total_fee']);
         $this->assertSame('商品质量问题', $body['refund_desc']);
         $this->assertSame('ORDER_001', $body['out_trade_no']);
         $this->assertSame('wx123', $body['appid']);
         $this->assertSame('m1', $body['mch_id']);
+    }
+
+    /**
+     * 将微信 XML 请求体解析为关联数组（与网关 xmlToArray 一致）
+     */
+    private function parseXml(string $xml): array
+    {
+        $element = simplexml_load_string($xml, \SimpleXMLElement::class, LIBXML_NOCDATA);
+        $decoded = json_decode((string) json_encode($element), true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     public function testApplyRefundWithTransactionId(): void
@@ -99,8 +111,9 @@ class WechatPayRefundTest extends TestCase
 
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
-        $this->assertSame('TXN_1', $last['data']['transaction_id']);
-        $this->assertArrayNotHasKey('out_trade_no', $last['data']);
+        $body = $this->parseXml($last['data']['body']);
+        $this->assertSame('TXN_1', $body['transaction_id']);
+        $this->assertArrayNotHasKey('out_trade_no', $body);
     }
 
     public function testQueryRefund(): void
@@ -112,8 +125,9 @@ class WechatPayRefundTest extends TestCase
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('pay/refundquery', $last['url']);
-        $this->assertSame('REFUND_001', $last['data']['out_refund_no']);
-        $this->assertSame('wx123', $last['data']['appid']);
+        $body = $this->parseXml($last['data']['body']);
+        $this->assertSame('REFUND_001', $body['out_refund_no']);
+        $this->assertSame('wx123', $body['appid']);
     }
 
     public function testCancelRefundNotSupported(): void

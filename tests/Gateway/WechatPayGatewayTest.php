@@ -381,8 +381,10 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('secapi/pay/profitsharing', $last['url']);
+        $this->assertSame('POST_RAW', $last['method']);
 
-        $receivers = json_decode($last['data']['receivers'], true);
+        $body = $this->parseXml($last['data']['body']);
+        $receivers = json_decode($body['receivers'], true);
         $this->assertSame(100, $receivers[0]['amount']);
         $this->assertSame('MERCHANT_ID', $receivers[0]['type']);
     }
@@ -400,8 +402,10 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('pay/profitsharingconfigquery', $last['url']);
-        $this->assertSame('SHARE_1', $last['data']['out_order_no']);
-        $this->assertSame('T100', $last['data']['transaction_id']);
+
+        $body = $this->parseXml($last['data']['body']);
+        $this->assertSame('SHARE_1', $body['out_order_no']);
+        $this->assertSame('T100', $body['transaction_id']);
     }
 
     /**
@@ -417,7 +421,7 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('pay/profitsharingaddreceiver', $last['url']);
-        $receiver = json_decode($last['data']['receiver'], true);
+        $receiver = json_decode($this->parseXml($last['data']['body'])['receiver'], true);
         $this->assertSame('123', $receiver['account']);
     }
 
@@ -434,7 +438,8 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('secapi/pay/profitsharingfinish', $last['url']);
-        $this->assertSame('FINISH_9', $last['data']['out_order_no']);
+        $body = $this->parseXml($last['data']['body']);
+        $this->assertSame('FINISH_9', $body['out_order_no']);
     }
 
     /* ==================== 自动结算能力 ==================== */

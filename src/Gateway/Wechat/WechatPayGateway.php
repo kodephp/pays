@@ -560,6 +560,12 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
 
     public function applyRefund(array $params): array
     {
+        $this->validateRequired($params, ['out_refund_no', 'refund_fee']);
+
+        if (empty($params['out_trade_no']) && empty($params['transaction_id'])) {
+            throw PayException::paramError('out_trade_no 与 transaction_id 至少提供其一');
+        }
+
         $requestData = [
             'appid' => $this->getConfig('app_id'),
             'mch_id' => $this->getConfig('mch_id'),
@@ -583,7 +589,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             $requestData['notify_url'] = $params['notify_url'];
         }
 
-        return $this->post('secapi/pay/refund', $requestData);
+        return $this->signedV2Post('secapi/pay/refund', $requestData, true);
     }
 
     /**
@@ -595,7 +601,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
 
     public function queryRefund(string $outRefundNo): array
     {
-        return $this->post('pay/refundquery', [
+        return $this->signedV2Post('pay/refundquery', [
             'appid' => $this->getConfig('app_id'),
             'mch_id' => $this->getConfig('mch_id'),
             'nonce_str' => $this->generateNonceStr(),
@@ -793,6 +799,8 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     #[\Override]
     public function createProfitSharing(array $params): array
     {
+        $this->validateRequired($params, ['transaction_id', 'out_order_no', 'receivers']);
+
         /** @var array<int, Receiver|array<string, mixed>> $receivers */
         $receivers = $params['receivers'];
         $mapped = array_map(static function ($r): array {
@@ -806,25 +814,37 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
                 ];
         }, $receivers);
 
-        return $this->post('secapi/pay/profitsharing', [
+        return $this->signedV2Post('secapi/pay/profitsharing', [
             'transaction_id' => $params['transaction_id'],
             'out_order_no' => $params['out_order_no'],
             'receivers' => json_encode($mapped, JSON_UNESCAPED_UNICODE),
-        ]);
+        ], true);
     }
 
     /**
      * 查询微信分账结果
      *
+     * 微信要求 transaction_id 与 out_order_no 同时传入，故补可选第二参数。
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号（微信必填，缺省则不在报文中携带）
      * @return array<string, mixed>
      */
     #[\Override]
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
-        return $this->post('pay/profitsharingquery', [
-            'transaction_id' => '',
+        $data = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
             'out_order_no' => $outOrderNo,
-        ]);
+        ];
+
+        if ($transactionId !== null && $transactionId !== '') {
+            $data['transaction_id'] = $transactionId;
+        }
+
+        return $this->signedV2Post('pay/profitsharingquery', $data);
     }
 
     /**
@@ -836,14 +856,16 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     #[\Override]
     public function returnProfitSharing(array $params): array
     {
-        return $this->post('secapi/pay/profitsharingreturn', [
+        $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
+
+        return $this->signedV2Post('secapi/pay/profitsharingreturn', [
             'out_order_no' => $params['out_order_no'],
             'out_return_no' => $params['out_return_no'],
             'return_account_type' => $params['return_account_type'] ?? 'MERCHANT_ID',
             'return_account' => $params['return_account'] ?? '',
             'return_amount' => (int) $params['return_amount'],
             'description' => $params['description'] ?? '分账回退',
-        ]);
+        ], true);
     }
 
     /**
@@ -854,7 +876,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     #[\Override]
     public function queryProfitSharingReturn(string $outReturnNo): array
     {
-        return $this->post('pay/profitsharingreturnquery', [
+        return $this->signedV2Post('pay/profitsharingreturnquery', [
             'out_return_no' => $outReturnNo,
         ]);
     }
@@ -869,11 +891,11 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     #[\Override]
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
-        return $this->post('secapi/pay/profitsharingfinish', [
+        return $this->signedV2Post('secapi/pay/profitsharingfinish', [
             'transaction_id' => $transactionId,
             'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
             'description' => '解冻剩余资金',
-        ]);
+        ], true);
     }
 
     /**
@@ -890,7 +912,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             $data['transaction_id'] = $transactionId;
         }
 
-        return $this->post('pay/profitsharingconfigquery', $data);
+        return $this->signedV2Post('pay/profitsharingconfigquery', $data);
     }
 
     /**
@@ -903,7 +925,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     {
         $this->validateRequired($receiver, ['type', 'account', 'name']);
 
-        return $this->post('pay/profitsharingaddreceiver', [
+        return $this->signedV2Post('pay/profitsharingaddreceiver', [
             'receiver' => json_encode([
                 'type' => $receiver['type'],
                 'account' => $receiver['account'],
@@ -923,7 +945,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     {
         $this->validateRequired($receiver, ['type', 'account']);
 
-        return $this->post('pay/profitsharingremovereceiver', [
+        return $this->signedV2Post('pay/profitsharingremovereceiver', [
             'receiver' => json_encode([
                 'type' => $receiver['type'],
                 'account' => $receiver['account'],
