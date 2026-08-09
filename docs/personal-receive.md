@@ -25,10 +25,11 @@
 | 平台 | `createQrCode` | `queryRecords` | `withdraw` | `queryWithdraw` | 说明 |
 |------|----------------|----------------|------------|------------------|------|
 | 微信支付 | ✅ `pay/unifiedorder`（NATIVE） | ✅ `pay/downloadbill` | ✅ `mmpaymkttransfers/pay_bank` | ✅ `mmpaymkttransfers/query_bank` | 金额单位为分；提现银行卡号/姓名经 RSA 加密（`encryptBankCard`），投产前请接入 `Signer::md5` 与 `arrayToXml` |
+| 微信支付 V3 | ✅ `v3/pay/transactions/native` | ✅ `v3/bill/tradebill` | ✅ `v3/transfer/batches`（到零钱） | ✅ `v3/transfer/batches/out-batch-no/{no}` | 金额单位为分；`notify_url` 必填；APIv3 无付款到银行卡通道，提现统一到零钱（需 `account` openid） |
 | 支付宝 | ✅ `alipay.trade.precreate` | ✅ `alipay.trade.query` | ✅ `alipay.fund.trans.uni.transfer` | ✅ `alipay.fund.trans.common.query` | 金额单位为分；复用 `buildRequestParams` 标准 RSA2 签名 |
 | Stripe | ✅ `v1/prices` + `v1/payment_links` | ✅ `v1/payment_intents` | ❌ 报「无此方法」 | ❌ 报「无此方法」 | Payment Link 个人收款；提现能力暂未提供 |
 
-> 能力开关：微信 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_PERSONAL_RECEIVE => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_PERSONAL_RECEIVE => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_PERSONAL_RECEIVE)` 判断。
 
 ## 统一入口

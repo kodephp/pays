@@ -6,14 +6,14 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 
 | 插件 | 类名 | 支持网关 | 核心功能 |
 |------|------|----------|----------|
-| 分账插件 | `ProfitSharingPlugin` | 微信、支付宝、Stripe、抖音、云闪付 | 创建分账、查询分账、分账回退、解冻资金（网关原生方法 + 插件校验转发） |
+| 分账插件 | `ProfitSharingPlugin` | 微信、微信 V3、支付宝、Stripe、抖音、云闪付 | 创建分账、查询分账、分账回退、解冻资金（网关原生方法 + 插件校验转发） |
 | 转账插件 | `TransferPlugin` | 微信、支付宝、Stripe | 单笔转账、批量转账、查询转账、电子回单 |
-| 退款插件 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal、Adyen、Revolut | 申请退款、查询退款、取消退款 |
+| 退款插件 | `RefundPlugin` | 微信、微信 V3、支付宝、Stripe、PayPal、Adyen、Revolut | 申请退款、查询退款、取消退款 |
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
 | 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划、订阅管理、暂停/恢复/取消 |
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
-| 个人收款插件 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
-| 自动结算插件 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动提现到钱包（网关原生方法 + 插件编排转发） |
+| 个人收款插件 | `PersonalReceivePlugin` | 微信、微信 V3、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
+| 自动结算插件 | `AutoSettlementPlugin` | 微信、微信 V3、支付宝、Stripe、PayPal | 支付后自动提现到钱包（网关原生方法 + 插件编排转发） |
 | 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询（网关原生方法 + 插件校验转发） |
 
 ## 插件架构
@@ -669,9 +669,9 @@ Pay::reconciliationDownloadFundFlow('stripe', $params); // 抛 PayException（�
 
 | 钱包目标类型 | 网关能力方法 | 支持网关 |
 |--------------|--------------|----------|
-| `wechat_wallet` | `settleToWallet` | 微信（企业付款到零钱） |
+| `wechat_wallet` | `settleToWallet` | 微信（企业付款到零钱）、微信 V3（商家转账批次） |
 | `alipay_balance` | `settleToWallet` | 支付宝（单笔转账到账户） |
-| `bank_card` | `settleToBankCard` | 微信（企业付款到银行卡）、支付宝（无密转账到银行卡） |
+| `bank_card` | `settleToBankCard` | 微信（企业付款到银行卡）、支付宝（无密转账到银行卡）；微信 V3 无该通道，报「无此方法」 |
 | `stripe_connect` | `settleToPayout` | Stripe（Connect 转账） |
 | `paypal_wallet` | `settleToPayout` | PayPal（Payouts 批次） |
 

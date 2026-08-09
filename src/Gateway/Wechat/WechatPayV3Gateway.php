@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Wechat;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Encryptor;
 use Kode\Pays\Support\StrUtil;
 use Kode\Pays\Support\WechatBillParser;
@@ -21,7 +26,13 @@ use Kode\Pays\Support\WechatBillParser;
  * 签名遵循微信 APIv3 规范：签名串中的 URL 为去除域名后的绝对路径（含查询串），
  * 请求体则以 {@see postRaw()} 原样发送，确保「参与签名的字节」与「实际发送的字节」完全一致。
  */
-class WechatPayV3Gateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface
+class WechatPayV3Gateway extends AbstractGateway implements
+    TransferCapableInterface,
+    ReconciliationCapableInterface,
+    RefundCapableInterface,
+    ProfitSharingCapableInterface,
+    SettlementCapableInterface,
+    PersonalReceiveCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -157,13 +168,68 @@ class WechatPayV3Gateway extends AbstractGateway implements TransferCapableInter
     /**
      * 查询退款
      *
-     * @param string $refundId 退款单号
+     * @param string $refundId 商户退款单号
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->signedGet("refund/domestic/refunds/{$refundId}");
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款
+     *
+     * 与 {@see refund()} 的差异在于入参形态：本方法接收插件层归一化后的扁平参数
+     * （金额以「分」为单位的 refund_fee / total_fee），并支持以 transaction_id 指定原单。
+     *
+     * @param array<string, mixed> $params 退款参数（out_refund_no、refund_fee 必填，
+     *                                     out_trade_no 与 transaction_id 至少其一）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function applyRefund(array $params): array
+    {
+        $refundFee = (int) ($params['refund_fee'] ?? 0);
+
+        $requestData = [
+            'out_refund_no' => $params['out_refund_no'] ?? '',
+            'reason' => $params['refund_desc'] ?? '',
+            'amount' => [
+                'refund' => $refundFee,
+                'total' => (int) ($params['total_fee'] ?? $refundFee),
+                'currency' => strtoupper((string) ($params['currency'] ?? 'CNY')),
+            ],
+        ];
+
+        if (!empty($params['out_trade_no'])) {
+            $requestData['out_trade_no'] = $params['out_trade_no'];
+        } else {
+            $requestData['transaction_id'] = $params['transaction_id'] ?? '';
+        }
+
+        if (!empty($params['notify_url'])) {
+            $requestData['notify_url'] = $params['notify_url'];
+        }
+
+        return $this->signedPost('refund/domestic/refunds', $requestData);
+    }
+
+    /**
+     * 取消退款（微信支付 APIv3 无该接口，统一报「无此方法」）
+     *
+     * @param string $outRefundNo 商户退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('wechat_v3', 'cancelRefund');
     }
 
     /**
@@ -394,6 +460,296 @@ class WechatPayV3Gateway extends AbstractGateway implements TransferCapableInter
     public function parseBill(string $rawData): array
     {
         return WechatBillParser::parse($rawData);
+    }
+
+    /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
+
+    /**
+     * 发起分账
+     *
+     * APIv3 分账接收方姓名属敏感字段，需以平台证书加密后传输。
+     *
+     * @param array<string, mixed> $params 分账参数（transaction_id、out_order_no、receivers 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['transaction_id', 'out_order_no', 'receivers']);
+
+        $receivers = $params['receivers'];
+        if (!is_array($receivers) || $receivers === []) {
+            throw PayException::paramError('receivers 必须是非空数组');
+        }
+
+        $mapped = [];
+
+        foreach ($receivers as $receiver) {
+            $item = $receiver instanceof Receiver ? $receiver->toWechatArray() : $receiver;
+
+            if (!is_array($item)) {
+                throw PayException::paramError('receivers 每项必须是数组或 Receiver 实例');
+            }
+
+            $entry = [
+                'type' => $item['type'],
+                'account' => $item['account'],
+                'amount' => (int) $item['amount'],
+                'description' => $item['description'] ?? '分账',
+            ];
+
+            if (isset($item['name']) && $item['name'] !== '') {
+                $entry['name'] = $this->encryptSensitive((string) $item['name']);
+            }
+
+            $mapped[] = $entry;
+        }
+
+        return $this->signedPost('profitsharing/orders', [
+            'appid' => $this->getConfig('app_id'),
+            'transaction_id' => $params['transaction_id'],
+            'out_order_no' => $params['out_order_no'],
+            'receivers' => $mapped,
+            'unfreeze_unsplit' => (bool) ($params['unfreeze_unsplit'] ?? false),
+        ]);
+    }
+
+    /**
+     * 查询分账结果
+     *
+     * 微信要求查询时同时携带原支付订单号；未提供时仅按商户分账单号查询，
+     * 由调用方（或 {@see \Kode\Pays\Plugin\ProfitSharingPlugin}）自行保证参数完整。
+     *
+     * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
+    {
+        $query = $transactionId !== null && $transactionId !== ''
+            ? ['transaction_id' => $transactionId]
+            : [];
+
+        return $this->signedGet("profitsharing/orders/{$outOrderNo}", $query);
+    }
+
+    /**
+     * 分账回退
+     *
+     * @param array<string, mixed> $params 回退参数（out_order_no、out_return_no、return_amount 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function returnProfitSharing(array $params): array
+    {
+        $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
+
+        return $this->signedPost('profitsharing/return-orders', [
+            'out_order_no' => $params['out_order_no'],
+            'out_return_no' => $params['out_return_no'],
+            'return_mchid' => $params['return_account'] ?? $this->getConfig('mch_id'),
+            'amount' => (int) $params['return_amount'],
+            'description' => $params['description'] ?? '分账回退',
+        ]);
+    }
+
+    /**
+     * 查询分账回退结果
+     *
+     * @param string $outReturnNo 商户回退单号
+     * @param string|null $outOrderNo 商户分账订单号（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryProfitSharingReturn(string $outReturnNo, ?string $outOrderNo = null): array
+    {
+        $query = $outOrderNo !== null && $outOrderNo !== ''
+            ? ['out_order_no' => $outOrderNo]
+            : [];
+
+        return $this->signedGet("profitsharing/return-orders/{$outReturnNo}", $query);
+    }
+
+    /**
+     * 解冻未分账的剩余资金
+     *
+     * @param string $transactionId 原支付订单号
+     * @param string|null $outOrderNo 商户解冻单号（可选，缺省自动生成）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
+    {
+        return $this->signedPost('profitsharing/orders/unfreeze', [
+            'transaction_id' => $transactionId,
+            'out_order_no' => $outOrderNo ?? ('UNFREEZE_' . time()),
+            'description' => '解冻剩余资金',
+        ]);
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * 结算到微信零钱（复用 APIv3 商家转账通道）
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no、amount、account 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'recipient' => [
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? '自动结算',
+        ]);
+    }
+
+    /**
+     * 微信支付 APIv3 未提供「企业付款到银行卡」接口，调用即报「无此方法」
+     *
+     * 需结算到银行卡请改用 V2 网关（wechat）。
+     *
+     * @param array<string, mixed> $params 结算参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        throw PayException::methodNotSupported('wechat_v3', 'settleToBankCard');
+    }
+
+    /**
+     * 微信支付无外部账户 Payout 语义，调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params 结算参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        throw PayException::methodNotSupported('wechat_v3', 'settleToPayout');
+    }
+
+    /**
+     * 查询结算结果（复用转账批次查询）
+     *
+     * @param string $outBizNo 商户结算单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
+    }
+
+    /* ==================== 个人收款能力（PersonalReceiveCapableInterface） ==================== */
+
+    /**
+     * 生成个人收款二维码（Native 下单）
+     *
+     * APIv3 下单强制要求回调地址，故 notify_url 为必填（V2 可省略）。
+     *
+     * @param array<string, mixed> $params 收款参数（amount、description、notify_url 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description', 'notify_url']);
+
+        $outTradeNo = $params['out_trade_no'] ?? ('PERSONAL_' . date('YmdHis') . random_int(1000, 9999));
+
+        $response = $this->createOrder([
+            'trade_type' => 'native',
+            'out_trade_no' => $outTradeNo,
+            'description' => $params['description'],
+            'amount' => (int) $params['amount'],
+            'currency' => $params['currency'] ?? 'CNY',
+            'notify_url' => $params['notify_url'],
+            'attach' => $params['attach'] ?? null,
+        ]);
+
+        return [
+            'out_trade_no' => $outTradeNo,
+            'code_url' => $response['code_url'] ?? '',
+            'amount' => (int) $params['amount'],
+            'description' => $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录（复用交易对账单）
+     *
+     * @param array<string, mixed> $params 查询参数（start_time 可选，缺省取当天）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryRecords(array $params): array
+    {
+        $startTime = strtotime((string) ($params['start_time'] ?? 'today'));
+
+        return $this->downloadBill([
+            'bill_date' => date('Y-m-d', $startTime === false ? time() : $startTime),
+            'bill_type' => $params['bill_type'] ?? 'ALL',
+        ]);
+    }
+
+    /**
+     * 个人提现
+     *
+     * APIv3 未提供「企业付款到银行卡」接口，个人提现统一走商家转账到零钱；
+     * 需提现到银行卡请改用 V2 网关（wechat）。
+     *
+     * @param array<string, mixed> $params 提现参数（out_biz_no、amount、account 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function withdraw(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => (int) $params['amount'],
+            'recipient' => [
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? '个人提现',
+        ]);
+    }
+
+    /**
+     * 查询提现结果（复用转账批次查询）
+     *
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryWithdraw(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
     }
 
     /**

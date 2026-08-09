@@ -548,7 +548,7 @@ class GatewayManifest
                 'label' => '微信支付 V3',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_ECDSA,
-                // 现金红包与个人收款为 V2 专有接口，APIv3 无对应能力；分账亦未实现
+                // 现金红包为 V2 专有接口，APIv3 无对应能力
                 'capabilities' => [
                     self::CAP_CREATE_ORDER => true,
                     self::CAP_QUERY_ORDER => true,
@@ -556,6 +556,9 @@ class GatewayManifest
                     self::CAP_VERIFY_NOTIFY => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_PROFIT_SHARING => true,
+                    self::CAP_SETTLEMENT => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_WEBHOOK => true,
                 ],
             ],
