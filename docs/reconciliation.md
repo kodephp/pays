@@ -29,8 +29,10 @@
 | 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV；`tar_type=GZIP` 时不解析，交由调用方解压后调用 `parseBill` |
 | 美团支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`app_secret`) 签名，账单内容置于 `bill_content` |
 | 京东支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`md5_key`) 签名，账单内容置于 `billContent` |
+| Adyen | ✅ Report API（Settlement detail report） | ✅ Report API（Payment accounting report） | ✅ CSV | 两步：先 `getReport` 取 `url`，再下载并解析 CSV；`bill_date` 为 YYYYMMDD |
+| Revolut | ✅ `/api/1.0/transactions`（日期区间） | ❌ 报「无此方法」 | ✅ JSON | 交易列表按 `from`/`to` 时间窗拉取并解析；无独立资金账单 API |
 
-> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东在 `GatewayManifest` 中声明 `CAP_RECONCILIATION => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东 / Adyen / Revolut 在 `GatewayManifest` 中声明 `CAP_RECONCILIATION => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_RECONCILIATION)` 判断。
 
 ## 统一入口

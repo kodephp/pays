@@ -638,7 +638,11 @@ class GatewayManifest
                 'label' => 'Adyen',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true],
+                'capabilities' => [
+                    self::CAP_WEBHOOK => true,
+                    self::CAP_TRANSFER => true,
+                    self::CAP_RECONCILIATION => true,
+                ],
             ],
             'amazon' => [
                 'label' => 'Amazon Pay',
@@ -671,6 +675,10 @@ class GatewayManifest
                 'label' => 'Revolut',
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
+                'capabilities' => [
+                    self::CAP_TRANSFER => true,
+                    self::CAP_RECONCILIATION => true,
+                ],
             ],
             'payoneer' => [
                 'label' => 'Payoneer',

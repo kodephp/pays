@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Revolut;
 
+use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -14,7 +16,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Revolut 商户支付、卡支付、Apple Pay、Google Pay 等。
  * 覆盖欧洲、英国、美国、澳大利亚等市场。
  */
-class RevolutGateway extends AbstractGateway
+class RevolutGateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -179,6 +181,234 @@ class RevolutGateway extends AbstractGateway
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
 
         return hash_equals($expected, $signature);
+    }
+
+    /* ==================== 转账能力（TransferCapableInterface） ==================== */
+
+    /**
+     * 发起单笔转账（Revolut /pay 端点）
+     *
+     * 对齐 Revolut 真实「转账 / 出款」规范：POST /api/1.0/pay。
+     * SDK 转账金额以最小货币单位（分）传入，Revolut /pay 的 amount 为主单位小数，
+     * 故在此做 ÷100 换算（适用于 2 位小数币种，如 EUR/GBP/USD）。
+     *
+     * @param array<string, mixed> $params 转账参数（out_biz_no / amount / recipient 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function singleTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
+
+        $recipient = $params['recipient'];
+        $this->validateRequired($recipient, ['account']);
+
+        $type = $recipient['type'] ?? 'bank';
+        $account = (string) $recipient['account'];
+        $name = $recipient['name'] ?? '';
+
+        if ($type === 'revolut') {
+            $receiver = ['account_id' => $account];
+        } elseif ($type === 'card') {
+            $receiver = ['card_id' => $account];
+        } elseif (isset($recipient['iban'])) {
+            $receiver = ['iban' => (string) $recipient['iban'], 'holderName' => $name];
+        } else {
+            // 银行转账：以 counterparty_id 标识收款方
+            $receiver = ['counterparty_id' => $account];
+        }
+
+        $sourceAccount = $params['account_id']
+            ?? $this->getConfig('account_id', (string) $this->getConfig('merchant_id', ''));
+
+        $requestData = [
+            'request_id' => $params['out_biz_no'],
+            'account_id' => $sourceAccount,
+            'receiver' => $receiver,
+            'amount' => (float) ((int) $params['amount']) / 100,
+            'currency' => strtoupper((string) ($params['currency'] ?? 'EUR')),
+            'reference' => $params['description'] ?? '',
+        ];
+
+        return $this->post('api/1.0/pay', $requestData, [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+    }
+
+    /**
+     * 批量转账（Revolut 无原生批量转账，逐笔调用 singleTransfer 聚合）
+     *
+     * @param array<string, mixed> $params 批量转账参数（out_biz_no / transfer_detail_list 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function batchTransfer(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'transfer_detail_list']);
+
+        $list = $params['transfer_detail_list'];
+        if (!is_array($list) || empty($list)) {
+            throw PayException::paramError('transfer_detail_list 必须是非空数组');
+        }
+
+        $results = [];
+        foreach ($list as $item) {
+            $results[] = $this->singleTransfer([
+                'out_biz_no' => $item['out_detail_no'] ?? uniqid('revolut_tf_', true),
+                'amount' => $item['amount'],
+                'currency' => $item['currency'] ?? 'EUR',
+                'recipient' => $item['recipient'],
+                'description' => $item['remark'] ?? '',
+                'account_id' => $params['account_id'] ?? null,
+            ]);
+        }
+
+        return [
+            'out_biz_no' => $params['out_biz_no'],
+            'transfers' => $results,
+            'count' => count($results),
+        ];
+    }
+
+    /**
+     * 查询转账结果（按 request_id 过滤交易列表）
+     *
+     * @param string $outBizNo 商户转账单号（即 request_id）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryTransfer(string $outBizNo): array
+    {
+        return $this->get('api/1.0/transactions', [
+            'request_id' => $outBizNo,
+        ], [
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+    }
+
+    /**
+     * 查询转账电子回单
+     *
+     * Revolut 不提供电子回单能力，调用即报「无此方法」（与 Stripe 一致）。
+     *
+     * @param string $outBizNo 商户转账单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function transferReceipt(string $outBizNo): array
+    {
+        throw PayException::methodNotSupported('revolut', 'transferReceipt');
+    }
+
+    /* ==================== 对账能力（ReconciliationCapableInterface） ==================== */
+
+    /**
+     * 下载交易对账单（Revolut 交易列表）
+     *
+     * 对齐 Revolut 真实对账规范：GET /api/1.0/transactions（按日期范围拉取交易，
+     * 作为交易级对账数据源）。解析为 records。
+     *
+     * @param array<string, mixed> $params 对账参数（bill_date 必填，格式 YYYYMMDD）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function downloadBill(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $date = $this->formatBillDate((string) $params['bill_date']);
+
+        $response = $this->get('api/1.0/transactions', [
+            'from' => $date . 'T00:00:00.000Z',
+            'to' => $date . 'T23:59:59.999Z',
+        ], [
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+
+        return [
+            'bill_date' => $params['bill_date'],
+            'bill_type' => 'transactions',
+            'raw_data' => $response,
+            'records' => $this->parseBill(json_encode($response) ?: ''),
+        ];
+    }
+
+    /**
+     * 下载资金账单
+     *
+     * Revolut 对账数据源即为交易列表，无独立的「资金账单」报表，调用报「无此方法」
+     * （与 Stripe 一致）。交易级对账请使用 {@see downloadBill()}。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function downloadFundFlow(array $params): array
+    {
+        throw PayException::methodNotSupported('revolut', 'downloadFundFlow');
+    }
+
+    /**
+     * 解析对账单原始数据（Revolut JSON 交易列表）
+     *
+     * @param string $rawData 原始对账单 JSON
+     * @return array<int, array<string, mixed>>
+     */
+    #[\Override]
+    public function parseBill(string $rawData): array
+    {
+        if ($rawData === '') {
+            return [];
+        }
+
+        $data = json_decode($rawData, true);
+        if (!is_array($data)) {
+            return [];
+        }
+
+        $list = $data['data'] ?? $data['transactions'] ?? $data;
+        if (!is_array($list)) {
+            return [];
+        }
+
+        $records = [];
+        foreach ($list as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $records[] = [
+                'id' => $item['id'] ?? '',
+                'amount' => $item['amount'] ?? 0,
+                'currency' => $item['currency'] ?? '',
+                'type' => $item['type'] ?? '',
+                'state' => $item['state'] ?? '',
+                'created_at' => $item['created_at'] ?? '',
+                'reference' => $item['reference'] ?? '',
+                'request_id' => $item['request_id'] ?? '',
+            ];
+        }
+
+        return $records;
+    }
+
+    /**
+     * 将 YYYYMMDD 格式的对账日期转为 Revolut 交易查询所需的 YYYY-MM-DD
+     *
+     * @param string $billDate
+     * @return string
+     */
+    private function formatBillDate(string $billDate): string
+    {
+        $dt = \DateTimeImmutable::createFromFormat('Ymd', $billDate);
+        return $dt !== false ? $dt->format('Y-m-d') : $billDate;
     }
 
     /**

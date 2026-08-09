@@ -27,8 +27,10 @@
 | 微信支付 V3 | ✅ 商家转账（单条明细批次） | ✅ `transfer/batches` | ✅ | ✅ `transfer/bill-receipt` | 金额单位为分；收款人姓名以平台证书 RSA-OAEP 加密 |
 | 美团支付 | ✅ `api/transfer/single` | ✅ `api/transfer/batch` | ✅ `api/transfer/query` | ✅ `api/transfer/receipt` | 金额单位为分；MD5(`app_secret`) 签名 |
 | 京东支付 | ✅ `api/transfer/single` | ✅ `api/transfer/batch` | ✅ `api/transfer/query` | ✅ `api/transfer/receipt` | 金额单位为分；MD5(`md5_key`) 签名 |
+| Adyen | ✅ Transfers API | ✅（逐笔调用聚合） | ✅ 按 `reference` 查询 | ❌ 抛「无此方法」 | 金额单位为分（`amount.value`）；`category` 按 `recipient.type` 区分 `bank`/`card` |
+| Revolut | ✅ `/api/1.0/pay` | ✅（逐笔调用聚合） | ✅ 按 `request_id` 查询 | ❌ 抛「无此方法」 | 金额主单位小数（SDK 内部 ÷100 转最小单位）；`receiver` 按 `account_id`/`card_id`/`iban`/`counterparty_id` 组装 |
 
-> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东 / Adyen / Revolut 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_TRANSFER)` 判断。
 >
 > 微信 V3 的商家转账统一以「批次」表达，`singleTransfer` 即仅含一条明细的批次；

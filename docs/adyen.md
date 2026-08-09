@@ -143,6 +143,55 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+### 转账能力（TransferCapableInterface）
+
+> Adyen 真实端点对齐 Transfers API（`POST /pal/servlet/Transfer/v68/transfer`）。
+> 金额单位与 Adyen 规范一致：`amount.value` 为最小货币单位（分），`amount.currency` 大写。
+> `transferReceipt` 无原生能力，统一抛「无此方法」。
+
+```php
+// 单笔转账（bank 收款：iban；card 收款：卡号）
+$gateway->singleTransfer([
+    'out_biz_no' => 'TF_' . date('YmdHis'),
+    'amount'     => 10000,                 // 分
+    'currency'   => 'EUR',
+    'recipient'  => ['type' => 'bank', 'account' => 'GB29NWBK60161331926819', 'name' => '张三'],
+    'description' => '佣金',
+    // 'balance_account_id' => 'BA123'      // 可选，注入 balanceAccount
+]);
+
+// 批量转账（逐笔调用 singleTransfer 聚合）
+$gateway->batchTransfer([
+    'out_biz_no' => 'BTF_1',
+    'transfer_detail_list' => [
+        ['out_detail_no' => 'D1', 'amount' => 100, 'recipient' => ['type' => 'bank', 'account' => 'A1'], 'remark' => 'a'],
+        ['out_detail_no' => 'D2', 'amount' => 200, 'recipient' => ['type' => 'bank', 'account' => 'A2'], 'remark' => 'b'],
+    ],
+]);
+
+// 按商户单号（reference）查询转账
+$gateway->queryTransfer('TF_20260809000001');
+
+// 电子回单：Adyen 无此能力，调用抛 PayException（无此方法）
+$gateway->transferReceipt('TF_20260809000001');
+```
+
+### 对账能力（ReconciliationCapableInterface）
+
+> 对齐 Adyen Report API：先 `POST /pal/servlet/Reports/v68/getReport` 生成报表取 `url`，再下载并解析 CSV。
+> `bill_date` 格式为 `YYYYMMDD`。
+
+```php
+// 交易对账单（Settlement detail report）
+$gateway->downloadBill(['bill_date' => '20260809']);
+
+// 资金账单（Payment accounting report）
+$gateway->downloadFundFlow(['bill_date' => '20260809']);
+
+// 解析下载得到的 CSV 原始数据（也可直接传入 CSV 文本）
+$gateway->parseBill($rawCsv);
+```
+
 ## 异步通知处理
 
 ```php
