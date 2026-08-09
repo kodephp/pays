@@ -166,19 +166,19 @@ interface GatewayInterface
 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请/查询/取消退款 |
 | `RedPacketPlugin` | 微信、支付宝 | 普通/裂变红包、查询记录（网关原生方法 + 插件校验转发） |
 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划与周期扣款管理（网关原生方法 + 插件校验转发） |
-| `ReconciliationPlugin` | 微信、支付宝、Stripe | 对账单下载/解析/差异比对 |
+| `ReconciliationPlugin` | 微信、支付宝、Stripe | 对账单下载/解析/差异比对（网关原生方法 + 插件校验转发） |
 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 个人收款码/记录查询/提现（网关原生方法 + 插件校验转发） |
 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动结算到钱包 |
 | `CryptoPlugin` | Coinbase | 加密货币订单/链上确认/汇率 |
 
 插件通过组合（构造函数接收 `GatewayInterface`）而非继承扩展网关能力。两类实现模式并存：
 
-- **下沉式能力（分账 / 转账 / 红包 / 订阅 / 个人收款）**：平台组装逻辑下沉到各网关原生方法，网关声明
+- **下沉式能力（分账 / 转账 / 红包 / 订阅 / 个人收款 / 对账）**：平台组装逻辑下沉到各网关原生方法，网关声明
   对应能力接口（`ProfitSharingCapableInterface` / `TransferCapableInterface` /
   `RedPacketCapableInterface` / `SubscriptionCapableInterface` /
-  `PersonalReceiveCapableInterface`），插件只做「参数校验 + 类型安全转发」，
+  `PersonalReceiveCapableInterface` / `ReconciliationCapableInterface`），插件只做「参数校验 + 类型安全转发」，
   不承载平台组装逻辑。
-- **内联分发能力（退款 / 对账等）**：平台差异在插件内部通过 `match` 表达式按网关名称分发到具体实现：
+- **内联分发能力（退款等）**：平台差异在插件内部通过 `match` 表达式按网关名称分发到具体实现：
 
 ```php
 class ExamplePlugin

@@ -216,6 +216,32 @@ Pay::personalReceiveWithdraw('stripe', $params);
 > 例如 Stripe 未实现 `withdraw` / `queryWithdraw`，调用个人收款提现入口会报「无此方法」。详见
 > [个人收款能力设计](personal-receive.md)。
 
+对账同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的对账特色方法）：
+
+```php
+// 统一下载交易对账单（微信 / 支付宝 / Stripe 已接入对账能力的平台）
+Pay::reconciliationDownloadBill('wechat', [
+    'bill_date' => '20240425',
+    'bill_type' => 'ALL',
+]);
+Pay::reconciliationDownloadFundFlow('alipay', [
+    'bill_date' => '20240425',
+    'account_type' => 'Basic',
+]);
+Pay::reconciliationParseBill('wechat', $rawCsvData);
+
+// 等价写法：直接用 call 派发网关原生对账方法
+Pay::call('wechat', 'downloadBill', $params);
+
+// Stripe 未提供资金账单能力，调用会报「无此方法」
+Pay::reconciliationDownloadFundFlow('stripe', $params);
+```
+
+> 对账逻辑下沉到各网关类内部，声明 `ReconciliationCapableInterface`（`downloadBill` /
+> `downloadFundFlow` / `parseBill`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如 Stripe 未实现 `downloadFundFlow`，调用资金账单入口会报「无此方法」。详见
+> [对账能力设计](reconciliation.md)。`diff()` 为平台无关工具方法，可直接比对系统订单与对账单差异。
+
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 
 ```php

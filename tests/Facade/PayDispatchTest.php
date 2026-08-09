@@ -6,6 +6,7 @@ namespace Kode\Pays\Tests\Facade;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
@@ -244,6 +245,41 @@ class PersonalReceiveCapableFakeGateway extends FakeGateway implements PersonalR
     }
 }
 
+/**
+ * 支持对账能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class ReconciliationCapableFakeGateway extends FakeGateway implements ReconciliationCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $reconCalls = [];
+
+    public static function getName(): string
+    {
+        return 'recongw';
+    }
+
+    public function downloadBill(array $params): array
+    {
+        $this->reconCalls[] = ['downloadBill', $params];
+
+        return ['ok' => true, 'bill_date' => $params['bill_date'] ?? ''];
+    }
+
+    public function downloadFundFlow(array $params): array
+    {
+        $this->reconCalls[] = ['downloadFundFlow', $params];
+
+        return ['ok' => true];
+    }
+
+    public function parseBill(string $rawData): array
+    {
+        $this->reconCalls[] = ['parseBill', $rawData];
+
+        return [['row' => $rawData]];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -267,6 +303,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('recvgw', PersonalReceiveCapableFakeGateway::class);
         Pay::registerConfig('recvgw', []);
+
+        GatewayFactory::register('recongw', ReconciliationCapableFakeGateway::class);
+        Pay::registerConfig('recongw', []);
     }
 
     protected function tearDown(): void
@@ -278,6 +317,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('redgw');
         GatewayFactory::unregister('subgw');
         GatewayFactory::unregister('recvgw');
+        GatewayFactory::unregister('recongw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -555,17 +595,17 @@ class PayDispatchTest extends TestCase
         $this->assertSame('sub_1', $gateway->subCalls[0][1]);
     }
 
-    /**
-     * 统一入口调用未实现的方法应抛「无此方法」
-     */
-    public function testSubscriptionMethodNotSupported(): void
-    {
-        $this->expectException(PayException::class);
-        $this->expectExceptionMessage('无此方法');
+/**
+ * 统一入口调用未实现的方法应抛「无此方法」
+ */
+public function testSubscriptionMethodNotSupported(): void
+{
+    $this->expectException(PayException::class);
+    $this->expectExceptionMessage('无此方法');
 
-        // fakechan 未实现 SubscriptionCapableInterface，无 createPlan 方法
-        Pay::subscriptionCreatePlan('fakechan', ['name' => 'x', 'amount' => 1, 'currency' => 'usd', 'interval' => 'month']);
-    }
+    // fakechan 未实现 SubscriptionCapableInterface，无 createPlan 方法
+    Pay::subscriptionCreatePlan('fakechan', ['name' => 'x', 'amount' => 1, 'currency' => 'usd', 'interval' => 'month']);
+}
 
     /**
      * 统一个人收款二维码入口 personalReceiveQrCode 派发到网关原生 createQrCode
@@ -626,5 +666,57 @@ class PayDispatchTest extends TestCase
         $gateway = Pay::gateway('recvgw');
         $this->assertSame('queryWithdraw', $gateway->receiveCalls[0][0]);
         $this->assertSame('WD_1', $gateway->receiveCalls[0][1]);
+    }
+
+    /**
+     * 统一对账下载入口 reconciliationDownloadBill 派发到网关原生 downloadBill
+     */
+    public function testReconciliationDownloadBillUnifiedEntry(): void
+    {
+        $result = Pay::reconciliationDownloadBill('recongw', ['bill_date' => '20240425', 'bill_type' => 'ALL']);
+
+        $this->assertSame(['ok' => true, 'bill_date' => '20240425'], $result);
+
+        $gateway = Pay::gateway('recongw');
+        $this->assertSame('downloadBill', $gateway->reconCalls[0][0]);
+        $this->assertSame('20240425', $gateway->reconCalls[0][1]['bill_date']);
+    }
+
+    /**
+     * 统一对账资金账单入口 reconciliationDownloadFundFlow 派发到网关原生 downloadFundFlow
+     */
+    public function testReconciliationDownloadFundFlowUnifiedEntry(): void
+    {
+        Pay::reconciliationDownloadFundFlow('recongw', ['bill_date' => '20240425']);
+
+        $gateway = Pay::gateway('recongw');
+        $this->assertSame('downloadFundFlow', $gateway->reconCalls[0][0]);
+        $this->assertSame('20240425', $gateway->reconCalls[0][1]['bill_date']);
+    }
+
+    /**
+     * 统一对账解析入口 reconciliationParseBill 派发到网关原生 parseBill
+     */
+    public function testReconciliationParseBillUnifiedEntry(): void
+    {
+        $result = Pay::reconciliationParseBill('recongw', 'RAW_CSV');
+
+        $this->assertSame([['row' => 'RAW_CSV']], $result);
+
+        $gateway = Pay::gateway('recongw');
+        $this->assertSame('parseBill', $gateway->reconCalls[0][0]);
+        $this->assertSame('RAW_CSV', $gateway->reconCalls[0][1]);
+    }
+
+    /**
+     * 统一入口调用未实现对账能力的网关应抛「无此方法」
+     */
+    public function testReconciliationMethodNotSupported(): void
+    {
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        // fakechan 未实现对账能力接口，无 downloadBill 方法
+        Pay::reconciliationDownloadBill('fakechan', ['bill_date' => '20240425']);
     }
 }

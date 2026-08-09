@@ -84,7 +84,8 @@
 - [退款插件](plugins.md#退款插件-refundplugin) - 统一退款管理
 - [红包插件](plugins.md#红包插件-redpacketplugin) - 现金红包/裂变红包
 - [订阅插件](plugins.md#订阅插件-subscriptionplugin) - 订阅计划与周期扣款
-- [对账插件](plugins.md#对账插件-reconciliationplugin) - 对账单下载与差异比对
+- [对账插件](plugins.md#对账插件-reconciliationplugin) - 对账单下载与差异比对（网关原生方法 + 插件校验转发）
+- [对账能力设计](reconciliation.md) - 对账能力下沉到网关原生方法的接口与派发设计
 - [个人收款插件](plugins.md#个人收款插件-personalreceiveplugin) - 个人收款码/提现
 - [个人收款验证器](personal_receive.md) - 进程内/后台进程抓取收款数据并验证订单匹配
 - [统一收款码路由器](unified-qr.md) - 一码聚合多支付通道、`QrEntry` 值对象、状态机与后台守护进程抓取收款状态

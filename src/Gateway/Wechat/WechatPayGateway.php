@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Wechat;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -16,7 +17,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -463,6 +464,158 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'partner_trade_no' => $outBizNo,
             'nonce_str' => $this->generateNonceStr(),
         ]);
+    }
+
+    /**
+     * 下载微信交易对账单
+     *
+     * @param array<string, mixed> $params 对账参数（bill_date 必填）
+     * @return array<string, mixed> 含原始响应与解析后的记录列表
+     * @throws PayException
+     */
+    public function downloadBill(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'bill_date' => $params['bill_date'],
+            'bill_type' => $params['bill_type'] ?? 'ALL',
+            'tar_type' => $params['tar_type'] ?? '',
+        ];
+
+        $response = $this->post('pay/downloadbill', $requestData);
+        $rawText = $this->extractBillRawText($response);
+
+        return [
+            'bill_date' => $params['bill_date'],
+            'bill_type' => $params['bill_type'] ?? 'ALL',
+            'raw_data' => $response,
+            'records' => $this->parseWechatBill($rawText),
+        ];
+    }
+
+    /**
+     * 下载微信资金账单
+     *
+     * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function downloadFundFlow(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'bill_date' => $params['bill_date'],
+            'account_type' => $params['account_type'] ?? 'Basic',
+            'tar_type' => $params['tar_type'] ?? '',
+        ];
+
+        $response = $this->post('pay/downloadfundflow', $requestData);
+        $rawText = $this->extractBillRawText($response);
+
+        return [
+            'bill_date' => $params['bill_date'],
+            'account_type' => $params['account_type'] ?? 'Basic',
+            'raw_data' => $response,
+            'records' => $this->parseWechatBill($rawText),
+        ];
+    }
+
+    /**
+     * 解析对账单原始数据（微信 CSV 格式）
+     *
+     * @param string $rawData 原始对账单 CSV
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    public function parseBill(string $rawData): array
+    {
+        return $this->parseWechatBill($rawData);
+    }
+
+    /**
+     * 从统一响应中提取对账单原始文本
+     *
+     * 对账单接口返回的是 CSV 文本而非标准 XML，统一入口将原始文本置于 data 字段。
+     *
+     * @param array<string, mixed> $response 统一响应数组
+     */
+    protected function extractBillRawText(array $response): string
+    {
+        $raw = $response['data'] ?? $response;
+
+        return is_string($raw) ? $raw : '';
+    }
+
+    /**
+     * 解析微信对账单（CSV 格式）
+     *
+     * @param string $rawData 原始对账单数据
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    protected function parseWechatBill(string $rawData): array
+    {
+        if ($rawData === '') {
+            return [];
+        }
+
+        $lines = explode("\n", $rawData);
+        $records = [];
+        $isHeader = true;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '总交易单数')) {
+                break;
+            }
+
+            if ($isHeader) {
+                $isHeader = false;
+                continue;
+            }
+
+            $fields = str_getcsv($line, ',', '`');
+            if (count($fields) < 10) {
+                continue;
+            }
+
+            $records[] = [
+                'transaction_time' => $fields[0] ?? '',
+                'app_id' => $fields[1] ?? '',
+                'mch_id' => $fields[2] ?? '',
+                'sub_mch_id' => $fields[3] ?? '',
+                'device_info' => $fields[4] ?? '',
+                'transaction_id' => $fields[5] ?? '',
+                'out_trade_no' => $fields[6] ?? '',
+                'openid' => $fields[7] ?? '',
+                'trade_type' => $fields[8] ?? '',
+                'trade_state' => $fields[9] ?? '',
+                'bank_type' => $fields[10] ?? '',
+                'currency' => $fields[11] ?? '',
+                'total_fee' => $fields[12] ?? '0',
+                'red_packet_amount' => $fields[13] ?? '0',
+                'refund_id' => $fields[14] ?? '',
+                'out_refund_no' => $fields[15] ?? '',
+                'refund_fee' => $fields[16] ?? '0',
+                'refund_red_packet_amount' => $fields[17] ?? '0',
+                'refund_type' => $fields[18] ?? '',
+                'refund_status' => $fields[19] ?? '',
+                'goods_name' => $fields[20] ?? '',
+                'attach' => $fields[21] ?? '',
+                'service_charge' => $fields[22] ?? '0',
+                'rate' => $fields[23] ?? '',
+                'order_amount' => $fields[24] ?? '0',
+                'rate_amount' => $fields[25] ?? '0',
+            ];
+        }
+
+        return $records;
     }
 
     /**

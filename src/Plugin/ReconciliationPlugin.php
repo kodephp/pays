@@ -6,19 +6,22 @@ namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\HttpCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
 
 /**
  * 对账插件
  *
- * 为支持对账的网关提供统一的对账管理能力。
- * 支持下载交易对账单、资金账单、解析对账数据。
+ * 为支持对账的网关提供统一的对账管理能力：下载交易对账单、下载资金账单、解析对账单原始数据。
+ *
+ * 平台组装逻辑已下沉到各网关原生方法（网关声明 {@see ReconciliationCapableInterface}），
+ * 本插件仅负责「参数校验 + 类型安全转发」，不承载平台组装逻辑。
  *
  * 支持网关：
- * - 微信支付（对账单下载、资金账单下载）
- * - 支付宝（对账单下载、账务明细查询）
- * - Stripe（Balance Transaction 导出）
+ * - 微信支付（交易对账单、资金账单）
+ * - 支付宝（对账单下载地址、资金账单电子回单）
+ * - Stripe（Balance Transaction 导出；资金账单能力暂未提供，调用会报「无此方法」）
  *
  * 使用示例：
  * ```php
@@ -38,6 +41,9 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  *
  * // 解析对账单
  * $records = $plugin->parseBill($rawCsvData);
+ *
+ * // 统一入口等价写法
+ * \Kode\Pays\Facade\Pay::reconciliationDownloadBill('wechat', $params);
  * ```
  */
 class ReconciliationPlugin
@@ -45,7 +51,7 @@ class ReconciliationPlugin
     use InteractsWithGateway;
 
     /**
-     * 支付网关实例（必须具备 HTTP 通道能力）
+     * 支付网关实例（必须具备 HTTP 通道能力，并实现对账能力接口）
      *
      * @var GatewayInterface&HttpCapableInterface
      */
@@ -66,63 +72,47 @@ class ReconciliationPlugin
     /**
      * 下载交易对账单
      *
-     * @param array<string, mixed> $params 对账参数
-     *        - bill_date: 对账日期（格式：YYYYMMDD）
-     *        - bill_type: 账单类型（ALL/SUCCESS/REFUND/RECHARGE）
-     * @return array<string, mixed> 对账单数据
+     * @param array<string, mixed> $params 对账参数（bill_date 必填）
+     * @return array<int|string, mixed>
      * @throws PayException
      */
     public function downloadBill(array $params): array
     {
         $this->validateRequired($params, ['bill_date']);
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->downloadWechatBill($params),
-            'alipay' => $this->downloadAlipayBill($params),
-            'stripe' => $this->downloadStripeBill($params),
-            default => throw PayException::invalidArgument('当前网关不支持对账功能'),
-        };
+        return $this->forwardToCapableGateway('downloadBill', $params);
     }
 
     /**
      * 下载资金账单
      *
-     * @param array<string, mixed> $params 资金账单参数
-     *        - bill_date: 账单日期（格式：YYYYMMDD）
-     *        - account_type: 资金账户类型（Basic/Operation/Fees）
-     * @return array<string, mixed>
+     * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
+     * @return array<int|string, mixed>
      * @throws PayException
      */
     public function downloadFundFlow(array $params): array
     {
         $this->validateRequired($params, ['bill_date']);
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->downloadWechatFundFlow($params),
-            'alipay' => $this->downloadAlipayFundFlow($params),
-            default => throw PayException::invalidArgument('当前网关不支持资金账单下载'),
-        };
+        return $this->forwardToCapableGateway('downloadFundFlow', $params);
     }
 
     /**
      * 解析对账单原始数据
      *
-     * @param string $rawData 原始对账单数据（CSV/JSON/XML）
-     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     * @param string $rawData 原始对账单数据（CSV/JSON）
+     * @return array<int|string, mixed> 解析后的交易记录列表
      * @throws PayException
      */
     public function parseBill(string $rawData): array
     {
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->parseWechatBill($rawData),
-            'alipay' => $this->parseAlipayBill($rawData),
-            'stripe' => $this->parseStripeBill($rawData),
-            default => throw PayException::invalidArgument('当前网关不支持对账单解析'),
-        };
+        return $this->forwardToCapableGateway('parseBill', $rawData);
     }
 
     /**
      * 对比系统订单与对账单差异
+     *
+     * 平台无关工具方法，直接比对两组交易记录，无需网关能力。
      *
      * @param array<int, array<string, mixed>> $systemOrders 系统订单列表
      * @param array<int, array<string, mixed>> $billRecords 对账单记录列表
@@ -203,279 +193,31 @@ class ReconciliationPlugin
         ];
     }
 
-    /* ==================== 微信支付对账实现 ==================== */
-
     /**
-     * 下载微信对账单
+     * 类型安全地转发到网关原生方法
      *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
+     * @param mixed ...$args
+     * @return array<int|string, mixed>
+     * @throws PayException
      */
-    protected function downloadWechatBill(array $params): array
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
     {
-        $requestData = [
-            'appid' => $this->getGatewayConfig('app_id'),
-            'mch_id' => $this->getGatewayConfig('mch_id'),
-            'nonce_str' => $this->generateNonceStr(),
-            'bill_date' => $params['bill_date'],
-            'bill_type' => $params['bill_type'] ?? 'ALL',
-            'tar_type' => $params['tar_type'] ?? '',
-        ];
-
-        $response = $this->gateway->post('pay/downloadbill', $requestData);
-
-        return [
-            'bill_date' => $params['bill_date'],
-            'bill_type' => $params['bill_type'] ?? 'ALL',
-            'raw_data' => $response,
-            'records' => $this->parseWechatBill($response['data'] ?? ''),
-        ];
-    }
-
-    /**
-     * 下载微信资金账单
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function downloadWechatFundFlow(array $params): array
-    {
-        $requestData = [
-            'appid' => $this->getGatewayConfig('app_id'),
-            'mch_id' => $this->getGatewayConfig('mch_id'),
-            'nonce_str' => $this->generateNonceStr(),
-            'bill_date' => $params['bill_date'],
-            'account_type' => $params['account_type'] ?? 'Basic',
-            'tar_type' => $params['tar_type'] ?? '',
-        ];
-
-        $response = $this->gateway->post('pay/downloadfundflow', $requestData);
-
-        return [
-            'bill_date' => $params['bill_date'],
-            'account_type' => $params['account_type'] ?? 'Basic',
-            'raw_data' => $response,
-        ];
-    }
-
-    /**
-     * 解析微信对账单（CSV 格式）
-     *
-     * @return array<int, array<string, mixed>> 解析后的交易记录列表
-     */
-    protected function parseWechatBill(string $rawData): array
-    {
-        if ($rawData === '') {
-            return [];
+        if (!$this->gateway instanceof ReconciliationCapableInterface) {
+            throw PayException::invalidArgument(sprintf(
+                '网关 %s 未实现对账能力接口（ReconciliationCapableInterface）',
+                $this->gateway::getName(),
+            ));
         }
 
-        $lines = explode("\n", $rawData);
-        $records = [];
-        $isHeader = true;
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '' || str_starts_with($line, '总交易单数')) {
-                break;
-            }
-
-            if ($isHeader) {
-                $isHeader = false;
-                continue;
-            }
-
-            $fields = str_getcsv($line, ',', '`');
-            if (count($fields) < 10) {
-                continue;
-            }
-
-            $records[] = [
-                'transaction_time' => $fields[0] ?? '',
-                'app_id' => $fields[1] ?? '',
-                'mch_id' => $fields[2] ?? '',
-                'sub_mch_id' => $fields[3] ?? '',
-                'device_info' => $fields[4] ?? '',
-                'transaction_id' => $fields[5] ?? '',
-                'out_trade_no' => $fields[6] ?? '',
-                'openid' => $fields[7] ?? '',
-                'trade_type' => $fields[8] ?? '',
-                'trade_state' => $fields[9] ?? '',
-                'bank_type' => $fields[10] ?? '',
-                'currency' => $fields[11] ?? '',
-                'total_fee' => $fields[12] ?? '0',
-                'red_packet_amount' => $fields[13] ?? '0',
-                'refund_id' => $fields[14] ?? '',
-                'out_refund_no' => $fields[15] ?? '',
-                'refund_fee' => $fields[16] ?? '0',
-                'refund_red_packet_amount' => $fields[17] ?? '0',
-                'refund_type' => $fields[18] ?? '',
-                'refund_status' => $fields[19] ?? '',
-                'goods_name' => $fields[20] ?? '',
-                'attach' => $fields[21] ?? '',
-                'service_charge' => $fields[22] ?? '0',
-                'rate' => $fields[23] ?? '',
-                'order_amount' => $fields[24] ?? '0',
-                'rate_amount' => $fields[25] ?? '0',
-            ];
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        return $records;
+        /** @var ReconciliationCapableInterface $gateway */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
-
-    /* ==================== 支付宝对账实现 ==================== */
-
-    /**
-     * 下载支付宝对账单
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function downloadAlipayBill(array $params): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.data.dataservice.bill.downloadurl.query',
-            'biz_content' => json_encode([
-                'bill_type' => $params['bill_type'] ?? 'trade',
-                'bill_date' => $params['bill_date'],
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 下载支付宝资金账单
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function downloadAlipayFundFlow(array $params): array
-    {
-        return $this->gateway->post('', [
-            'method' => 'alipay.data.bill.ereceipt.apply',
-            'biz_content' => json_encode([
-                'type' => 'FUND',
-                'key' => $params['bill_date'],
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
-    }
-
-    /**
-     * 解析支付宝对账单（CSV 格式）
-     *
-     * @return array<int, array<string, mixed>> 解析后的交易记录列表
-     */
-    protected function parseAlipayBill(string $rawData): array
-    {
-        if ($rawData === '') {
-            return [];
-        }
-
-        $lines = explode("\n", $rawData);
-        $records = [];
-        $isHeader = true;
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '' || str_starts_with($line, '合计')) {
-                break;
-            }
-
-            if ($isHeader) {
-                $isHeader = false;
-                continue;
-            }
-
-            $fields = str_getcsv($line);
-            if (count($fields) < 10) {
-                continue;
-            }
-
-            $records[] = [
-                'alipay_trade_no' => $fields[0] ?? '',
-                'merchant_order_no' => $fields[1] ?? '',
-                'business_type' => $fields[2] ?? '',
-                'subject' => $fields[3] ?? '',
-                'create_time' => $fields[4] ?? '',
-                'finish_time' => $fields[5] ?? '',
-                'store_id' => $fields[6] ?? '',
-                'store_name' => $fields[7] ?? '',
-                'operator' => $fields[8] ?? '',
-                'terminal_id' => $fields[9] ?? '',
-                'seller_account' => $fields[10] ?? '',
-                'order_amount' => $fields[11] ?? '0',
-                'real_amount' => $fields[12] ?? '0',
-                'red_packet_amount' => $fields[13] ?? '0',
-                'integral_amount' => $fields[14] ?? '0',
-                'alipay_discount' => $fields[15] ?? '0',
-                'merchant_discount' => $fields[16] ?? '0',
-                'service_charge' => $fields[17] ?? '0',
-                'share_profit' => $fields[18] ?? '0',
-                'refund_id' => $fields[19] ?? '',
-                'refund_amount' => $fields[20] ?? '0',
-                'remark' => $fields[21] ?? '',
-                'status' => $fields[22] ?? '',
-            ];
-        }
-
-        return $records;
-    }
-
-    /* ==================== Stripe 对账实现 ==================== */
-
-    /**
-     * 下载 Stripe Balance Transaction
-     *
-     * @param array<string, mixed> $params
-     * @return array<string, mixed>
-     */
-    protected function downloadStripeBill(array $params): array
-    {
-        $startTime = strtotime($params['bill_date'] . ' 00:00:00');
-        $endTime = strtotime($params['bill_date'] . ' 23:59:59');
-
-        return $this->gateway->get('v1/balance_transactions', [
-            'created[gte]' => $startTime,
-            'created[lte]' => $endTime,
-            'limit' => $params['limit'] ?? 100,
-        ], [
-            'Authorization' => 'Bearer ' . $this->getGatewayConfig('secret_key'),
-        ]);
-    }
-
-    /**
-     * 解析 Stripe Balance Transaction（JSON 格式）
-     *
-     * @return array<int, array<string, mixed>> 解析后的交易记录列表
-     */
-    protected function parseStripeBill(string $rawData): array
-    {
-        if ($rawData === '') {
-            return [];
-        }
-
-        $data = json_decode($rawData, true);
-
-        if (!is_array($data) || !isset($data['data'])) {
-            return [];
-        }
-
-        return array_map(function (array $item): array {
-            return [
-                'id' => $item['id'] ?? '',
-                'amount' => $item['amount'] ?? 0,
-                'currency' => $item['currency'] ?? '',
-                'net' => $item['net'] ?? 0,
-                'fee' => $item['fee'] ?? 0,
-                'status' => $item['status'] ?? '',
-                'type' => $item['type'] ?? '',
-                'created' => $item['created'] ?? 0,
-                'available_on' => $item['available_on'] ?? 0,
-                'description' => $item['description'] ?? '',
-                'source' => $item['source'] ?? '',
-            ];
-        }, $data['data']);
-    }
-
-    /* ==================== 通用工具方法 ==================== */
 
     /**
      * 验证必填参数
@@ -491,35 +233,5 @@ class ReconciliationPlugin
                 throw PayException::paramError("缺少必填参数：{$field}");
             }
         }
-    }
-
-    /**
-     * 获取网关配置项
-     *
-     * @param string $key 配置键
-     * @param mixed $default 默认值
-     * @return mixed
-     */
-    protected function getGatewayConfig(string $key, mixed $default = null): mixed
-    {
-        $reflection = new \ReflectionClass($this->gateway);
-
-        if ($reflection->hasProperty('config')) {
-            $property = $reflection->getProperty('config');
-            $property->setAccessible(true);
-            $config = $property->getValue($this->gateway);
-
-            return $config[$key] ?? $default;
-        }
-
-        return $default;
-    }
-
-    /**
-     * 生成随机字符串
-     */
-    protected function generateNonceStr(int $length = 32): string
-    {
-        return bin2hex(random_bytes(max(1, intdiv($length, 2))));
     }
 }

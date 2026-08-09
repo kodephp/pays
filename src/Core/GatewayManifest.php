@@ -487,6 +487,7 @@ class GatewayManifest
                 'capabilities' => array_merge($domesticFeatures, [
                     self::CAP_TRANSFER => true,
                     self::CAP_RED_PACKET => true,
+                    self::CAP_RECONCILIATION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                 ]),
             ],

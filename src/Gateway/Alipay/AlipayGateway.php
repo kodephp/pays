@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Alipay;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -16,7 +17,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -480,6 +481,132 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
         $requestParams = $this->buildRequestParams('alipay.fund.trans.common.query', $bizContent);
 
         return $this->post('', $requestParams);
+    }
+
+    /**
+     * 下载支付宝交易对账单（获取对账单下载地址）
+     *
+     * @param array<string, mixed> $params 对账参数（bill_date 必填）
+     * @return array<string, mixed> 含对账单下载地址与原始响应
+     * @throws PayException
+     */
+    public function downloadBill(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $bizContent = [
+            'bill_type' => $params['bill_type'] ?? 'trade',
+            'bill_date' => $params['bill_date'],
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.data.dataservice.bill.downloadurl.query', $bizContent);
+        $response = $this->post('', $requestParams);
+
+        return [
+            'bill_date' => $params['bill_date'],
+            'bill_type' => $params['bill_type'] ?? 'trade',
+            'bill_download_url' => $response['bill_download_url'] ?? '',
+            'raw_data' => $response,
+        ];
+    }
+
+    /**
+     * 下载支付宝资金账单（电子回单申请）
+     *
+     * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
+     * @return array<string, mixed> 含账单文件地址与原始响应
+     * @throws PayException
+     */
+    public function downloadFundFlow(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $bizContent = [
+            'type' => 'FUND',
+            'key' => $params['bill_date'],
+        ];
+
+        $requestParams = $this->buildRequestParams('alipay.data.bill.ereceipt.apply', $bizContent);
+        $response = $this->post('', $requestParams);
+
+        return [
+            'bill_date' => $params['bill_date'],
+            'bill_file_url' => $response['bill_file_url'] ?? '',
+            'raw_data' => $response,
+        ];
+    }
+
+    /**
+     * 解析对账单原始数据（支付宝 CSV 格式）
+     *
+     * @param string $rawData 原始对账单 CSV
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    public function parseBill(string $rawData): array
+    {
+        return $this->parseAlipayBill($rawData);
+    }
+
+    /**
+     * 解析支付宝对账单（CSV 格式）
+     *
+     * @param string $rawData 原始对账单数据
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    protected function parseAlipayBill(string $rawData): array
+    {
+        if ($rawData === '') {
+            return [];
+        }
+
+        $lines = explode("\n", $rawData);
+        $records = [];
+        $isHeader = true;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '合计')) {
+                break;
+            }
+
+            if ($isHeader) {
+                $isHeader = false;
+                continue;
+            }
+
+            $fields = str_getcsv($line);
+            if (count($fields) < 10) {
+                continue;
+            }
+
+            $records[] = [
+                'alipay_trade_no' => $fields[0] ?? '',
+                'merchant_order_no' => $fields[1] ?? '',
+                'business_type' => $fields[2] ?? '',
+                'subject' => $fields[3] ?? '',
+                'create_time' => $fields[4] ?? '',
+                'finish_time' => $fields[5] ?? '',
+                'store_id' => $fields[6] ?? '',
+                'store_name' => $fields[7] ?? '',
+                'operator' => $fields[8] ?? '',
+                'terminal_id' => $fields[9] ?? '',
+                'seller_account' => $fields[10] ?? '',
+                'order_amount' => $fields[11] ?? '0',
+                'real_amount' => $fields[12] ?? '0',
+                'red_packet_amount' => $fields[13] ?? '0',
+                'integral_amount' => $fields[14] ?? '0',
+                'alipay_discount' => $fields[15] ?? '0',
+                'merchant_discount' => $fields[16] ?? '0',
+                'service_charge' => $fields[17] ?? '0',
+                'share_profit' => $fields[18] ?? '0',
+                'refund_id' => $fields[19] ?? '',
+                'refund_amount' => $fields[20] ?? '0',
+                'remark' => $fields[21] ?? '',
+                'status' => $fields[22] ?? '',
+            ];
+        }
+
+        return $records;
     }
 
     /**

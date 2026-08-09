@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Stripe;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -16,7 +17,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -500,6 +501,85 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
     public function queryWithdraw(string $outBizNo): array
     {
         throw PayException::methodNotSupported('stripe', 'queryWithdraw');
+    }
+
+    /**
+     * 下载 Stripe 交易对账单（Balance Transaction 列表）
+     *
+     * @param array<string, mixed> $params 对账参数（bill_date 必填，格式 YYYYMMDD）
+     * @return array<string, mixed> Balance Transaction 列表
+     * @throws PayException
+     */
+    public function downloadBill(array $params): array
+    {
+        $this->validateRequired($params, ['bill_date']);
+
+        $startTime = strtotime($params['bill_date'] . ' 00:00:00');
+        $endTime = strtotime($params['bill_date'] . ' 23:59:59');
+
+        return $this->get('v1/balance_transactions', [
+            'created[gte]' => $startTime,
+            'created[lte]' => $endTime,
+            'limit' => $params['limit'] ?? 100,
+        ], [
+            'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
+        ]);
+    }
+
+    /**
+     * 下载 Stripe 资金账单（Stripe 未提供该能力，调用报「无此方法」）
+     *
+     * @throws PayException
+     */
+    public function downloadFundFlow(array $params): array
+    {
+        throw PayException::methodNotSupported('stripe', 'downloadFundFlow');
+    }
+
+    /**
+     * 解析对账单原始数据（Stripe JSON 格式）
+     *
+     * @param string $rawData 原始对账单 JSON
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    public function parseBill(string $rawData): array
+    {
+        return $this->parseStripeBill($rawData);
+    }
+
+    /**
+     * 解析 Stripe Balance Transaction（JSON 格式）
+     *
+     * @param string $rawData 原始对账单数据
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    protected function parseStripeBill(string $rawData): array
+    {
+        if ($rawData === '') {
+            return [];
+        }
+
+        $data = json_decode($rawData, true);
+
+        if (!is_array($data) || !isset($data['data'])) {
+            return [];
+        }
+
+        return array_map(function (array $item): array {
+            return [
+                'id' => $item['id'] ?? '',
+                'amount' => $item['amount'] ?? 0,
+                'currency' => $item['currency'] ?? '',
+                'net' => $item['net'] ?? 0,
+                'fee' => $item['fee'] ?? 0,
+                'status' => $item['status'] ?? '',
+                'type' => $item['type'] ?? '',
+                'created' => $item['created'] ?? 0,
+                'available_on' => $item['available_on'] ?? 0,
+                'description' => $item['description'] ?? '',
+                'source' => $item['source'] ?? '',
+            ];
+        }, $data['data']);
     }
 
     /**

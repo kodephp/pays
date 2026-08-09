@@ -713,6 +713,44 @@ class Pay
     }
 
     /**
+     * 统一下载交易对账单入口
+     *
+     * 经 {@see self::call()} 派发到网关原生方法；网关未实现对账能力时抛「无此方法」。
+     *
+     * @param string $gateway 网关标识（如 wechat / alipay / stripe）
+     * @param array<string, mixed> $params 对账参数（bill_date 必填）
+     * @return array<string, mixed>
+     */
+    public static function reconciliationDownloadBill(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'downloadBill', $params);
+    }
+
+    /**
+     * 统一下载资金账单入口
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
+     * @return array<string, mixed>
+     */
+    public static function reconciliationDownloadFundFlow(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'downloadFundFlow', $params);
+    }
+
+    /**
+     * 统一解析对账单入口
+     *
+     * @param string $gateway 网关标识
+     * @param string $rawData 原始对账单数据（CSV / JSON）
+     * @return array<int, array<string, mixed>> 解析后的交易记录列表
+     */
+    public static function reconciliationParseBill(string $gateway, string $rawData): array
+    {
+        return self::call($gateway, 'parseBill', $rawData);
+    }
+
+    /**
      * 一次登记新支付平台（统一扩展入口）
      *
      * 同时把平台元数据登记到 {@see GatewayManifest} 与 {@see GatewayFactory}，

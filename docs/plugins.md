@@ -11,7 +11,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 | 退款插件 | `RefundPlugin` | 微信、支付宝、Stripe、PayPal | 申请退款、查询退款、取消退款 |
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
 | 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划、订阅管理、暂停/恢复/取消 |
-| 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对 |
+| 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
 | 个人收款插件 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
 | 自动结算插件 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动提现到钱包 |
 | 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询 |
@@ -560,6 +560,79 @@ Pay::personalReceiveWithdraw('stripe', $params); // 抛 PayException（无此方
 - 实名认证姓名必须与银行卡持卡人一致
 - 金额统一以「分」为单位传入（微信 / 支付宝）
 - 收款到账后的真伪校验 / 轮询确认 / 幂等防护由 `PersonalReceiveVerifier` 负责（见同名文档）
+
+## 对账插件 (ReconciliationPlugin)
+
+支持微信、支付宝、Stripe 的交易对账单下载、资金账单下载与对账单解析；并提供平台无关的 `diff()` 差异比对能力。
+
+> 架构说明：对账能力已下沉到各网关原生方法（网关声明 `ReconciliationCapableInterface`），
+> 本插件仅做「参数校验 + 类型安全转发」，不再承载平台组装逻辑。Stripe 未提供资金账单能力，
+> 调用 `downloadFundFlow` 会明确报「无此方法」。`diff()` 为平台无关工具方法，可直接比对系统订单与对账单差异。
+> 完整设计见 [对账能力设计](reconciliation.md)。
+
+### 配置
+
+无需额外配置。下载对账单需相应网关具备对账权限（微信需 `api_key`、支付宝需 `private_key`、Stripe 需 `secret_key`）。
+
+### 使用示例（插件）
+
+```php
+<?php
+
+use Kode\Pays\Facade\Pay;
+use Kode\Pays\Plugin\ReconciliationPlugin;
+
+$wechat = Pay::wechat([
+    'app_id'  => 'wx123456',
+    'mch_id'  => '123456',
+    'api_key' => 'your-api-key',
+]);
+
+$plugin = new ReconciliationPlugin($wechat);
+
+// 下载交易对账单
+$bill = $plugin->downloadBill([
+    'bill_date' => '20240425',
+    'bill_type' => 'ALL',
+]);
+
+// 下载资金账单
+$fundFlow = $plugin->downloadFundFlow([
+    'bill_date' => '20240425',
+    'account_type' => 'Basic',
+]);
+
+// 解析对账单原始数据
+$records = $plugin->parseBill($rawCsvData);
+
+// 比对系统订单与对账单差异（平台无关）
+$report = $plugin->diff($systemOrders, $billRecords);
+```
+
+### 统一入口（等价写法）
+
+```php
+// 与插件调用等价，内部经 Pay::call 派发到网关原生方法
+Pay::reconciliationDownloadBill('wechat', [
+    'bill_date' => '20240425',
+    'bill_type' => 'ALL',
+]);
+Pay::reconciliationDownloadFundFlow('alipay', [
+    'bill_date' => '20240425',
+    'account_type' => 'Basic',
+]);
+Pay::reconciliationParseBill('wechat', $rawCsvData);
+
+// Stripe 未实现对账资金账单能力，调用会报「无此方法」
+Pay::reconciliationDownloadFundFlow('stripe', $params); // 抛 PayException（无此方法）
+```
+
+### 注意事项
+
+- 对账单日期格式为 `YYYYMMDD`
+- 微信对账单为 CSV 文本，需配置 MD5 签名方可投产（当前沿用既有构造，投产前请接入 `Signer::md5`）
+- 支付宝对账单下载接口返回的是账单下载地址，需二次拉取账单文件
+- Stripe 对账基于 Balance Transaction 列表（`created` 时间区间），资金账单能力暂未提供
 
 ## 自动结算插件 (AutoSettlementPlugin)
 
