@@ -6,6 +6,7 @@ namespace Kode\Pays\Tests\Facade;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
@@ -280,6 +281,41 @@ class ReconciliationCapableFakeGateway extends FakeGateway implements Reconcilia
     }
 }
 
+/**
+ * 支持退款能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class RefundCapableFakeGateway extends FakeGateway implements RefundCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $refundCalls = [];
+
+    public static function getName(): string
+    {
+        return 'refundgw';
+    }
+
+    public function applyRefund(array $params): array
+    {
+        $this->refundCalls[] = ['applyRefund', $params];
+
+        return ['ok' => true, 'out_refund_no' => $params['out_refund_no'] ?? ''];
+    }
+
+    public function queryRefund(string $outRefundNo): array
+    {
+        $this->refundCalls[] = ['queryRefund', $outRefundNo];
+
+        return ['ok' => true];
+    }
+
+    public function cancelRefund(string $outRefundNo): array
+    {
+        $this->refundCalls[] = ['cancelRefund', $outRefundNo];
+
+        return ['ok' => true];
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -306,6 +342,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('recongw', ReconciliationCapableFakeGateway::class);
         Pay::registerConfig('recongw', []);
+
+        GatewayFactory::register('refundgw', RefundCapableFakeGateway::class);
+        Pay::registerConfig('refundgw', []);
     }
 
     protected function tearDown(): void
@@ -318,6 +357,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('subgw');
         GatewayFactory::unregister('recvgw');
         GatewayFactory::unregister('recongw');
+        GatewayFactory::unregister('refundgw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -718,5 +758,63 @@ public function testSubscriptionMethodNotSupported(): void
 
         // fakechan 未实现对账能力接口，无 downloadBill 方法
         Pay::reconciliationDownloadBill('fakechan', ['bill_date' => '20240425']);
+    }
+
+    /**
+     * 统一退款申请入口 refundApply 派发到网关原生 applyRefund
+     */
+    public function testRefundApplyUnifiedEntry(): void
+    {
+        $result = Pay::refundApply('refundgw', [
+            'out_trade_no' => 'ORDER_001',
+            'out_refund_no' => 'REFUND_001',
+            'refund_fee' => 50,
+        ]);
+
+        $this->assertSame(['ok' => true, 'out_refund_no' => 'REFUND_001'], $result);
+
+        $gateway = Pay::gateway('refundgw');
+        $this->assertSame('applyRefund', $gateway->refundCalls[0][0]);
+        $this->assertSame('REFUND_001', $gateway->refundCalls[0][1]['out_refund_no']);
+    }
+
+    /**
+     * 统一退款查询入口 refundQuery 派发到网关原生 queryRefund
+     */
+    public function testRefundQueryUnifiedEntry(): void
+    {
+        Pay::refundQuery('refundgw', 'REFUND_001');
+
+        $gateway = Pay::gateway('refundgw');
+        $this->assertSame('queryRefund', $gateway->refundCalls[0][0]);
+        $this->assertSame('REFUND_001', $gateway->refundCalls[0][1]);
+    }
+
+    /**
+     * 统一退款取消入口 refundCancel 派发到网关原生 cancelRefund
+     */
+    public function testRefundCancelUnifiedEntry(): void
+    {
+        Pay::refundCancel('refundgw', 'REFUND_001');
+
+        $gateway = Pay::gateway('refundgw');
+        $this->assertSame('cancelRefund', $gateway->refundCalls[0][0]);
+        $this->assertSame('REFUND_001', $gateway->refundCalls[0][1]);
+    }
+
+    /**
+     * 统一入口调用未实现退款能力的网关应抛「无此方法」
+     */
+    public function testRefundMethodNotSupported(): void
+    {
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        // fakechan 未实现退款能力接口，无 applyRefund 方法
+        Pay::refundApply('fakechan', [
+            'out_trade_no' => 'ORDER_001',
+            'out_refund_no' => 'REFUND_001',
+            'refund_fee' => 50,
+        ]);
     }
 }

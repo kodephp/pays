@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\Wechat;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -17,7 +18,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
+class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -115,30 +116,6 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
 
         $xml = $this->arrayToXml($params);
         $response = $this->postRaw('secapi/pay/refund', $xml, ['Content-Type' => 'text/xml']);
-
-        return $response;
-    }
-
-    /**
-     * 查询退款
-     *
-     * @param string $refundId 退款单号
-     * @return array<string, mixed>
-     * @throws PayException
-     */
-    public function queryRefund(string $refundId): array
-    {
-        $params = [
-            'appid' => $this->getConfig('app_id'),
-            'mch_id' => $this->getConfig('mch_id'),
-            'nonce_str' => $this->generateNonceStr(),
-            'out_refund_no' => $refundId,
-        ];
-
-        $params['sign'] = Signer::md5($params, $this->getConfig('api_key'));
-
-        $xml = $this->arrayToXml($params);
-        $response = $this->postRaw('pay/refundquery', $xml, ['Content-Type' => 'text/xml']);
 
         return $response;
     }
@@ -616,6 +593,72 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
         }
 
         return $records;
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function applyRefund(array $params): array
+    {
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'out_refund_no' => $params['out_refund_no'],
+            'refund_fee' => (int) $params['refund_fee'],
+            'refund_desc' => $params['refund_desc'] ?? '',
+        ];
+
+        if (!empty($params['out_trade_no'])) {
+            $requestData['out_trade_no'] = $params['out_trade_no'];
+        } else {
+            $requestData['transaction_id'] = $params['transaction_id'];
+        }
+
+        if (isset($params['total_fee'])) {
+            $requestData['total_fee'] = (int) $params['total_fee'];
+        }
+
+        if (!empty($params['notify_url'])) {
+            $requestData['notify_url'] = $params['notify_url'];
+        }
+
+        return $this->post('secapi/pay/refund', $requestData);
+    }
+
+    /**
+     * 查询退款结果
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function queryRefund(string $outRefundNo): array
+    {
+        return $this->post('pay/refundquery', [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'out_refund_no' => $outRefundNo,
+        ]);
+    }
+
+    /**
+     * 取消退款（微信支付不支持，统一报「无此方法」）
+     *
+     * @throws PayException
+     */
+
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('wechat', 'cancelRefund');
     }
 
     /**

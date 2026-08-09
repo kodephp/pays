@@ -750,6 +750,48 @@ class Pay
         return self::call($gateway, 'parseBill', $rawData);
     }
 
+    /* ==================== 退款能力统一入口 ==================== */
+
+    /**
+     * 申请退款（统一入口）
+     *
+     * @param string $gateway 网关标识（wechat/alipay/stripe/paypal）
+     * @param array<string, mixed> $params 退款参数（out_refund_no/refund_fee 必填，
+     *                                       out_trade_no 与 transaction_id 至少其一）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function refundApply(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'applyRefund', $params);
+    }
+
+    /**
+     * 查询退款结果（统一入口）
+     *
+     * @param string $gateway 网关标识
+     * @param string $outRefundNo 商户退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function refundQuery(string $gateway, string $outRefundNo): array
+    {
+        return self::call($gateway, 'queryRefund', $outRefundNo);
+    }
+
+    /**
+     * 取消退款（统一入口，仅 Stripe 等部分网关支持）
+     *
+     * @param string $gateway 网关标识
+     * @param string $outRefundNo 商户退款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function refundCancel(string $gateway, string $outRefundNo): array
+    {
+        return self::call($gateway, 'cancelRefund', $outRefundNo);
+    }
+
     /**
      * 一次登记新支付平台（统一扩展入口）
      *

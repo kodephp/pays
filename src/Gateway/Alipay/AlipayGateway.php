@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\Alipay;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -17,7 +18,7 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
+class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -127,24 +128,6 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
         }
 
         $requestParams = $this->buildRequestParams('alipay.trade.refund', $bizContent);
-
-        return $this->post('', $requestParams);
-    }
-
-    /**
-     * 查询退款
-     *
-     * @param string $refundId 退款请求号
-     * @return array<string, mixed>
-     * @throws PayException
-     */
-    public function queryRefund(string $refundId): array
-    {
-        $bizContent = [
-            'out_request_no' => $refundId,
-        ];
-
-        $requestParams = $this->buildRequestParams('alipay.trade.fastpay.refund.query', $bizContent);
 
         return $this->post('', $requestParams);
     }
@@ -481,6 +464,65 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
         $requestParams = $this->buildRequestParams('alipay.fund.trans.common.query', $bizContent);
 
         return $this->post('', $requestParams);
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function applyRefund(array $params): array
+    {
+        $bizContent = [
+            'out_request_no' => $params['out_refund_no'],
+            'refund_amount' => number_format($params['refund_fee'] / 100, 2),
+        ];
+
+        if (!empty($params['out_trade_no'])) {
+            $bizContent['out_trade_no'] = $params['out_trade_no'];
+        } else {
+            $bizContent['trade_no'] = $params['transaction_id'];
+        }
+
+        if (!empty($params['refund_desc'])) {
+            $bizContent['refund_reason'] = $params['refund_desc'];
+        }
+
+        $requestParams = $this->buildRequestParams('alipay.trade.refund', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 查询退款结果
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function queryRefund(string $outRefundNo): array
+    {
+        $requestParams = $this->buildRequestParams('alipay.trade.fastpay.refund.query', [
+            'out_request_no' => $outRefundNo,
+        ]);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 取消退款（支付宝不支持，统一报「无此方法」）
+     *
+     * @throws PayException
+     */
+
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('alipay', 'cancelRefund');
     }
 
     /**

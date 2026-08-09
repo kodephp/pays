@@ -48,8 +48,7 @@ GatewayManifest::supports('wechat', GatewayManifest::CAP_SUBSCRIPTION);   // fal
 |------|------|
 | `CAP_CREATE_ORDER` | 创建订单 |
 | `CAP_QUERY_ORDER` | 查询订单 |
-| `CAP_REFUND` | 申请退款 |
-| `CAP_QUERY_REFUND` | 查询退款 |
+| `CAP_REFUND` | 退款（申请/查询/取消） |
 | `CAP_CLOSE_ORDER` | 关闭订单 |
 | `CAP_VERIFY_NOTIFY` | 异步通知验签 |
 | `CAP_TRANSFER` | 企业付款/转账 |
@@ -241,6 +240,31 @@ Pay::reconciliationDownloadFundFlow('stripe', $params);
 > `downloadFundFlow` / `parseBill`）。`Pay::call()` 缺方法时仍抛「无此方法」；
 > 例如 Stripe 未实现 `downloadFundFlow`，调用资金账单入口会报「无此方法」。详见
 > [对账能力设计](reconciliation.md)。`diff()` 为平台无关工具方法，可直接比对系统订单与对账单差异。
+
+退款同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的退款特色方法）：
+
+```php
+// 统一申请退款（微信 / 支付宝 / Stripe / PayPal 已接入退款能力的平台）
+Pay::refundApply('wechat', [
+    'out_trade_no'  => 'ORDER_001',
+    'out_refund_no' => 'REFUND_001',
+    'total_fee'     => 100,
+    'refund_fee'    => 50,
+    'refund_desc'   => '商品质量问题',
+]);
+Pay::refundQuery('alipay', 'REFUND_001');
+Pay::refundCancel('stripe', 'REFUND_001'); // 仅 Stripe 支持取消
+
+// 等价写法：直接用 call 派发网关原生退款方法
+Pay::call('wechat', 'applyRefund', $refundParams);
+
+// 微信 / 支付宝 / PayPal 未实现取消退款，调用会报「无此方法」
+Pay::refundCancel('wechat', 'REFUND_001');
+```
+
+> 退款逻辑下沉到各网关类内部，声明 `RefundCapableInterface`（`applyRefund` /
+> `queryRefund` / `cancelRefund`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如微信未实现 `cancelRefund`，调用取消退款入口会报「无此方法」。
 
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 

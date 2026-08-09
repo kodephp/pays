@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Paypal;
 
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -13,7 +14,7 @@ use Kode\Pays\Core\PayException;
  *
  * 支持 PayPal Checkout、订阅等支付场景
  */
-class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterface
+class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterface, RefundCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -101,22 +102,6 @@ class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterf
         unset($params['capture_id']);
 
         return $this->post("v2/payments/captures/{$captureId}/refund", $params, $headers);
-    }
-
-    /**
-     * 查询退款
-     *
-     * @param string $refundId 退款 ID
-     * @return array<string, mixed>
-     * @throws PayException
-     */
-    public function queryRefund(string $refundId): array
-    {
-        $headers = [
-            'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ];
-
-        return $this->get("v2/payments/refunds/{$refundId}", [], $headers);
     }
 
     /**
@@ -302,6 +287,69 @@ class PaypalGateway extends AbstractGateway implements SubscriptionCapableInterf
         ];
 
         return $this->get("v1/billing/subscriptions/{$subscriptionId}", [], $headers);
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function applyRefund(array $params): array
+    {
+        $captureId = $params['transaction_id'] ?? '';
+
+        if ($captureId === '') {
+            throw PayException::paramError('PayPal 退款需要提供 capture_id（transaction_id）');
+        }
+
+        $requestData = [
+            'amount' => [
+                'value' => number_format($params['refund_fee'] / 100, 2),
+                'currency_code' => strtoupper($params['currency'] ?? 'USD'),
+            ],
+            'invoice_id' => $params['out_refund_no'],
+            'note_to_payer' => $params['refund_desc'] ?? '',
+        ];
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->post("v2/payments/captures/{$captureId}/refund", $requestData, $headers);
+    }
+
+    /**
+     * 查询退款结果
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function queryRefund(string $outRefundNo): array
+    {
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+
+        return $this->get("v2/payments/refunds/{$outRefundNo}", [], $headers);
+    }
+
+    /**
+     * 取消退款（PayPal 不支持，统一报「无此方法」）
+     *
+     * @throws PayException
+     */
+
+    public function cancelRefund(string $outRefundNo): array
+    {
+        throw PayException::methodNotSupported('paypal', 'cancelRefund');
     }
 
     /**

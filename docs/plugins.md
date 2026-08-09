@@ -191,7 +191,9 @@ Pay::transferReceipt('alipay', 'TRANSFER_20240425000001');
 
 ## 退款插件 (RefundPlugin)
 
-支持微信、支付宝、Stripe、PayPal 的退款能力。
+支持微信、支付宝、Stripe、PayPal 的退款能力。退款逻辑已下沉到各网关原生方法，网关声明
+`RefundCapableInterface`（`applyRefund` / `queryRefund` / `cancelRefund`），`RefundPlugin`
+仅做「参数校验 + 类型安全转发」，不承载平台组装逻辑。
 
 ### 配置
 
@@ -211,9 +213,19 @@ $wechat = Pay::wechat([
     'api_key' => 'your-api-key',
 ]);
 
-$plugin = new RefundPlugin($wechat);
+// 推荐：统一入口（内部经 Pay::call 派发到网关原生 applyRefund）
+$result = Pay::refundApply('wechat', [
+    'out_trade_no'  => 'ORDER_001',
+    'out_refund_no' => 'REFUND_' . date('YmdHis'),
+    'total_fee'     => 100,
+    'refund_fee'    => 50,
+    'refund_desc'   => '商品质量问题',
+]);
+Pay::refundQuery('alipay', 'REFUND_001');
+Pay::refundCancel('stripe', 'REFUND_001'); // 仅 Stripe 支持
 
-// 申请退款
+// 等价：直接通过插件
+$plugin = new RefundPlugin($wechat);
 $result = $plugin->apply([
     'out_trade_no'  => 'ORDER_001',
     'out_refund_no' => 'REFUND_' . date('YmdHis'),
@@ -221,12 +233,8 @@ $result = $plugin->apply([
     'refund_fee'    => 50,
     'refund_desc'   => '商品质量问题',
 ]);
-
-// 查询退款
 $result = $plugin->query('REFUND_20240425000001');
-
-// 取消退款（仅 Stripe 支持取消未处理完的退款）
-$result = $plugin->cancel('REFUND_20240425000001');
+$result = $plugin->cancel('REFUND_20240425000001'); // 仅 Stripe 支持取消未处理完的退款
 ```
 
 ### 各网关参数对照

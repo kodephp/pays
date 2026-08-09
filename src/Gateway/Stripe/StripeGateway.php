@@ -6,6 +6,7 @@ namespace Kode\Pays\Gateway\Stripe;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
@@ -17,7 +18,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface
+class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -120,20 +121,6 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
         $headers = $this->buildAuthHeaders();
 
         return $this->post('v1/refunds', $requestData, $headers);
-    }
-
-    /**
-     * 查询退款
-     *
-     * @param string $refundId 退款 ID
-     * @return array<string, mixed>
-     * @throws PayException
-     */
-    public function queryRefund(string $refundId): array
-    {
-        $headers = $this->buildAuthHeaders();
-
-        return $this->get("v1/refunds/{$refundId}", [], $headers);
     }
 
     /**
@@ -501,6 +488,84 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
     public function queryWithdraw(string $outBizNo): array
     {
         throw PayException::methodNotSupported('stripe', 'queryWithdraw');
+    }
+
+    /* ==================== 退款能力（RefundCapableInterface） ==================== */
+
+    /**
+     * 申请退款
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function applyRefund(array $params): array
+    {
+        $requestData = [
+            'payment_intent' => $params['transaction_id'] ?? '',
+            'amount' => (int) $params['refund_fee'],
+            'reason' => $this->mapStripeRefundReason($params['refund_desc'] ?? ''),
+            'metadata' => [
+                'out_refund_no' => $params['out_refund_no'],
+            ],
+        ];
+
+        return $this->post('v1/refunds', $requestData, [
+            'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
+        ]);
+    }
+
+    /**
+     * 查询退款结果
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function queryRefund(string $outRefundNo): array
+    {
+        return $this->get('v1/refunds', [
+            'metadata[out_refund_no]' => $outRefundNo,
+        ], [
+            'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
+        ]);
+    }
+
+    /**
+     * 取消退款（仅 Stripe 支持）
+     *
+     * 先按商户退款单号定位 Stripe refund id，再发起取消。
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+
+    public function cancelRefund(string $outRefundNo): array
+    {
+        $refunds = $this->queryRefund($outRefundNo);
+        $refundId = $refunds['data'][0]['id'] ?? '';
+
+        if ($refundId === '') {
+            throw PayException::paramError('未找到对应的 Stripe 退款记录');
+        }
+
+        return $this->post("v1/refunds/{$refundId}/cancel", [], [
+            'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
+        ]);
+    }
+
+    /**
+     * 映射 Stripe 退款原因
+     */
+    protected function mapStripeRefundReason(string $desc): string
+    {
+        return match (true) {
+            str_contains($desc, '欺诈') || str_contains($desc, 'fraud') => 'fraudulent',
+            str_contains($desc, '重复') || str_contains($desc, 'duplicate') => 'duplicate',
+            str_contains($desc, '请求') || str_contains($desc, 'request') => 'requested_by_customer',
+            default => 'requested_by_customer',
+        };
     }
 
     /**
