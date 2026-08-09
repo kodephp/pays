@@ -155,6 +155,11 @@ class GatewayManifest
     public const CAP_WEBHOOK = 'webhook';
 
     /**
+     * 能力：加密货币支付（Coinbase 等）
+     */
+    public const CAP_CRYPTO = 'crypto';
+
+    /**
      * 平台清单
      *
      * @var array<string, array<string, mixed>>
@@ -393,6 +398,7 @@ class GatewayManifest
             self::CAP_RED_PACKET => false,
             self::CAP_PERSONAL_RECEIVE => false,
             self::CAP_WEBHOOK => false,
+            self::CAP_CRYPTO => false,
         ];
     }
 
@@ -624,7 +630,7 @@ class GatewayManifest
                 'label' => 'Coinbase',
                 'region' => self::REGION_CRYPTO,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true, self::CAP_CRYPTO => true],
             ],
             'hitpay' => [
                 'label' => 'HitPay',

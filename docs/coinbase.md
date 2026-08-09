@@ -142,6 +142,36 @@ http_response_code(200);
 echo 'OK';
 ```
 
+## 统一入口（Pay 门面）
+
+除直接调用网关实例外，也可通过 `Pay` 门面的加密货币统一入口发起调用（内部经 `Pay::call()`
+动态派发到 `CryptoCapableInterface` 原生方法）。未实现 `CryptoCapableInterface` 的网关调用会
+统一报「无此方法」。
+
+```php
+use Kode\Pays\Facade\Pay;
+
+// 法币定价下单
+Pay::cryptoCreateOrder('coinbase', [
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_amount' => 10000,
+    'currency'     => 'USD',
+]);
+
+// 加密货币定价下单
+Pay::cryptoCreateCryptoOrder('coinbase', [
+    'out_trade_no'    => 'ORDER_002',
+    'crypto_amount'   => '0.5',
+    'crypto_currency' => 'BTC',
+]);
+
+Pay::cryptoQueryOrder('coinbase', 'ORDER_002');
+Pay::cryptoRefund('coinbase', ['charge_id' => 'CHG_xxx', 'refund_fee' => 50]);
+Pay::cryptoGetPaymentAddresses('coinbase', 'CHG_xxx');
+Pay::cryptoGetOnChainStatus('coinbase', 'CHG_xxx');    // 链上确认数
+Pay::cryptoGetExchangeRate('coinbase', 'BTC', 'USD');  // 实时汇率
+```
+
 ## 常见问题
 
 **Q: 加密货币支付需要多久确认？**

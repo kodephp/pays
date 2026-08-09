@@ -169,7 +169,7 @@ interface GatewayInterface
 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 对账单下载/解析/差异比对（网关原生方法 + 插件校验转发） |
 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 个人收款码/记录查询/提现（网关原生方法 + 插件校验转发） |
 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动结算到钱包 |
-| `CryptoPlugin` | Coinbase | 加密货币订单/链上确认/汇率 |
+| `CryptoPlugin` | Coinbase | 加密货币订单/链上确认/汇率（网关原生方法 + 插件校验转发） |
 
 插件通过组合（构造函数接收 `GatewayInterface`）而非继承扩展网关能力。两类实现模式并存：
 
@@ -177,9 +177,9 @@ interface GatewayInterface
   对应能力接口（`ProfitSharingCapableInterface` / `TransferCapableInterface` /
   `RedPacketCapableInterface` / `SubscriptionCapableInterface` /
   `PersonalReceiveCapableInterface` / `ReconciliationCapableInterface` /
-  `RefundCapableInterface`），插件只做「参数校验 + 类型安全转发」，
+  `RefundCapableInterface` / `CryptoCapableInterface`），插件只做「参数校验 + 类型安全转发」，
   不承载平台组装逻辑。
-- **内联分发能力（自动结算 / 加密等）**：平台差异在插件内部通过 `match` 表达式按网关名称分发到具体实现：
+- **内联分发能力（自动结算等）**：平台差异在插件内部通过 `match` 表达式按网关名称分发到具体实现：
 
 ```php
 class ExamplePlugin

@@ -58,6 +58,7 @@ GatewayManifest::supports('wechat', GatewayManifest::CAP_SUBSCRIPTION);   // fal
 | `CAP_QR` | 二维码支付 |
 | `CAP_RED_PACKET` | 现金红包 |
 | `CAP_WEBHOOK` | Webhook 事件订阅 |
+| `CAP_CRYPTO` | 加密货币（下单 / 链上确认 / 汇率） |
 
 > 说明：内置平台的域名优先由 `GatewayManifest::baseUrl()` 通过网关类声明的
 > `PROD_BASE_URL` / `SANDBOX_BASE_URL` 常量反射获取，使域名信息也收敛到统一清单查询；
@@ -265,6 +266,37 @@ Pay::refundCancel('wechat', 'REFUND_001');
 > 退款逻辑下沉到各网关类内部，声明 `RefundCapableInterface`（`applyRefund` /
 > `queryRefund` / `cancelRefund`）。`Pay::call()` 缺方法时仍抛「无此方法」；
 > 例如微信未实现 `cancelRefund`，调用取消退款入口会报「无此方法」。
+
+加密货币同样提供统一入口（内部经 `Pay::call()` 派发到目标网关的加密货币特色方法）：
+
+```php
+// 统一创建加密货币订单（Coinbase 已接入加密货币能力的平台）
+Pay::cryptoCreateOrder('coinbase', [
+    'out_trade_no' => 'ORDER_' . date('YmdHis'),
+    'total_amount' => 10000,
+    'currency'     => 'USD',
+]);
+Pay::cryptoCreateCryptoOrder('coinbase', [
+    'out_trade_no'    => 'ORDER_002',
+    'crypto_amount'   => '0.5',
+    'crypto_currency' => 'BTC',
+]);
+Pay::cryptoQueryOrder('coinbase', 'ORDER_002');
+Pay::cryptoRefund('coinbase', ['charge_id' => 'CHG_xxx', 'refund_fee' => 50]);
+Pay::cryptoGetPaymentAddresses('coinbase', 'CHG_xxx');
+Pay::cryptoGetOnChainStatus('coinbase', 'CHG_xxx');   // 链上确认数
+Pay::cryptoGetExchangeRate('coinbase', 'BTC', 'USD'); // 实时汇率
+
+// 等价写法：直接用 call 派发网关原生加密货币方法
+Pay::call('coinbase', 'createCryptoOrder', $params);
+```
+
+> 加密货币逻辑下沉到各网关类内部，声明 `CryptoCapableInterface`（`createOrder` /
+> `createCryptoOrder` / `getPaymentAddresses` / `getConfirmations` / `getExchangeRate` /
+> `queryOrder` / `refund` / `verifyNotify`）。`Pay::call()` 缺方法时仍抛「无此方法」；
+> 例如未实现 `CryptoCapableInterface` 的网关调用 `cryptoCreateCryptoOrder` 会报「无此方法」。
+> `CryptoPlugin` 退化为「参数可信转发」，仅做能力断言与转发，不再承载任何平台内联分支。详见
+> [Coinbase 接入文档](coinbase.md)。
 
 如需拿到强类型网关实例（便于 IDE 自动补全平台特色方法）：
 

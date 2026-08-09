@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Coinbase;
 
+use Kode\Pays\Contract\CryptoCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -47,7 +48,7 @@ use Kode\Pays\Exception\GatewayException;
  * $confirmations = $gateway->getConfirmations($chargeId);
  * ```
  */
-class CoinbaseGateway extends AbstractGateway
+class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface
 {
     /**
      * 支持的加密货币列表

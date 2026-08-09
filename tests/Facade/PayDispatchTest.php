@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Facade;
 
+use Kode\Pays\Contract\CryptoCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
@@ -316,6 +317,76 @@ class RefundCapableFakeGateway extends FakeGateway implements RefundCapableInter
     }
 }
 
+/**
+ * 支持加密货币能力的假网关：用于验证统一入口对「特色方法」的动态派发
+ */
+class CryptoCapableFakeGateway extends FakeGateway implements CryptoCapableInterface
+{
+    /** @var array<int, array<int, mixed>> */
+    public array $cryptoCalls = [];
+
+    public static function getName(): string
+    {
+        return 'cryptogw';
+    }
+
+    public function createOrder(array $params): array
+    {
+        $this->cryptoCalls[] = ['createOrder', $params];
+
+        return ['ok' => true, 'charge_id' => 'chg_1'];
+    }
+
+    public function createCryptoOrder(array $params): array
+    {
+        $this->cryptoCalls[] = ['createCryptoOrder', $params];
+
+        return ['ok' => true];
+    }
+
+    public function getPaymentAddresses(string $orderId): array
+    {
+        $this->cryptoCalls[] = ['getPaymentAddresses', $orderId];
+
+        return ['ok' => true];
+    }
+
+    public function getConfirmations(string $orderId): array
+    {
+        $this->cryptoCalls[] = ['getConfirmations', $orderId];
+
+        return ['ok' => true];
+    }
+
+    public function getExchangeRate(string $cryptoCurrency, string $fiatCurrency = 'USD'): array
+    {
+        $this->cryptoCalls[] = ['getExchangeRate', $cryptoCurrency, $fiatCurrency];
+
+        return ['rate' => '1'];
+    }
+
+    public function queryOrder(string $orderId): array
+    {
+        $this->cryptoCalls[] = ['queryOrder', $orderId];
+
+        return ['ok' => true];
+    }
+
+    public function refund(array $params): array
+    {
+        $this->cryptoCalls[] = ['refund', $params];
+
+        return ['ok' => true];
+    }
+
+    public function verifyNotify(array $data): bool
+    {
+        $this->cryptoCalls[] = ['verifyNotify', $data];
+
+        return true;
+    }
+}
+
 class PayDispatchTest extends TestCase
 {
     protected function setUp(): void
@@ -345,6 +416,9 @@ class PayDispatchTest extends TestCase
 
         GatewayFactory::register('refundgw', RefundCapableFakeGateway::class);
         Pay::registerConfig('refundgw', []);
+
+        GatewayFactory::register('cryptogw', CryptoCapableFakeGateway::class);
+        Pay::registerConfig('cryptogw', []);
     }
 
     protected function tearDown(): void
@@ -358,6 +432,7 @@ class PayDispatchTest extends TestCase
         GatewayFactory::unregister('recvgw');
         GatewayFactory::unregister('recongw');
         GatewayFactory::unregister('refundgw');
+        GatewayFactory::unregister('cryptogw');
         GatewayFactory::unregister('samplegw');
         GatewayManifest::unregister('samplegw');
 
@@ -816,5 +891,43 @@ public function testSubscriptionMethodNotSupported(): void
             'out_refund_no' => 'REFUND_001',
             'refund_fee' => 50,
         ]);
+    }
+
+    /**
+     * 统一加密货币下单入口 cryptoCreateOrder 派发到网关原生 createOrder
+     */
+    public function testCryptoCreateOrderUnifiedEntry(): void
+    {
+        $result = Pay::cryptoCreateOrder('cryptogw', ['out_trade_no' => 'C1', 'total_amount' => 100]);
+
+        $this->assertSame(['ok' => true, 'charge_id' => 'chg_1'], $result);
+
+        $gateway = Pay::gateway('cryptogw');
+        $this->assertSame('createOrder', $gateway->cryptoCalls[0][0]);
+        $this->assertSame(['out_trade_no' => 'C1', 'total_amount' => 100], $gateway->cryptoCalls[0][1]);
+    }
+
+    /**
+     * 统一加密货币链上状态入口 cryptoGetOnChainStatus 派发到网关原生 getConfirmations
+     */
+    public function testCryptoGetOnChainStatusUnifiedEntry(): void
+    {
+        Pay::cryptoGetOnChainStatus('cryptogw', 'chg_1');
+
+        $gateway = Pay::gateway('cryptogw');
+        $this->assertSame('getConfirmations', $gateway->cryptoCalls[0][0]);
+        $this->assertSame('chg_1', $gateway->cryptoCalls[0][1]);
+    }
+
+    /**
+     * 统一入口调用未实现加密货币能力的网关应抛「无此方法」
+     */
+    public function testCryptoMethodNotSupported(): void
+    {
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+
+        // fakechan 未实现加密货币能力接口，无加密货币专属方法 createCryptoOrder
+        Pay::cryptoCreateCryptoOrder('fakechan', ['out_trade_no' => 'C1']);
     }
 }

@@ -793,6 +793,98 @@ class Pay
     }
 
     /**
+     * 创建法币定价的加密货币订单（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param array<string, mixed> $params 订单参数（out_trade_no / total_amount / currency 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoCreateOrder(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createOrder', $params);
+    }
+
+    /**
+     * 创建指定加密货币定价的订单（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param array<string, mixed> $params 订单参数（out_trade_no / crypto_amount / crypto_currency 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoCreateCryptoOrder(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'createCryptoOrder', $params);
+    }
+
+    /**
+     * 查询加密货币订单（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param string $outTradeNo 商户订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoQueryOrder(string $gateway, string $outTradeNo): array
+    {
+        return self::call($gateway, 'queryOrder', $outTradeNo);
+    }
+
+    /**
+     * 发起加密货币退款（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param array<string, mixed> $params 退款参数（charge_id / refund_fee / currency 等）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoRefund(string $gateway, array $params): array
+    {
+        return self::call($gateway, 'refund', $params);
+    }
+
+    /**
+     * 获取加密货币支付地址（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param string $chargeId Charge ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoGetPaymentAddresses(string $gateway, string $chargeId): array
+    {
+        return self::call($gateway, 'getPaymentAddresses', $chargeId);
+    }
+
+    /**
+     * 查询链上确认状态（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param string $chargeId Charge ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoGetOnChainStatus(string $gateway, string $chargeId): array
+    {
+        return self::call($gateway, 'getConfirmations', $chargeId);
+    }
+
+    /**
+     * 查询加密货币实时汇率（统一入口）
+     *
+     * @param string $gateway 网关标识（如 coinbase）
+     * @param string $cryptoCurrency 加密货币代码
+     * @param string $fiatCurrency 法币代码
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function cryptoGetExchangeRate(string $gateway, string $cryptoCurrency, string $fiatCurrency = 'USD'): array
+    {
+        return self::call($gateway, 'getExchangeRate', $cryptoCurrency, $fiatCurrency);
+    }
+
+    /**
      * 一次登记新支付平台（统一扩展入口）
      *
      * 同时把平台元数据登记到 {@see GatewayManifest} 与 {@see GatewayFactory}，

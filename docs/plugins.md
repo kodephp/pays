@@ -14,7 +14,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
 | 个人收款插件 | `PersonalReceivePlugin` | 微信、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
 | 自动结算插件 | `AutoSettlementPlugin` | 微信、支付宝、Stripe、PayPal | 支付后自动提现到钱包 |
-| 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询 |
+| 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询（网关原生方法 + 插件校验转发） |
 
 ## 插件架构
 
@@ -725,6 +725,13 @@ $result = $plugin->query('SETTLE_20240425000001');
 ## 加密货币插件 (CryptoPlugin)
 
 支持 Coinbase Commerce 的加密货币订单管理与链上确认。
+
+> 架构说明：加密货币能力已下沉到各网关原生方法（网关声明 `CryptoCapableInterface`，
+> 含 `createOrder` / `createCryptoOrder` / `getPaymentAddresses` / `getConfirmations` /
+> `getExchangeRate` / `queryOrder` / `refund` / `verifyNotify`）。本插件仅做「能力断言 +
+> 类型安全转发」，不再承载任何平台内联分支（原先散落的 `match($gateway::getName())` 与
+> `instanceof CoinbaseGateway` 已消除）。未实现 `CryptoCapableInterface` 的网关调用加密货币
+> 方法会统一报「无此方法」。完整设计见 [Coinbase 接入文档](coinbase.md)。
 
 ### 配置
 
