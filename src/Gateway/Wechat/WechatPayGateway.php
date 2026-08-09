@@ -15,6 +15,7 @@ use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
+use Kode\Pays\Support\WechatBillParser;
 
 /**
  * 微信支付网关
@@ -528,9 +529,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
      */
     protected function extractBillRawText(array $response): string
     {
-        $raw = $response['data'] ?? $response;
-
-        return is_string($raw) ? $raw : '';
+        return WechatBillParser::extractRawText($response);
     }
 
     /**
@@ -541,61 +540,7 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
      */
     protected function parseWechatBill(string $rawData): array
     {
-        if ($rawData === '') {
-            return [];
-        }
-
-        $lines = explode("\n", $rawData);
-        $records = [];
-        $isHeader = true;
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '' || str_starts_with($line, '总交易单数')) {
-                break;
-            }
-
-            if ($isHeader) {
-                $isHeader = false;
-                continue;
-            }
-
-            $fields = str_getcsv($line, ',', '`');
-            if (count($fields) < 10) {
-                continue;
-            }
-
-            $records[] = [
-                'transaction_time' => $fields[0] ?? '',
-                'app_id' => $fields[1] ?? '',
-                'mch_id' => $fields[2] ?? '',
-                'sub_mch_id' => $fields[3] ?? '',
-                'device_info' => $fields[4] ?? '',
-                'transaction_id' => $fields[5] ?? '',
-                'out_trade_no' => $fields[6] ?? '',
-                'openid' => $fields[7] ?? '',
-                'trade_type' => $fields[8] ?? '',
-                'trade_state' => $fields[9] ?? '',
-                'bank_type' => $fields[10] ?? '',
-                'currency' => $fields[11] ?? '',
-                'total_fee' => $fields[12] ?? '0',
-                'red_packet_amount' => $fields[13] ?? '0',
-                'refund_id' => $fields[14] ?? '',
-                'out_refund_no' => $fields[15] ?? '',
-                'refund_fee' => $fields[16] ?? '0',
-                'refund_red_packet_amount' => $fields[17] ?? '0',
-                'refund_type' => $fields[18] ?? '',
-                'refund_status' => $fields[19] ?? '',
-                'goods_name' => $fields[20] ?? '',
-                'attach' => $fields[21] ?? '',
-                'service_charge' => $fields[22] ?? '0',
-                'rate' => $fields[23] ?? '',
-                'order_amount' => $fields[24] ?? '0',
-                'rate_amount' => $fields[25] ?? '0',
-            ];
-        }
-
-        return $records;
+        return WechatBillParser::parse($rawData);
     }
 
     /* ==================== 退款能力（RefundCapableInterface） ==================== */

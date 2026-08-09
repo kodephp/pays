@@ -57,12 +57,53 @@ GatewayManifest::supports('wechat', GatewayManifest::CAP_SUBSCRIPTION);   // fal
 | `CAP_RECONCILIATION` | 对账 |
 | `CAP_QR` | 二维码支付 |
 | `CAP_RED_PACKET` | 现金红包 |
+| `CAP_PERSONAL_RECEIVE` | 个人收款 |
+| `CAP_SETTLEMENT` | 自动结算 |
 | `CAP_WEBHOOK` | Webhook 事件订阅 |
 | `CAP_CRYPTO` | 加密货币（下单 / 链上确认 / 汇率） |
 
 > 说明：内置平台的域名优先由 `GatewayManifest::baseUrl()` 通过网关类声明的
 > `PROD_BASE_URL` / `SANDBOX_BASE_URL` 常量反射获取，使域名信息也收敛到统一清单查询；
 > 新建平台建议在清单里直接声明 `base_url` / `sandbox_url`（见下文 `extend`）。
+
+### 1.1 能力声明的契约保证
+
+能力开关是对外承诺——调用方常据此做功能门控。若「声明支持」与「网关实际实现」脱节，就会出现
+`supports()` 返回 `true` 但调用即抛「无此方法」的信任级缺陷。
+
+为杜绝此类漂移，扩展能力与能力接口建立了显式契约映射
+`GatewayManifest::CAPABILITY_CONTRACTS`，作为二者一致性的单一事实源：
+
+| 能力 | 契约接口 |
+|------|----------|
+| `CAP_TRANSFER` | `TransferCapableInterface` |
+| `CAP_PROFIT_SHARING` | `ProfitSharingCapableInterface` |
+| `CAP_SUBSCRIPTION` | `SubscriptionCapableInterface` |
+| `CAP_RECONCILIATION` | `ReconciliationCapableInterface` |
+| `CAP_RED_PACKET` | `RedPacketCapableInterface` |
+| `CAP_PERSONAL_RECEIVE` | `PersonalReceiveCapableInterface` |
+| `CAP_SETTLEMENT` | `SettlementCapableInterface` |
+| `CAP_CRYPTO` | `CryptoCapableInterface` |
+
+未列入此表的能力（`CAP_CREATE_ORDER` / `CAP_REFUND` / `CAP_VERIFY_NOTIFY` 等）由
+`GatewayInterface` 基础契约覆盖，所有网关天然具备，不参与核对。
+
+`CapabilityAuditor` 以该映射反射核对全部已注册平台，可用于自检与诊断：
+
+```php
+use Kode\Pays\Core\CapabilityAuditor;
+
+// 漂移报告：空数组表示声明与实现完全一致
+$drifts = CapabilityAuditor::audit();
+echo CapabilityAuditor::format($drifts);
+// [虚报] xxx 声明支持 transfer，但未实现 TransferCapableInterface
+// [漏报] yyy 已实现 ReconciliationCapableInterface，但清单未声明 reconciliation
+
+// 以实现为准的真实能力集（不依赖清单声明）
+CapabilityAuditor::actualCapabilities('wechat'); // ['transfer', 'profit_sharing', ...]
+```
+
+仓库以架构守护测试锁定「零漂移」这一不变量，新增网关或调整清单时若二者脱节，测试即刻失败。
 
 ## 2. 统一入口 Pay::call
 

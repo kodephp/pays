@@ -26,8 +26,9 @@
 | 微信支付 | ✅ `pay/downloadbill` | ✅ `pay/downloadfundflow` | ✅ CSV | 金额单位为分；当前沿用既有构造，投产前请接入 `Signer::md5` 与 `arrayToXml` |
 | 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；对账单下载接口返回账单下载地址 |
 | Stripe | ✅ `v1/balance_transactions` | ❌ 报「无此方法」 | ✅ JSON | Balance Transaction 列表（`created` 时间区间）；资金账单能力暂未提供 |
+| 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV；`tar_type=GZIP` 时不解析，交由调用方解压后调用 `parseBill` |
 
-> 能力开关：微信 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_RECONCILIATION => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_RECONCILIATION => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_RECONCILIATION)` 判断。
 
 ## 统一入口

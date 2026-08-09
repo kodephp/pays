@@ -5,7 +5,15 @@ declare(strict_types=1);
 namespace Kode\Pays\Core;
 
 use Kode\Pays\Contract\ConfigInterface;
+use Kode\Pays\Contract\CryptoCapableInterface;
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
+use Kode\Pays\Contract\TransferCapableInterface;
 
 /**
  * 支付平台统一清单（Manifest）注册中心
@@ -163,6 +171,26 @@ class GatewayManifest
      * 能力：加密货币支付（Coinbase 等）
      */
     public const CAP_CRYPTO = 'crypto';
+
+    /**
+     * 扩展能力与能力接口的契约映射
+     *
+     * 声明「某能力为 true」等价于「网关实现了对应的 CapableInterface」，是二者一致性的单一事实源。
+     * 未列入此表的能力（如 create_order / refund / verify_notify）由 {@see GatewayInterface}
+     * 基础契约覆盖，所有网关天然具备，不参与契约核对。
+     *
+     * @var array<string, class-string>
+     */
+    public const CAPABILITY_CONTRACTS = [
+        self::CAP_TRANSFER => TransferCapableInterface::class,
+        self::CAP_PROFIT_SHARING => ProfitSharingCapableInterface::class,
+        self::CAP_SUBSCRIPTION => SubscriptionCapableInterface::class,
+        self::CAP_RECONCILIATION => ReconciliationCapableInterface::class,
+        self::CAP_RED_PACKET => RedPacketCapableInterface::class,
+        self::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
+        self::CAP_SETTLEMENT => SettlementCapableInterface::class,
+        self::CAP_CRYPTO => CryptoCapableInterface::class,
+    ];
 
     /**
      * 平台清单
@@ -520,16 +548,14 @@ class GatewayManifest
                 'label' => '微信支付 V3',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_ECDSA,
-                // 微信 V3 网关暂未实现分账能力，能力清单不排除 CAP_PROFIT_SHARING
+                // 现金红包与个人收款为 V2 专有接口，APIv3 无对应能力；分账亦未实现
                 'capabilities' => [
                     self::CAP_CREATE_ORDER => true,
                     self::CAP_QUERY_ORDER => true,
                     self::CAP_CLOSE_ORDER => true,
                     self::CAP_VERIFY_NOTIFY => true,
                     self::CAP_TRANSFER => true,
-                    self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
-                    self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_WEBHOOK => true,
                 ],
             ],
@@ -585,6 +611,7 @@ class GatewayManifest
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_PROFIT_SHARING => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_RECONCILIATION => true,
                 ],
             ],
             'square' => [
@@ -597,7 +624,7 @@ class GatewayManifest
                 'label' => 'Adyen',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true, self::CAP_RECONCILIATION => true],
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'amazon' => [
                 'label' => 'Amazon Pay',
@@ -630,7 +657,6 @@ class GatewayManifest
                 'label' => 'Revolut',
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_TRANSFER => true],
             ],
             'payoneer' => [
                 'label' => 'Payoneer',

@@ -24,9 +24,14 @@
 | 微信支付 | ✅ 企业付款到零钱 | ✅ 批量转账到零钱 | ✅ | ✅ | 金额单位为分 |
 | 支付宝 | ✅ 单笔转账 | ✅ 批量转账 | ✅ | ✅ | 金额单位为分；复用 `buildRequestParams` 标准签名 |
 | Stripe | ✅ Payout | ✅（逐笔 Payout 聚合） | ✅ | ❌ 抛「无此方法」 | 金额单位为最小货币单位 |
+| 微信支付 V3 | ✅ 商家转账（单条明细批次） | ✅ `transfer/batches` | ✅ | ✅ `transfer/bill-receipt` | 金额单位为分；收款人姓名以平台证书 RSA-OAEP 加密 |
 
-> 能力开关：微信 / 支付宝 / Stripe / Revolut 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_TRANSFER)` 判断。
+>
+> 微信 V3 的商家转账统一以「批次」表达，`singleTransfer` 即仅含一条明细的批次；
+> 传入 `recipient.name` 时需配置 `platform_certificate` 与 `platform_serial_no`，
+> 否则抛配置错误（微信要求敏感字段加密传输）。
 
 ## 统一入口
 

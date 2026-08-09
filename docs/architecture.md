@@ -112,6 +112,15 @@ interface GatewayInterface
 }
 ```
 
+除基础契约外，各扩展能力由独立的 `XxxCapableInterface` 声明（转账 / 分账 / 订阅 / 对账 /
+红包 / 个人收款 / 结算 / 加密货币）。网关按实际支持情况选择实现，插件通过类型安全转发调用，
+未实现的方法在 `Pay::call()` 派发时抛「无此方法」。
+
+**能力声明的契约保证**：`GatewayManifest` 的能力开关是对外承诺，调用方常据此做功能门控。
+为防止「声明支持但未实现」的漂移，`GatewayManifest::CAPABILITY_CONTRACTS` 建立了
+「扩展能力 → 能力接口」的显式映射，作为二者一致性的单一事实源；`CapabilityAuditor`
+据此反射核对全部已注册平台并输出漂移报告，架构守护测试将「零漂移」锁定为不变量。
+
 ### 2.5 抽象层
 
 `Kode\Pays\Core\AbstractGateway` 提供通用实现：
@@ -380,10 +389,13 @@ $result = (new Pipeline())
 1. 创建 `src/Gateway/Example/` 目录
 2. 实现 `ExampleConfig.php`（readonly DTO，实现 `ConfigInterface`）
 3. 实现 `ExampleGateway.php`（继承 `AbstractGateway`，实现 7 个核心方法）
-4. 注册到 `GatewayFactory::$gateways` 与 `$configs`
-5. 注册沙箱 URL 到 `SandboxManager`
-6. 创建 `docs/example.md` 文档
-7. 编写 `tests/Gateway/Example/ExampleGatewayTest.php`
+4. 按实际支持情况实现扩展能力接口（`TransferCapableInterface` 等）
+5. 注册到 `GatewayFactory::$gateways` 与 `$configs`
+6. 在 `GatewayManifest` 声明能力开关——**必须与第 4 步实现的接口严格一致**，
+   否则能力守护测试会以「虚报 / 漏报」失败
+7. 注册沙箱 URL 到 `SandboxManager`
+8. 创建 `docs/example.md` 文档
+9. 编写 `tests/Gateway/Example/ExampleGatewayTest.php`
 
 详细步骤见 [开发指南](development.md)。
 

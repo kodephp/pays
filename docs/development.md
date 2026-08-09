@@ -335,13 +335,16 @@ declare(strict_types=1);
 namespace Kode\Pays\Plugin;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\FundConstraintValidator;
 use Kode\Pays\Core\PayException;
 
 /**
  * Example 插件
  *
- * 通过组合 GatewayInterface 扩展网关能力，使用 match 表达式按网关名称分发。
+ * 通过组合 GatewayInterface 扩展网关能力，采用「能力下沉 + 类型安全转发」模式：
+ * 平台组装逻辑下沉到网关原生方法（网关声明对应 XxxCapableInterface），
+ * 插件只做「参数校验 + 类型安全转发」，不依赖 match 按网关名称分发。
  */
 class ExamplePlugin
 {
@@ -360,42 +363,72 @@ class ExamplePlugin
      */
     public function doSomething(array $params): array
     {
+        // 必填校验：网关不支持字段时尽早暴露
+        $this->validateRequired($params, ['out_biz_no', 'amount']);
+
         // 可选：调用约束验证器做风控
-        $this->validator?->validate($params);
+        $this->validator?->validateTransfer([
+            'amount' => (int) $params['amount'],
+            'recipient_account' => $params['recipient']['account'] ?? '',
+        ]);
 
-        return match ($this->gateway::getName()) {
-            'wechat' => $this->doWechatSomething($params),
-            'alipay' => $this->doAlipaySomething($params),
-            default  => throw PayException::invalidArgument('当前网关不支持此功能'),
-        };
+        // 类型安全转发到网关原生方法，未实现则抛「无此方法」
+        return $this->forwardToCapableGateway('doSomething', $params);
     }
 
     /**
-     * 微信实现
+     * 类型安全转发到支持该能力的网关原生方法
+     *
+     * @param string $method 网关原生方法名
+     * @param mixed ...$args 透传参数
+     * @return array<string, mixed>
+     * @throws PayException 当网关未实现能力接口或不支持该方法时
+     *
+     * @phpstan-assert TransferCapableInterface $this->gateway
      */
-    protected function doWechatSomething(array $params): array
+    protected function forwardToCapableGateway(string $method, mixed ...$args): array
     {
-        // 调用 $this->gateway->post() 等方法发起微信 API 请求
-        return $this->gateway->post('secapi/example/do', $params);
+        if (!$this->gateway instanceof TransferCapableInterface) {
+            throw PayException::invalidArgument(
+                sprintf('网关 %s 未实现对应能力接口', $this->gateway::getName()),
+            );
+        }
+
+        if (!method_exists($this->gateway, $method)) {
+            throw PayException::methodNotSupported($this->gateway::getName(), $method);
+        }
+
+        /** @var TransferCapableInterface $gateway */
+        $gateway = $this->gateway;
+
+        return $gateway->$method(...$args);
     }
 
     /**
-     * 支付宝实现
+     * 验证必填参数
+     *
+     * @param array<string, mixed> $params
+     * @param string[] $required
+     * @throws PayException
      */
-    protected function doAlipaySomething(array $params): array
+    protected function validateRequired(array $params, array $required): void
     {
-        return $this->gateway->post('alipay.example.do', $params);
+        foreach ($required as $field) {
+            if (!isset($params[$field]) || $params[$field] === '') {
+                throw PayException::paramError("缺少必填参数：{$field}");
+            }
+        }
     }
 }
 ```
 
 ### 2. 编写插件测试
 
-参考 `tests/Plugin/RefundPluginTest.php`：
+参考 `tests/Plugin/RefundPluginTest.php` / `tests/Plugin/TransferPluginTest.php`：
 
-- Mock `GatewayInterface` 与 HTTP 响应
-- 覆盖每个网关分支（wechat/alipay/stripe/paypal）
-- 测试不支持网关抛出异常的场景
+- Mock 实现了 `XxxCapableInterface` 的网关与 HTTP 响应，验证转发到正确原生方法
+- 构造一个未实现能力接口的 `GatewayInterface` 桩，验证抛 `PayException::invalidArgument()`
+- 测试 `method_exists` 校验：网关声明能力接口但缺某方法时抛 `methodNotSupported()`
 - 测试约束验证器触发限制的场景
 
 ### 3. 更新文档
@@ -407,7 +440,8 @@ class ExamplePlugin
 ### 4. 插件设计要点
 
 - **单一职责**：一个插件只做一件事
-- **多网关支持**：通过 `match` 分发，default 抛 `PayException::invalidArgument()`
+- **能力下沉**：平台组装逻辑下沉到网关原生方法，网关声明对应 `XxxCapableInterface`
+- **类型安全转发**：插件统一经 `forwardToCapableGateway()` 断言能力接口后转发，不再依赖 `match` 按网关名称分发；网关未实现能力接口或不支持某方法时抛 `PayException`
 - **构造注入**：`GatewayInterface` 必须注入，`FundConstraintValidator` 等可选
 - **统一参数**：对外暴露的参数命名尽量与微信/支付宝主流约定一致
 - **完整注释**：所有 public 方法必须有中文注释和 `@throws` 标注
