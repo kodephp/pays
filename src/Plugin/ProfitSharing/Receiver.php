@@ -187,4 +187,34 @@ final class Receiver
             'amount' => $this->amount->getMinorAmount(),
         ];
     }
+
+    /**
+     * 转为美团分账接收方参数
+     *
+     * 美团分账域仅使用 account（分账方商户号 / 用户标识）+ amount（分）。
+     *
+     * @return array<string, mixed>
+     */
+    public function toMeituanArray(): array
+    {
+        return [
+            'account' => $this->account,
+            'amount' => $this->amount->getMinorAmount(),
+        ];
+    }
+
+    /**
+     * 转为京东分账接收方参数
+     *
+     * 京东分账域仅使用 account（分账方商户号 / 用户标识）+ amount（分）。
+     *
+     * @return array<string, mixed>
+     */
+    public function toJdArray(): array
+    {
+        return [
+            'account' => $this->account,
+            'amount' => $this->amount->getMinorAmount(),
+        ];
+    }
 }

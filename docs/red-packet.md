@@ -22,8 +22,10 @@
 |------|-----------------|------------------|------------------|------|
 | 微信支付 | ✅ 现金红包 | ✅ 裂变红包（`total_num >= 3`） | ✅ | 金额单位为分；投产前请接入 `Signer::md5` 与 `arrayToXml` |
 | 支付宝 | ✅ 现金红包（单笔） | ✅ 群红包（`GROUP_RED_PACKET`） | ✅ | 金额单位为分；复用 `buildRequestParams` 标准 RSA2 签名 |
+| 美团支付 | ✅ `api/redpacket/send` | ✅ `api/redpacket/group`（`total_num >= 3`） | ✅ `api/redpacket/query` | 金额单位为分；MD5(`app_secret`) 签名 |
+| 京东支付 | ✅ `api/redpacket/send` | ✅ `api/redpacket/group`（`total_num >= 3`） | ✅ `api/redpacket/query` | 金额单位为分；MD5(`md5_key`) 签名 |
 
-> 能力开关：微信 / 支付宝在 `GatewayManifest` 中声明 `CAP_RED_PACKET => true`。
+> 能力开关：微信 / 支付宝 / 美团 / 京东在 `GatewayManifest` 中声明 `CAP_RED_PACKET => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_RED_PACKET)` 判断。
 
 ## 统一入口

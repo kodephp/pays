@@ -25,8 +25,10 @@
 | 支付宝 | ✅ 单笔转账 | ✅ 批量转账 | ✅ | ✅ | 金额单位为分；复用 `buildRequestParams` 标准签名 |
 | Stripe | ✅ Payout | ✅（逐笔 Payout 聚合） | ✅ | ❌ 抛「无此方法」 | 金额单位为最小货币单位 |
 | 微信支付 V3 | ✅ 商家转账（单条明细批次） | ✅ `transfer/batches` | ✅ | ✅ `transfer/bill-receipt` | 金额单位为分；收款人姓名以平台证书 RSA-OAEP 加密 |
+| 美团支付 | ✅ `api/transfer/single` | ✅ `api/transfer/batch` | ✅ `api/transfer/query` | ✅ `api/transfer/receipt` | 金额单位为分；MD5(`app_secret`) 签名 |
+| 京东支付 | ✅ `api/transfer/single` | ✅ `api/transfer/batch` | ✅ `api/transfer/query` | ✅ `api/transfer/receipt` | 金额单位为分；MD5(`md5_key`) 签名 |
 
-> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东 在 `GatewayManifest` 中声明 `CAP_TRANSFER => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_TRANSFER)` 判断。
 >
 > 微信 V3 的商家转账统一以「批次」表达，`singleTransfer` 即仅含一条明细的批次；

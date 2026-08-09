@@ -575,12 +575,26 @@ class GatewayManifest
                 'label' => '美团支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
+                'capabilities' => [
+                    self::CAP_TRANSFER => true,
+                    self::CAP_PROFIT_SHARING => true,
+                    self::CAP_RED_PACKET => true,
+                    self::CAP_RECONCILIATION => true,
+                    self::CAP_SETTLEMENT => true,
+                ],
             ],
             'jd' => [
                 'label' => '京东支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true],
+                'capabilities' => [
+                    self::CAP_QR => true,
+                    self::CAP_TRANSFER => true,
+                    self::CAP_PROFIT_SHARING => true,
+                    self::CAP_RED_PACKET => true,
+                    self::CAP_RECONCILIATION => true,
+                    self::CAP_SETTLEMENT => true,
+                ],
             ],
             'kuaishou' => [
                 'label' => '快手支付',

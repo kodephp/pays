@@ -11,9 +11,11 @@
 | Stripe | ✅ 完整 | Connect 平台分账（Transfer / Reversal） |
 | 抖音支付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 解冻），作为网关「特色方法」实现于网关内部 |
 | 云闪付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 解冻），作为网关「特色方法」实现于网关内部 |
+| 美团支付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 查询回退 / 解冻），作为网关「特色方法」实现于网关内部（`api/profitsharing/*`，MD5(`app_secret`) 签名） |
+| 京东支付 | ✅ 分账 | 分账（发起 / 查询 / 回退 / 查询回退 / 解冻），作为网关「特色方法」实现于网关内部（`api/profitsharing/*`，MD5(`md5_key`) 签名） |
 
 > 说明：分账并非所有支付平台都提供标准能力。微信、支付宝、Stripe 具备成熟的分账/转账体系；
-> 抖音、云闪付将分账实现为各自网关类的「特色方法」（声明 `ProfitSharingCapableInterface`），
+> 抖音、云闪付、美团、京东将分账实现为各自网关类的「特色方法」（声明 `ProfitSharingCapableInterface`），
 > 复用基类配置、签名与 HTTP 通道，并能被统一入口 `Pay::call()` 直接调用。
 >
 > **架构要点**：抖音 / 云闪付的分账逻辑在各自网关内完成（组装 + 签名 + 发请求），`ProfitSharingPlugin`
@@ -78,11 +80,11 @@ $result = $plugin->create([
 |------|------|----------|
 | `addReceiver(array)` | 添加分账接收方 | 微信、支付宝 |
 | `removeReceiver(array)` | 删除分账接收方 | 微信、支付宝 |
-| `create(array)` | 发起分账 | 微信、支付宝、Stripe、抖音、云闪付 |
-| `query(string $outOrderNo)` | 查询分账结果 | 微信、支付宝、Stripe、抖音、云闪付 |
-| `return(array)` | 分账回退 | 微信、支付宝、Stripe、抖音、云闪付 |
-| `queryReturn(string $outReturnNo)` | 查询分账回退 | 微信、支付宝、Stripe、抖音、云闪付 |
-| `unfreeze(string $transactionId, ?string $outOrderNo = null)` | 解冻剩余资金 / 完结分账 | 微信、抖音、云闪付（支付宝、Stripe 自动完成） |
+| `create(array)` | 发起分账 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
+| `query(string $outOrderNo)` | 查询分账结果 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
+| `return(array)` | 分账回退 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
+| `queryReturn(string $outReturnNo)` | 查询分账回退 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
+| `unfreeze(string $transactionId, ?string $outOrderNo = null)` | 解冻剩余资金 / 完结分账 | 微信、抖音、云闪付、美团、京东（支付宝、Stripe 自动完成） |
 | `queryConfig(string $outOrderNo, ?string $transactionId = null)` | 查询分账配置（最大比例与关系） | 微信 |
 
 ## Receiver 接收方值对象
