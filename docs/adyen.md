@@ -192,6 +192,36 @@ $gateway->downloadFundFlow(['bill_date' => '20260809']);
 $gateway->parseBill($rawCsv);
 ```
 
+### 自动结算能力（SettlementCapableInterface）
+
+> Adyen 出款对齐 Transfers API（`POST /pal/servlet/Transfer/v68/transfer` → 实际出款用 `category` 区分）：
+> 从平台余额账户（`balance_account_id` 配置，作为出款来源 `balanceAccount`）出款到收款人。
+
+```php
+// 结算到外部银行（category=bank）：需先配置 balance_account_id
+$gateway->settleToPayout([
+    'out_biz_no' => 'SETTLE_' . date('YmdHis'),
+    'amount'     => 10000,                              // 分
+    'account'    => 'GB29NWBK60161331926819',          // 收款人 IBAN
+    'real_name'  => '张三',
+    'currency'   => 'EUR',
+]);
+
+// 结算到银行卡（category=card）
+$gateway->settleToBankCard([
+    'out_biz_no'   => 'SETTLE_C',
+    'amount'       => 5000,
+    'bank_card_no' => '4111111111111111',
+    'real_name'    => '李四',
+]);
+
+// 查询结算结果（按 reference）
+$gateway->querySettlement('SETTLE_20260809000001');
+
+// 结算到平台内钱包：Adyen 无此语义，调用抛 PayException（无此方法）
+$gateway->settleToWallet('SETTLE_20260809000001');
+```
+
 ## 异步通知处理
 
 ```php

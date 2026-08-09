@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Adyen;
 
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -15,7 +16,7 @@ use Kode\Pays\Core\PayException;
  * 支持 Adyen Payments API，覆盖全球 200+ 个国家/地区，支持 250+ 种支付方式。
  * 提供统一的全球支付、本地支付、订阅支付能力。
  */
-class AdyenGateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface
+class AdyenGateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface, SettlementCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -472,6 +473,104 @@ class AdyenGateway extends AbstractGateway implements TransferCapableInterface, 
         }
 
         return $records;
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * 结算到外部银行账户（Adyen 出款 / Payout）
+     *
+     * 对齐 Adyen Transfers API（`POST /pal/servlet/Transfer/v68/transfer`，`category: 'bank'`）：
+     * 从平台余额账户（`balance_account_id`）出款到收款人银行账户。金额单位与 Adyen 规范一致（分）。
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / account / real_name 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        $balanceAccountId = $this->getConfig('balance_account_id', '');
+        if ($balanceAccountId === '') {
+            throw PayException::configError('Adyen 结算出款需配置 balance_account_id（出款来源余额账户）');
+        }
+
+        // 复用单笔转账逻辑：recipient 标记为 bank，由 singleTransfer 组装 counterparty.bankAccount
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? 'EUR',
+            'recipient' => [
+                'type' => 'bank',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? 'Auto settlement',
+            'balance_account_id' => $balanceAccountId,
+        ]);
+    }
+
+    /**
+     * 结算到银行卡（Adyen 卡出款 / Card Payout）
+     *
+     * 对齐 Adyen Transfers API（`category: 'card'`）：从平台余额账户出款到收款人银行卡。
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / bank_card_no / real_name 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'bank_card_no']);
+
+        $balanceAccountId = $this->getConfig('balance_account_id', '');
+        if ($balanceAccountId === '') {
+            throw PayException::configError('Adyen 结算出款需配置 balance_account_id（出款来源余额账户）');
+        }
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? 'EUR',
+            'recipient' => [
+                'type' => 'card',
+                'account' => $params['bank_card_no'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? 'Auto settlement',
+            'balance_account_id' => $balanceAccountId,
+        ]);
+    }
+
+    /**
+     * 结算到平台内钱包余额
+     *
+     * Adyen 为收单/出款机构，无面向终端用户的「平台内钱包」语义，调用即报「无此方法」（与 Stripe 一致）。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        throw PayException::methodNotSupported('adyen', 'settleToWallet');
+    }
+
+    /**
+     * 查询结算结果（按商户单号 reference 过滤）
+     *
+     * @param string $outBizNo 商户结算单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
     }
 
     /**

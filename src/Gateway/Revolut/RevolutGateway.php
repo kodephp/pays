@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Revolut;
 
 use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -16,7 +17,10 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Revolut 商户支付、卡支付、Apple Pay、Google Pay 等。
  * 覆盖欧洲、英国、美国、澳大利亚等市场。
  */
-class RevolutGateway extends AbstractGateway implements TransferCapableInterface, ReconciliationCapableInterface
+class RevolutGateway extends AbstractGateway implements
+    TransferCapableInterface,
+    ReconciliationCapableInterface,
+    SettlementCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -409,6 +413,104 @@ class RevolutGateway extends AbstractGateway implements TransferCapableInterface
     {
         $dt = \DateTimeImmutable::createFromFormat('Ymd', $billDate);
         return $dt !== false ? $dt->format('Y-m-d') : $billDate;
+    }
+
+    /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */
+
+    /**
+     * 结算到外部账户（Revolut 出款 / Payout）
+     *
+     * 对齐 Revolut `/api/1.0/pay`：从平台账户（`account_id`/`merchant_id`）出款到收款人银行账户（iban）。
+     * 金额单位为分，网关内部 `÷100` 转为主单位小数（与 `createOrder` 的 `×100` 方向相反）。
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / account / real_name 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToPayout(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        // 复用单笔转账逻辑：type=bank（外部银行出款 → receiver{counterparty_id}）
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? 'EUR',
+            'recipient' => [
+                'type' => 'bank',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? 'Auto settlement',
+        ]);
+    }
+
+    /**
+     * 结算到银行卡（Revolut 卡出款）
+     *
+     * 对齐 Revolut `/api/1.0/pay`：出款到收款人卡（`receiver.card_id`）。金额单位同出款（分 → ÷100）。
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / bank_card_no / real_name 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToBankCard(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'bank_card_no']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? 'EUR',
+            'recipient' => [
+                'type' => 'card',
+                'account' => $params['bank_card_no'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? 'Auto settlement',
+        ]);
+    }
+
+    /**
+     * 结算到平台内钱包余额（Revolut 内部账户出款）
+     *
+     * 对齐 Revolut `/api/1.0/pay`：出款到收款人 Revolut 内部账户（`receiver.account_id`）。
+     *
+     * @param array<string, mixed> $params 结算参数（out_biz_no / amount / account 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function settleToWallet(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? 'EUR',
+            'recipient' => [
+                'type' => 'revolut',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+            ],
+            'description' => $params['description'] ?? 'Auto settlement',
+        ]);
+    }
+
+    /**
+     * 查询结算结果（按 request_id 过滤交易列表）
+     *
+     * @param string $outBizNo 商户结算单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
     }
 
     /**

@@ -642,6 +642,7 @@ class GatewayManifest
                     self::CAP_WEBHOOK => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_SETTLEMENT => true,
                 ],
             ],
             'amazon' => [
@@ -678,6 +679,7 @@ class GatewayManifest
                 'capabilities' => [
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_SETTLEMENT => true,
                 ],
             ],
             'payoneer' => [

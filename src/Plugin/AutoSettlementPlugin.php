@@ -69,6 +69,11 @@ class AutoSettlementPlugin
         'bank_card' => 'settleToBankCard',
         'stripe_connect' => 'settleToPayout',
         'paypal_wallet' => 'settleToPayout',
+        'adyen_payout' => 'settleToPayout',
+        'adyen_card' => 'settleToBankCard',
+        'revolut_account' => 'settleToWallet',
+        'revolut_bank' => 'settleToPayout',
+        'revolut_card' => 'settleToBankCard',
     ];
 
     /**

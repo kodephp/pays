@@ -157,6 +157,40 @@ $gateway->downloadFundFlow(['bill_date' => '20260809']);
 $gateway->parseBill($rawJson);
 ```
 
+### 自动结算能力（SettlementCapableInterface）
+
+> Revolut 出款对齐 `/api/1.0/pay`（金额单位为分，SDK 内部 `÷100` 转主单位小数，与 `createOrder` 的 `×100` 方向相反）。
+> 结算复用单笔转账逻辑，`type` 决定收款方形态。
+
+```php
+// 结算到外部银行（type=bank → receiver.counterparty_id）
+$gateway->settleToPayout([
+    'out_biz_no' => 'SETTLE_' . date('YmdHis'),
+    'amount'     => 10000,                  // 分
+    'account'    => 'GB29NWBK60161331926819',
+    'real_name'  => '张三',
+    'currency'   => 'EUR',
+]);
+
+// 结算到银行卡（type=card → receiver.card_id）
+$gateway->settleToBankCard([
+    'out_biz_no'   => 'SETTLE_C',
+    'amount'       => 5000,
+    'bank_card_no' => '4111111111111111',
+    'real_name'    => '李四',
+]);
+
+// 结算到平台内钱包（Revolut 内部账户，type=revolut → receiver.account_id）
+$gateway->settleToWallet([
+    'out_biz_no' => 'SETTLE_W',
+    'amount'     => 3000,
+    'account'    => 'internal_acc_001',
+]);
+
+// 查询结算结果（按 request_id）
+$gateway->querySettlement('SETTLE_20260809000001');
+```
+
 ## 常见问题
 
 ### 1. 沙箱环境

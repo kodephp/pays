@@ -69,6 +69,11 @@ class WalletManager
         'unionpay_card',
         'stripe_connect',
         'paypal_wallet',
+        'adyen_payout',
+        'adyen_card',
+        'revolut_account',
+        'revolut_bank',
+        'revolut_card',
         'aggregate_wallet',
         'fourth_party_wallet',
     ];
@@ -244,6 +249,8 @@ class WalletManager
             'alipay' => 'alipay_balance',
             'stripe' => 'stripe_connect',
             'paypal' => 'paypal_wallet',
+            'adyen' => 'adyen_payout',
+            'revolut' => 'revolut_account',
             'aggregate' => 'aggregate_wallet',
         ];
 
