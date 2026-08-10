@@ -225,7 +225,7 @@ class HitPayGateway extends AbstractGateway
      */
     protected function parseResponse(string $response): array
     {
-        $data = json_decode($response, true);
+        $data = $this->decodeJson($response);
 
         if (!is_array($data)) {
             throw new GatewayException('HitPay 响应格式异常');

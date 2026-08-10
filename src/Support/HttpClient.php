@@ -23,6 +23,13 @@ class HttpClient implements HttpClientInterface
     protected Client $client;
 
     /**
+     * 合并后的 Guzzle 基础配置（setter 修改后用于重建客户端）
+     *
+     * @var array<string, mixed>
+     */
+    protected array $options = [];
+
+    /**
      * 默认请求超时时间（秒）
      */
     protected int $timeout = 30;
@@ -54,14 +61,17 @@ class HttpClient implements HttpClientInterface
      */
     public function __construct(array $options = [])
     {
-        $defaults = [
+        $this->options = array_merge([
             'timeout' => $this->timeout,
             'connect_timeout' => $this->connectTimeout,
             'http_errors' => false,
             'verify' => true,
-        ];
+        ], $options);
 
-        $this->client = new Client(array_merge($defaults, $options));
+        $this->timeout = (int) $this->options['timeout'];
+        $this->connectTimeout = (int) $this->options['connect_timeout'];
+
+        $this->client = new Client($this->options);
     }
 
     /**
@@ -266,6 +276,8 @@ class HttpClient implements HttpClientInterface
     public function setTimeout(int $seconds): self
     {
         $this->timeout = $seconds;
+        $this->options['timeout'] = $seconds;
+        $this->client = new Client($this->options);
 
         return $this;
     }
@@ -279,6 +291,8 @@ class HttpClient implements HttpClientInterface
     public function setConnectTimeout(int $seconds): self
     {
         $this->connectTimeout = $seconds;
+        $this->options['connect_timeout'] = $seconds;
+        $this->client = new Client($this->options);
 
         return $this;
     }

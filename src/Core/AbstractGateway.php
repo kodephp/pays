@@ -313,6 +313,39 @@ abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
     abstract protected function parseResponse(string $response): array;
 
     /**
+     * 安全解析 JSON 响应
+     *
+     * 统一网关 HTTP 响应（HttpClient 已关闭 http_errors，4xx/5xx 仍会返回原始 body）。
+     * 若响应非合法 JSON（如网关返回 5xx HTML 错误页、空 body、截断报文），
+     * 直接抛出 {@see PayException::gatewayError}，避免 `null` 透传后在下游触发
+     * TypeError 或静默被当作「成功」处理。
+     *
+     * 注意：需容忍空响应（如账单下载为空）的调用方，请勿使用本方法，
+     * 自行 `json_decode` 并显式处理空串即可。
+     *
+     * @param string $response 原始响应字符串
+     * @return array<string, mixed> 解析后的关联数组
+     * @throws PayException 响应非合法 JSON 时
+     */
+    protected function decodeJson(string $response): array
+    {
+        $data = json_decode($response, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
+            $snippet = trim((string) preg_replace('/\s+/', ' ', substr($response, 0, 200)));
+            $snippet = $snippet === '' ? '(空响应)' : $snippet;
+
+            throw PayException::gatewayError(
+                '网关响应非合法 JSON：' . $snippet,
+                'JSON_DECODE_ERROR',
+                json_last_error_msg(),
+            );
+        }
+
+        return $data;
+    }
+
+    /**
      * 验证必填参数
      *
      * @param array<string, mixed> $params 待校验参数

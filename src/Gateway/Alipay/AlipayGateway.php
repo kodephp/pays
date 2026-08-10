@@ -680,7 +680,7 @@ class AlipayGateway extends AbstractGateway implements
      */
     protected function parseResponse(string $response): array
     {
-        $data = json_decode($response, true);
+        $data = $this->decodeJson($response);
 
         if (!is_array($data)) {
             throw PayException::gatewayError('支付宝响应格式异常');

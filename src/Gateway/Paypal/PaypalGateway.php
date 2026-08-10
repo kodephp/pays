@@ -375,7 +375,7 @@ class PaypalGateway extends AbstractGateway implements
      */
     protected function parseResponse(string $response): array
     {
-        $data = json_decode($response, true);
+        $data = $this->decodeJson($response);
 
         if (!is_array($data)) {
             throw PayException::gatewayError('PayPal 响应格式异常');
@@ -430,7 +430,7 @@ class PaypalGateway extends AbstractGateway implements
             throw PayException::networkError('获取 PayPal 访问令牌失败：' . $e->getMessage(), $e);
         }
 
-        $data = json_decode($response, true);
+        $data = $this->decodeJson($response);
 
         if (!is_array($data) || !isset($data['access_token'])) {
             throw PayException::gatewayError('获取 PayPal 访问令牌响应异常');

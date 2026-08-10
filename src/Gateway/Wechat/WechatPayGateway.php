@@ -780,7 +780,7 @@ class WechatPayGateway extends AbstractGateway implements
             return [];
         }
 
-        $decoded = json_decode($json, true);
+        $decoded = $this->decodeJson($json);
 
         return is_array($decoded) ? $decoded : [];
     }

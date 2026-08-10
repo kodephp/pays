@@ -202,7 +202,7 @@ class QQGateway extends AbstractGateway
 
     protected function parseResponse(string $response): array
     {
-        $data = json_decode($response, true);
+        $data = $this->decodeJson($response);
 
         if (!is_array($data)) {
             throw new GatewayException('响应格式异常');
