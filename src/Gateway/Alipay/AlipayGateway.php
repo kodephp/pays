@@ -769,7 +769,7 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
      * @return array<string, mixed>
      */
     #[\Override]
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestParams = $this->buildRequestParams('alipay.trade.order.settle.query', [
             'out_request_no' => $outOrderNo,

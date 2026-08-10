@@ -44,9 +44,9 @@ class ProfitSharingCapableFakeGateway extends FakeGateway implements ProfitShari
         return ['ok' => true];
     }
 
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
-        $this->psCalls[] = ['query', $outOrderNo];
+        $this->psCalls[] = ['query', $outOrderNo, $transactionId];
 
         return ['ok' => true];
     }

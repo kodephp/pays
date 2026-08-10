@@ -753,7 +753,7 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
      * @return array<string, mixed>
      */
     #[\Override]
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         return $this->get('v1/transfers', [
             'metadata[out_order_no]' => $outOrderNo,

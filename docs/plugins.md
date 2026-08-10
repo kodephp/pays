@@ -108,6 +108,9 @@ $result = $plugin->create([
 // 查询分账结果
 $result = $plugin->query('SHARE_20240425000001');
 
+// 微信查询分账结果（transaction_id 为微信必填项，其余平台忽略该参数）
+$result = $plugin->query('SHARE_20240425000001', '4200000000000000');
+
 // 分账回退
 $result = $plugin->return([
     'out_order_no'  => 'SHARE_20240425000001',
@@ -443,6 +446,8 @@ Pay::subscriptionGet('paypal', 'sub_xxx');
 ### 配置
 
 无需额外配置。微信对账单可下载交易账单和资金账单两种。
+
+> 微信 V2 对账单接口（`pay/downloadbill`、`pay/downloadfundflow`）以 MD5 签名 + XML 报文调用，返回 CSV 原始文本，由 `WechatBillParser` 统一解析；V3 对账单则走 APIv3 签名并返回下载链接。
 
 ### 使用示例
 

@@ -82,7 +82,7 @@ $result = $plugin->create([
 | `addReceiver(array)` | 添加分账接收方 | 微信、支付宝 |
 | `removeReceiver(array)` | 删除分账接收方 | 微信、支付宝 |
 | `create(array)` | 发起分账 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
-| `query(string $outOrderNo)` | 查询分账结果 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
+| `query(string $outOrderNo, ?string $transactionId = null)` | 查询分账结果（微信必传 `transaction_id`，其余平台忽略） | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
 | `return(array)` | 分账回退 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
 | `queryReturn(string $outReturnNo)` | 查询分账回退 | 微信、支付宝、Stripe、抖音、云闪付、美团、京东 |
 | `unfreeze(string $transactionId, ?string $outOrderNo = null)` | 解冻剩余资金 / 完结分账 | 微信、抖音、云闪付、美团、京东（支付宝、Stripe 自动完成） |

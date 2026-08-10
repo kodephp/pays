@@ -472,8 +472,8 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'tar_type' => $params['tar_type'] ?? '',
         ];
 
-        $response = $this->post('pay/downloadbill', $requestData);
-        $rawText = $this->extractBillRawText($response);
+        $response = $this->signedV2Raw('pay/downloadbill', $requestData);
+        $rawText = $this->extractBillRawText(['data' => $response]);
 
         return [
             'bill_date' => $params['bill_date'],
@@ -503,8 +503,8 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
             'tar_type' => $params['tar_type'] ?? '',
         ];
 
-        $response = $this->post('pay/downloadfundflow', $requestData);
-        $rawText = $this->extractBillRawText($response);
+        $response = $this->signedV2Raw('pay/downloadfundflow', $requestData);
+        $rawText = $this->extractBillRawText(['data' => $response]);
 
         return [
             'bill_date' => $params['bill_date'],

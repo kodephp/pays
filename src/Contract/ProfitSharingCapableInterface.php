@@ -36,10 +36,11 @@ interface ProfitSharingCapableInterface
      * 查询分账结果
      *
      * @param string $outOrderNo 商户分账订单号
+     * @param string|null $transactionId 原支付订单号（微信必填，其余平台忽略此参数）
      * @return array<string, mixed>
      * @throws PayException
      */
-    public function queryProfitSharing(string $outOrderNo): array;
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array;
 
     /**
      * 分账回退

@@ -243,7 +243,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
      * @return array<string, mixed>
      * @throws PayException
      */
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestData = [
             'version' => '5.1.0',

@@ -255,7 +255,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestData = [
             'app_id' => $this->getConfig('app_id'),

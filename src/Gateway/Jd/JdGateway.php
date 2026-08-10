@@ -420,7 +420,7 @@ class JdGateway extends AbstractGateway implements
      * @throws PayException
      */
     #[\Override]
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestData = [
             'merchantNo' => $this->getConfig('merchant_no'),

@@ -88,9 +88,12 @@ class WechatFakeGateway extends FakeGateway implements ProfitSharingCapableInter
         return ['status' => 'SUCCESS'];
     }
 
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
-        $this->calls[] = ['method' => 'queryProfitSharing', 'data' => ['out_order_no' => $outOrderNo]];
+        $this->calls[] = [
+            'method' => 'queryProfitSharing',
+            'data' => ['out_order_no' => $outOrderNo, 'transaction_id' => $transactionId],
+        ];
         return ['status' => 'SUCCESS'];
     }
 
@@ -144,9 +147,12 @@ class AlipayFakeGateway extends FakeGateway implements ProfitSharingCapableInter
         return ['status' => 'SUCCESS'];
     }
 
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
-        $this->calls[] = ['method' => 'queryProfitSharing', 'data' => ['out_order_no' => $outOrderNo]];
+        $this->calls[] = [
+            'method' => 'queryProfitSharing',
+            'data' => ['out_order_no' => $outOrderNo, 'transaction_id' => $transactionId],
+        ];
         return ['status' => 'SUCCESS'];
     }
 
@@ -194,9 +200,12 @@ class StripeFakeGateway extends FakeGateway implements ProfitSharingCapableInter
         return ['status' => 'SUCCESS'];
     }
 
-    public function queryProfitSharing(string $outOrderNo): array
+    public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
-        $this->calls[] = ['method' => 'queryProfitSharing', 'data' => ['out_order_no' => $outOrderNo]];
+        $this->calls[] = [
+            'method' => 'queryProfitSharing',
+            'data' => ['out_order_no' => $outOrderNo, 'transaction_id' => $transactionId],
+        ];
         return ['status' => 'SUCCESS'];
     }
 
@@ -309,6 +318,35 @@ class ProfitSharingPluginTest extends TestCase
         $this->assertSame('queryProfitSharingConfig', $gateway->calls[0]['method']);
         $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
         $this->assertSame('T100', $gateway->calls[0]['data']['transaction_id']);
+    }
+
+    /**
+     * 分账查询：transaction_id 透传至网关（微信必填，其余平台忽略）
+     */
+    public function testQueryForwardsTransactionId(): void
+    {
+        $gateway = new WechatFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->query('SHARE_1', 'T100');
+
+        $this->assertSame('queryProfitSharing', $gateway->calls[0]['method']);
+        $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
+        $this->assertSame('T100', $gateway->calls[0]['data']['transaction_id']);
+    }
+
+    /**
+     * 分账查询：省略 transaction_id 时不透传（微信网关内部据此决定是否携带字段）
+     */
+    public function testQueryOmitsTransactionId(): void
+    {
+        $gateway = new WechatFakeGateway();
+        $plugin = new ProfitSharingPlugin($gateway);
+
+        $plugin->query('SHARE_1');
+
+        $this->assertSame('SHARE_1', $gateway->calls[0]['data']['out_order_no']);
+        $this->assertNull($gateway->calls[0]['data']['transaction_id']);
     }
 
     /**

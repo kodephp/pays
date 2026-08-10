@@ -61,18 +61,28 @@ class WechatPayReconciliationTest extends TestCase
     }
 
     /**
-     * 将对账单原始文本包裹为微信可解析的 XML（data 字段承载 CSV）
+     * 将对账单原始 CSV 文本直接返回（V2 账单接口返回 CSV 而非 XML）
      */
-    private function csvXml(string $csv): string
+    private function csvBody(string $csv): string
     {
-        return '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
-            . '<data><![CDATA[' . $csv . ']]></data></xml>';
+        return $csv;
+    }
+
+    /**
+     * 解析签名后的 XML 请求体为数组
+     */
+    private function parseXmlBody(array $last): array
+    {
+        $body = $last['data']['body'] ?? '';
+        $element = simplexml_load_string($body, \SimpleXMLElement::class, LIBXML_NOCDATA);
+
+        return json_decode(json_encode($element), true);
     }
 
     public function testDownloadBill(): void
     {
         $csv = $this->sampleCsv();
-        $gateway = $this->createGateway(['pay/downloadbill' => $this->csvXml($csv)]);
+        $gateway = $this->createGateway(['pay/downloadbill' => $this->csvBody($csv)]);
 
         $result = $gateway->downloadBill(['bill_date' => '20240425', 'bill_type' => 'ALL']);
 
@@ -85,11 +95,16 @@ class WechatPayReconciliationTest extends TestCase
 
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
+        $this->assertSame('POST_RAW', $last['method']);
         $this->assertStringContainsString('pay/downloadbill', $last['url']);
-        $this->assertSame('wx123', $last['data']['appid']);
-        $this->assertSame('m1', $last['data']['mch_id']);
-        $this->assertSame('20240425', $last['data']['bill_date']);
-        $this->assertSame('ALL', $last['data']['bill_type']);
+
+        $body = $this->parseXmlBody($last);
+        $this->assertSame('wx123', $body['appid']);
+        $this->assertSame('m1', $body['mch_id']);
+        $this->assertSame('20240425', $body['bill_date']);
+        $this->assertSame('ALL', $body['bill_type']);
+        $this->assertNotEmpty($body['sign'], '请求体应包含 MD5 签名');
+        $this->assertSame('text/xml', $last['headers']['Content-Type'] ?? '');
     }
 
     public function testDownloadBillMissingRequired(): void
@@ -105,7 +120,7 @@ class WechatPayReconciliationTest extends TestCase
     public function testDownloadFundFlow(): void
     {
         $csv = $this->sampleCsv();
-        $gateway = $this->createGateway(['pay/downloadfundflow' => $this->csvXml($csv)]);
+        $gateway = $this->createGateway(['pay/downloadfundflow' => $this->csvBody($csv)]);
 
         $result = $gateway->downloadFundFlow(['bill_date' => '20240425', 'account_type' => 'Basic']);
 
@@ -115,8 +130,12 @@ class WechatPayReconciliationTest extends TestCase
 
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
+        $this->assertSame('POST_RAW', $last['method']);
         $this->assertStringContainsString('pay/downloadfundflow', $last['url']);
-        $this->assertSame('Basic', $last['data']['account_type']);
+
+        $body = $this->parseXmlBody($last);
+        $this->assertSame('Basic', $body['account_type']);
+        $this->assertNotEmpty($body['sign'], '请求体应包含 MD5 签名');
     }
 
     public function testParseBill(): void
