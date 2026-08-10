@@ -474,23 +474,67 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
     }
 
     /**
-     * 提现到银行卡（Stripe 不支持个人收款提现）
+     * 提现到关联银行账户（Stripe Payouts）
      *
+     * Stripe 只能把余额打到「已关联到本账户的外部账户」，不接受任意银行卡号；
+     * 需指定外部账户时用 `destination` 传 Stripe 的 `ba_xxx` / `card_xxx` ID，
+     * 不传则由 Stripe 使用默认外部账户。金额单位为最小货币单位（分）。
+     *
+     * @param array<string, mixed> $params 提现参数（out_biz_no / amount 必填）
+     * @return array<string, mixed>
      * @throws PayException
      */
     public function withdraw(array $params): array
     {
-        throw PayException::methodNotSupported('stripe', 'withdraw');
+        $this->validateRequired($params, ['out_biz_no', 'amount']);
+
+        $requestData = [
+            'amount' => (int) $params['amount'],
+            'currency' => strtolower((string) ($params['currency'] ?? $this->getConfig('currency', 'usd'))),
+            'metadata' => ['out_biz_no' => (string) $params['out_biz_no']],
+        ];
+
+        if (isset($params['destination'])) {
+            $requestData['destination'] = (string) $params['destination'];
+        }
+
+        if (isset($params['description'])) {
+            $requestData['description'] = (string) $params['description'];
+        }
+
+        if (isset($params['method'])) {
+            $requestData['method'] = (string) $params['method'];
+        }
+
+        return $this->post('v1/payouts', $requestData, $this->buildAuthHeaders());
     }
 
     /**
-     * 查询提现结果（Stripe 不支持个人收款提现）
+     * 查询提现结果
      *
+     * Stripe 不支持按商户单号反查，默认按 Stripe 打款单号（`po_xxx`）查询；
+     * 传 `meta:{out_biz_no}` 时改用列表接口按 metadata 过滤。
+     *
+     * @param string $outBizNo Stripe payout ID，或 `meta:` 前缀的商户提现单号
+     * @return array<string, mixed>
      * @throws PayException
      */
     public function queryWithdraw(string $outBizNo): array
     {
-        throw PayException::methodNotSupported('stripe', 'queryWithdraw');
+        if (str_starts_with($outBizNo, 'meta:')) {
+            $bizNo = substr($outBizNo, 5);
+
+            if ($bizNo === '') {
+                throw PayException::paramError('meta: 前缀后缺少商户提现单号');
+            }
+
+            return $this->get('v1/payouts', [
+                'limit' => 100,
+                'metadata[out_biz_no]' => $bizNo,
+            ], $this->buildAuthHeaders());
+        }
+
+        return $this->get("v1/payouts/{$outBizNo}", [], $this->buildAuthHeaders());
     }
 
     /* ==================== 退款能力（RefundCapableInterface） ==================== */

@@ -12,8 +12,8 @@ use Kode\Pays\Tests\TestCase;
 /**
  * Stripe 网关「个人收款」原生方法单元测试
  *
- * 验证 createQrCode（v1/prices + v1/payment_links）/ queryRecords（v1/payment_intents）；
- * withdraw / queryWithdraw 未提供能力，调用应报「无此方法」。
+ * 验证 createQrCode（v1/prices + v1/payment_links）/ queryRecords（v1/payment_intents）
+ * 与提现能力（v1/payouts 创建、按 payout ID 或 `meta:` 前缀查询）。
  */
 class StripePersonalReceiveTest extends TestCase
 {
@@ -116,29 +116,63 @@ class StripePersonalReceiveTest extends TestCase
         $this->assertSame('GET', $last['method']);
     }
 
-    public function testWithdrawNotSupported(): void
+    public function testWithdrawCreatesPayout(): void
     {
-        $gateway = $this->createGateway();
+        $gateway = $this->createGateway(['v1/payouts' => json_encode(['id' => 'po_1', 'status' => 'pending'])]);
 
-        $this->expectException(PayException::class);
-        $this->expectExceptionMessage('无此方法');
-
-        $gateway->withdraw([
-            'amount' => 5000,
-            'bank_card_no' => '6222',
-            'real_name' => '张三',
+        $result = $gateway->withdraw([
             'out_biz_no' => 'WD_1',
+            'amount' => 5000,
+            'currency' => 'USD',
+            'destination' => 'ba_123',
+            'description' => '提现',
         ]);
+
+        $this->assertSame('po_1', $result['id']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/payouts', $last['url']);
+        $this->assertSame('POST', $last['method']);
+        $this->assertSame(5000, $last['data']['amount']);
+        $this->assertSame('usd', $last['data']['currency']);
+        $this->assertSame('ba_123', $last['data']['destination']);
+        $this->assertSame('WD_1', $last['data']['metadata']['out_biz_no']);
     }
 
-    public function testQueryWithdrawNotSupported(): void
+    public function testWithdrawMissingRequired(): void
     {
         $gateway = $this->createGateway();
 
         $this->expectException(PayException::class);
-        $this->expectExceptionMessage('无此方法');
+        $this->expectExceptionMessage('缺少必填参数：amount');
 
-        $gateway->queryWithdraw('WD_1');
+        $gateway->withdraw(['out_biz_no' => 'WD_1']);
+    }
+
+    public function testQueryWithdrawByPayoutId(): void
+    {
+        $gateway = $this->createGateway(['v1/payouts/po_1' => json_encode(['id' => 'po_1'])]);
+
+        $gateway->queryWithdraw('po_1');
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/payouts/po_1', $last['url']);
+        $this->assertSame('GET', $last['method']);
+    }
+
+    public function testQueryWithdrawByMetadataPrefix(): void
+    {
+        $gateway = $this->createGateway(['v1/payouts' => json_encode(['data' => []])]);
+
+        $gateway->queryWithdraw('meta:WD_1');
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('GET', $last['method']);
+        $this->assertStringNotContainsString('v1/payouts/', $last['url']);
+        $this->assertSame('WD_1', $last['data']['metadata[out_biz_no]'] ?? '');
     }
 
     public function testGetName(): void

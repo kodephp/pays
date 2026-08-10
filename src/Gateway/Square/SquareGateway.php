@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Square;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -12,9 +13,10 @@ use Kode\Pays\Core\PayException;
  * Square 网关
  *
  * 支持 Square Payments API，覆盖美国、加拿大、英国、澳大利亚、日本等国家/地区。
- * 另通过 Catalog + Subscriptions API 提供完整的订阅能力。
+ * 另通过 Catalog + Subscriptions API 提供完整的订阅能力，
+ * 并经 Online Checkout + Payouts API 提供个人收款与提现查询能力。
  */
-class SquareGateway extends AbstractGateway implements SubscriptionCapableInterface
+class SquareGateway extends AbstractGateway implements SubscriptionCapableInterface, PersonalReceiveCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -373,6 +375,137 @@ class SquareGateway extends AbstractGateway implements SubscriptionCapableInterf
         }
 
         return $cadence;
+    }
+
+    /* ==================== 个人收款能力（PersonalReceiveCapableInterface） ==================== */
+
+    /**
+     * 生成个人收款链接（Online Checkout Payment Link）
+     *
+     * Square 不直接返回二维码图片，返回的 `qr_code`（收款链接）可由调用方生成二维码。
+     * 金额单位为最小货币单位（分），与 Square 原生一致，不做换算。
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $outTradeNo = (string) ($params['out_trade_no'] ?? 'PERSONAL_' . date('YmdHis') . random_int(1000, 9999));
+        $currency = strtoupper((string) ($params['currency'] ?? $this->getConfig('currency', 'USD')));
+
+        $requestData = [
+            'idempotency_key' => $params['idempotency_key'] ?? uniqid('sq_pl_', true),
+            'quick_pay' => [
+                'name' => (string) $params['description'],
+                'price_money' => [
+                    'amount' => (int) $params['amount'],
+                    'currency' => $currency,
+                ],
+                'location_id' => $params['location_id'] ?? $this->getConfig('location_id'),
+            ],
+            'checkout_options' => [
+                'redirect_url' => $params['return_url'] ?? null,
+            ],
+            'payment_note' => $outTradeNo,
+        ];
+
+        if ($requestData['checkout_options']['redirect_url'] === null) {
+            unset($requestData['checkout_options']);
+        }
+
+        $response = $this->post('v2/online-checkout/payment-links', $requestData, $this->buildAuthHeaders());
+
+        return [
+            'out_trade_no' => $outTradeNo,
+            'payment_link_id' => $response['payment_link']['id'] ?? '',
+            'qr_code' => $response['payment_link']['url'] ?? '',
+            'payment_link' => $response['payment_link']['url'] ?? '',
+            'amount' => (int) $params['amount'],
+            'currency' => $currency,
+            'description' => (string) $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录（Payments 列表）
+     *
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryRecords(array $params): array
+    {
+        $startTime = strtotime((string) ($params['start_time'] ?? '-30 days'));
+        $endTime = strtotime((string) ($params['end_time'] ?? 'now'));
+
+        if ($startTime === false || $endTime === false) {
+            throw PayException::paramError('start_time / end_time 时间格式无法解析');
+        }
+
+        $query = [
+            'begin_time' => gmdate('Y-m-d\TH:i:s\Z', $startTime),
+            'end_time' => gmdate('Y-m-d\TH:i:s\Z', $endTime),
+            'limit' => (int) ($params['limit'] ?? 100),
+            'sort_order' => $params['sort_order'] ?? 'DESC',
+        ];
+
+        $locationId = $params['location_id'] ?? $this->getConfig('location_id');
+
+        if (is_string($locationId) && $locationId !== '') {
+            $query['location_id'] = $locationId;
+        }
+
+        if (isset($params['cursor'])) {
+            $query['cursor'] = $params['cursor'];
+        }
+
+        return $this->get('v2/payments', $query, $this->buildAuthHeaders());
+    }
+
+    /**
+     * 提现到银行卡（Square 由平台按结算周期自动打款，无主动提现接口）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function withdraw(array $params): array
+    {
+        throw PayException::methodNotSupported('square', 'withdraw');
+    }
+
+    /**
+     * 查询提现（打款）结果
+     *
+     * - 默认按 Square 打款单号查询 `v2/payouts/{payout_id}`；
+     * - 传 `entries:{payout_id}` 时查询该笔打款的明细条目。
+     *
+     * @param string $outBizNo Square payout ID，或 `entries:` 前缀的打款单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryWithdraw(string $outBizNo): array
+    {
+        $headers = $this->buildAuthHeaders();
+
+        if (str_starts_with($outBizNo, 'entries:')) {
+            $payoutId = substr($outBizNo, 8);
+
+            if ($payoutId === '') {
+                throw PayException::paramError('entries: 前缀后缺少 payout_id');
+            }
+
+            return $this->get("v2/payouts/{$payoutId}/payout-entries", [], $headers);
+        }
+
+        return $this->get("v2/payouts/{$outBizNo}", [], $headers);
     }
 
     /**

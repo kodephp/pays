@@ -27,10 +27,25 @@
 | 微信支付 | ✅ `pay/unifiedorder`（NATIVE） | ✅ `pay/downloadbill` | ✅ `mmpaymkttransfers/pay_bank` | ✅ `mmpaymkttransfers/query_bank` | 金额单位为分；提现银行卡号/姓名经 RSA 加密（`encryptBankCard`），投产前请接入 `Signer::md5` 与 `arrayToXml` |
 | 微信支付 V3 | ✅ `v3/pay/transactions/native` | ✅ `v3/bill/tradebill` | ✅ `v3/transfer/batches`（到零钱） | ✅ `v3/transfer/batches/out-batch-no/{no}` | 金额单位为分；`notify_url` 必填；APIv3 无付款到银行卡通道，提现统一到零钱（需 `account` openid） |
 | 支付宝 | ✅ `alipay.trade.precreate` | ✅ `alipay.trade.query` | ✅ `alipay.fund.trans.uni.transfer` | ✅ `alipay.fund.trans.common.query` | 金额单位为分；复用 `buildRequestParams` 标准 RSA2 签名 |
-| Stripe | ✅ `v1/prices` + `v1/payment_links` | ✅ `v1/payment_intents` | ❌ 报「无此方法」 | ❌ 报「无此方法」 | Payment Link 个人收款；提现能力暂未提供 |
+| 云闪付 | ✅ `backTransReq.do`（txnType=01/07 二维码消费） | ✅ `queryTrans.do`（须传 `out_trade_no`） | ✅ `backTransReq.do`（txnType=12 代付） | ✅ `queryTrans.do`（bizType=000401） | 金额单位为分（`txnAmt`）；全部请求经 RSA 签名；银联无交易列表接口，只能逐笔查询 |
+| Stripe | ✅ `v1/prices` + `v1/payment_links` | ✅ `v1/payment_intents` | ✅ `v1/payouts` | ✅ `v1/payouts/{id}`，或 `meta:` 前缀按单号过滤 | 只能打到已关联的外部账户（`ba_xxx` / `card_xxx`），不接受任意银行卡号 |
+| PayPal | ✅ `v2/invoicing`（发票二维码） | ✅ `v1/reporting/transactions` | ✅ `v1/payments/payouts` | ✅ `v1/payments/payouts/{batch}`，或 `item:` 前缀查明细 | 金额入参为分，内部换算为两位小数；提现语义为付款给指定收款账户（默认按邮箱） |
+| Square | ✅ `v2/online-checkout/payment-links` | ✅ `v2/payments` | ❌ 报「无此方法」 | ✅ `v2/payouts/{id}`，或 `entries:` 前缀查明细 | 金额单位为分；Square 按结算周期自动打款，无主动提现接口 |
+| Revolut | ✅ `api/1.0/orders`（checkout_url） | ✅ `api/1.0/orders` 列表 | ✅ `api/1.0/pay` | ✅ `api/1.0/transactions?request_id=` | 金额入参为分，出款换算为主单位；支持 `iban` / `counterparty_id` / 卡出款 |
 
-> 能力开关：微信 / 微信 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中声明 `CAP_PERSONAL_RECEIVE => true`。
+> 能力开关：微信 / 微信 V3 / 支付宝 / 云闪付 / Stripe / PayPal / Square / Revolut
+> 在 `GatewayManifest` 中声明 `CAP_PERSONAL_RECEIVE => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_PERSONAL_RECEIVE)` 判断。
+
+### 标识前缀约定
+
+统一契约 `queryWithdraw(string $outBizNo)` 只收单个字符串，各平台用前缀区分「二选一入参」：
+
+| 平台 | 默认语义 | 前缀语义 |
+|------|---------|---------|
+| Stripe | Stripe 打款单号 `po_xxx` | `meta:{out_biz_no}` → 列表接口按 metadata 过滤 |
+| PayPal | `payout_batch_id` | `item:{payout_item_id}` → 查单笔明细 |
+| Square | `payout_id` | `entries:{payout_id}` → 查打款明细条目 |
 
 ## 统一入口
 
@@ -58,8 +73,17 @@ Pay::personalReceiveQueryWithdraw('alipay', 'WD_20240425000001');
 // 等价：直接派发网关原生方法
 Pay::call('wechat', 'createQrCode', $params);
 
-// Stripe 提现能力未提供，调用会报「无此方法」
-Pay::personalReceiveWithdraw('stripe', $params); // 抛 PayException（无此方法）
+// Stripe 提现（打到已关联的外部账户）
+Pay::personalReceiveWithdraw('stripe', [
+    'out_biz_no'  => 'WD_20260810000001',
+    'amount'      => 5000,
+    'currency'    => 'usd',
+    'destination' => 'ba_1234567890',
+]);
+Pay::personalReceiveQueryWithdraw('stripe', 'meta:WD_20260810000001');
+
+// Square 无主动提现接口，调用会报「无此方法」
+Pay::personalReceiveWithdraw('square', $params); // 抛 PayException（无此方法）
 ```
 
 ## 插件调用
@@ -96,7 +120,7 @@ $plugin->queryWithdraw('WD_20240425000001');
 ```
 
 插件只做参数校验与转发；平台组装逻辑在网关内部。网关未实现 `PersonalReceiveCapableInterface`
-（或不支持某方法，如 Stripe 的 `withdraw` / `queryWithdraw`）时，统一抛「无此方法」。
+（或不支持某方法，如 Square 的 `withdraw`）时，统一抛「无此方法」。
 
 ## 生产联调提示
 
@@ -105,6 +129,18 @@ $plugin->queryWithdraw('WD_20240425000001');
   并按官方要求配置证书（apiclient_cert.pem 等）；`encryptBankCard` 需配置 `bank_public_key`。
 - **支付宝个人收款**：已复用 `buildRequestParams` 标准 RSA2 签名，金额按分（`amount / 100`，两位小数）。
 - **Stripe 个人收款**：通过 `v1/prices` 创建临时价格再生成 `v1/payment_links`，`out_trade_no` 写入
-  `metadata` 便于后续对账；Stripe 不提供面向个人收款的「提现到银行卡」能力，调用 `withdraw` /
-  `queryWithdraw` 会明确报「无此方法」。
-- **金额单位**：微信 / 支付宝收款与提现金额统一以「分」为单位传入。
+  `metadata` 便于后续对账；提现走 `v1/payouts`，`out_biz_no` 同样写入 `metadata`，
+  因此可用 `meta:` 前缀反查。注意 Stripe 只能打到本账户已关联的外部账户。
+- **云闪付个人收款**：二维码消费与代付均为后台交易（`backTransReq.do`），
+  代付产品（bizType=000401）需单独签约；收款人账号如需按银联要求加密，
+  请用 `account_encrypted` 传密文（不传则按 `bank_card_no` 明文上报，仅测试环境适用）。
+  银联无交易列表接口，`queryRecords` 必须传 `out_trade_no` 逐笔查询，批量对账请用对账文件。
+- **PayPal 个人收款**：`createQrCode` 依次调用「创建发票 → 发送发票 → 生成二维码」三个端点，
+  传 `auto_send => false` 可只建草稿不发送。提现为 Payouts 批次，
+  PayPal 不支持按商户单号反查，须保存返回的 `payout_batch_id`。
+- **Square 个人收款**：收款链接为 Quick Pay 模式，需要配置 `location_id`（也可按次传入）；
+  Square 返回的是收款链接而非二维码图片，二维码由调用方自行生成。
+- **Revolut 个人收款**：收款走 Merchant Orders，返回 `checkout_url`；
+  提现复用出款接口 `/api/1.0/pay`，`out_biz_no` 即 `request_id`，可据此查询。
+- **金额单位**：全部平台的收款与提现金额统一以「分」（最小货币单位）传入，
+  需要主单位的平台（支付宝、PayPal、Revolut 出款）由网关内部换算。

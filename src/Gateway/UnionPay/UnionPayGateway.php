@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\UnionPay;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -12,11 +13,12 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
 /**
  * 云闪付网关
  *
- * 支持 App、H5、小程序、二维码等支付场景；分账作为网关「特色方法」实现于本类内部
- * （复用基类配置、RSA 签名与 HTTP 通道），并通过 {@see ProfitSharingCapableInterface} 暴露，
+ * 支持 App、H5、小程序、二维码等支付场景；分账与个人收款作为网关「特色方法」实现于本类内部
+ * （复用基类配置、RSA 签名与 HTTP 通道），并通过 {@see ProfitSharingCapableInterface}
+ * 与 {@see PersonalReceiveCapableInterface} 暴露，
  * 可被统一入口 {@see \Kode\Pays\Facade\Pay::call()} 直接调用。
  */
-class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInterface
+class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInterface, PersonalReceiveCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -43,6 +45,20 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     private const PS_RETURN_SUB_TYPE = '00';
     private const PS_FINISH_TXN_TYPE = '11';
     private const PS_FINISH_SUB_TYPE = '00';
+
+    /**
+     * 个人收款（二维码消费）与代付提现的交易类型/子类/产品码
+     *
+     * 二维码消费走后台交易 backTransReq.do（txnType=01、txnSubType=07、bizType=000000）；
+     * 提现走代付产品（txnType=12、bizType=000401）。
+     * ⚠️ 代付产品需单独签约开通，投产前须按本商户签约参数联调确认。
+     */
+    private const QR_TXN_TYPE = '01';
+    private const QR_TXN_SUB_TYPE = '07';
+    private const QR_BIZ_TYPE = '000000';
+    private const WITHDRAW_TXN_TYPE = '12';
+    private const WITHDRAW_SUB_TYPE = '00';
+    private const WITHDRAW_BIZ_TYPE = '000401';
 
     /**
      * 初始化
@@ -357,6 +373,195 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
         $requestData['signature'] = $this->sign($requestData);
 
         return $this->post('gateway/api/backTransReq.do', $requestData);
+    }
+
+    /* ==================== 个人收款能力（PersonalReceiveCapableInterface） ==================== */
+
+    /**
+     * 生成个人收款二维码（银联全渠道二维码消费）
+     *
+     * 金额单位为分（`txnAmt`），与银联原生一致，不做换算。
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $orderId = (string) ($params['out_trade_no'] ?? 'PR' . date('YmdHis') . random_int(1000, 9999));
+
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => self::QR_TXN_TYPE,
+            'txnSubType' => self::QR_TXN_SUB_TYPE,
+            'bizType' => self::QR_BIZ_TYPE,
+            'channelType' => '07',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $orderId,
+            'txnTime' => date('YmdHis'),
+            'txnAmt' => (string) (int) $params['amount'],
+            'currencyCode' => $params['currency'] ?? '156',
+            'orderDesc' => (string) $params['description'],
+            'backUrl' => $params['notify_url'] ?? '',
+        ];
+
+        if (isset($params['expire_seconds'])) {
+            $requestData['payTimeout'] = date('YmdHis', time() + (int) $params['expire_seconds']);
+        }
+
+        if (!empty($params['attach'])) {
+            $requestData['reqReserved'] = is_string($params['attach'])
+                ? $params['attach']
+                : (string) json_encode($params['attach'], JSON_UNESCAPED_UNICODE);
+        }
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        $response = $this->post('gateway/api/backTransReq.do', $requestData);
+
+        return [
+            'out_trade_no' => $orderId,
+            'qr_code' => $response['qrCode'] ?? '',
+            'query_id' => $response['queryId'] ?? '',
+            'amount' => (int) $params['amount'],
+            'description' => (string) $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录
+     *
+     * 银联全渠道无「交易列表」开放接口，仅支持按商户订单号逐笔查询
+     * （批量对账请使用对账文件下载）。因此本方法要求传入 `out_trade_no`。
+     *
+     * @param array<string, mixed> $params 查询参数，须含 `out_trade_no`
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryRecords(array $params): array
+    {
+        $this->validateRequired($params, ['out_trade_no']);
+
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '00',
+            'txnSubType' => '00',
+            'bizType' => self::QR_BIZ_TYPE,
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => (string) $params['out_trade_no'],
+            'txnTime' => (string) ($params['txn_time'] ?? date('YmdHis')),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/queryTrans.do', $requestData);
+    }
+
+    /**
+     * 提现到银行卡（银联代付）
+     *
+     * 金额单位为分。收款账号需按银联要求做敏感信息加密的，由接入方在
+     * `account_encrypted` 传入密文；未传时按 `bank_card_no` 明文上报（仅测试环境）。
+     *
+     * @param array<string, mixed> $params 提现参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function withdraw(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'bank_card_no', 'real_name']);
+
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => self::WITHDRAW_TXN_TYPE,
+            'txnSubType' => self::WITHDRAW_SUB_TYPE,
+            'bizType' => self::WITHDRAW_BIZ_TYPE,
+            'channelType' => '07',
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => (string) $params['out_biz_no'],
+            'txnTime' => date('YmdHis'),
+            'txnAmt' => (string) (int) $params['amount'],
+            'currencyCode' => $params['currency'] ?? '156',
+            'accType' => $params['acc_type'] ?? '01',
+            'accNo' => (string) ($params['account_encrypted'] ?? $params['bank_card_no']),
+            'customerInfo' => $this->buildWithdrawCustomerInfo($params),
+            'backUrl' => $params['notify_url'] ?? '',
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/backTransReq.do', $requestData);
+    }
+
+    /**
+     * 查询提现结果
+     *
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryWithdraw(string $outBizNo): array
+    {
+        $requestData = [
+            'version' => '5.1.0',
+            'encoding' => 'utf-8',
+            'signMethod' => '01',
+            'txnType' => '00',
+            'txnSubType' => '00',
+            'bizType' => self::WITHDRAW_BIZ_TYPE,
+            'accessType' => '0',
+            'merId' => $this->getConfig('mer_id'),
+            'orderId' => $outBizNo,
+            'txnTime' => date('YmdHis'),
+        ];
+
+        $requestData['signature'] = $this->sign($requestData);
+
+        return $this->post('gateway/api/queryTrans.do', $requestData);
+    }
+
+    /**
+     * 组装代付收款人信息域（banse64 编码的 key=value 串）
+     *
+     * @param array<string, mixed> $params
+     * @throws PayException
+     */
+    protected function buildWithdrawCustomerInfo(array $params): string
+    {
+        $info = [
+            'customerNm' => (string) $params['real_name'],
+        ];
+
+        if (isset($params['cert_type'], $params['cert_no'])) {
+            $info['certifTp'] = (string) $params['cert_type'];
+            $info['certifId'] = (string) $params['cert_no'];
+        }
+
+        if (isset($params['phone'])) {
+            $info['phoneNo'] = (string) $params['phone'];
+        }
+
+        $pairs = [];
+        foreach ($info as $key => $value) {
+            $pairs[] = $key . '=' . $value;
+        }
+
+        return base64_encode('{' . implode('&', $pairs) . '}');
     }
 
     /**

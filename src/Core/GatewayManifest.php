@@ -568,7 +568,12 @@ class GatewayManifest
                 'label' => '云闪付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_RSA,
-                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true, self::CAP_PROFIT_SHARING => true],
+                'capabilities' => [
+                    self::CAP_QR => true,
+                    self::CAP_WEBHOOK => true,
+                    self::CAP_PROFIT_SHARING => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
+                ],
             ],
             'douyin' => [
                 'label' => '抖音支付',
@@ -616,7 +621,12 @@ class GatewayManifest
                 'label' => 'PayPal',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_SUBSCRIPTION => true, self::CAP_WEBHOOK => true, self::CAP_SETTLEMENT => true],
+                'capabilities' => [
+                    self::CAP_SUBSCRIPTION => true,
+                    self::CAP_WEBHOOK => true,
+                    self::CAP_SETTLEMENT => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
+                ],
             ],
             'stripe' => [
                 'label' => 'Stripe',
@@ -637,7 +647,11 @@ class GatewayManifest
                 'label' => 'Square',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true, self::CAP_SUBSCRIPTION => true],
+                'capabilities' => [
+                    self::CAP_WEBHOOK => true,
+                    self::CAP_SUBSCRIPTION => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
+                ],
             ],
             'adyen' => [
                 'label' => 'Adyen',
@@ -686,6 +700,7 @@ class GatewayManifest
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_PERSONAL_RECEIVE => true,
                 ],
             ],
             'payoneer' => [

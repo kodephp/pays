@@ -969,6 +969,10 @@ $result = $plugin->query('REDPACK_20240425000001');
 
 ## 个人收款插件
 
+> 支持网关：微信（`wechat`）、微信 V3（`wechat_v3`）、支付宝（`alipay`）、云闪付（`unionpay`）、Stripe（`stripe`）、PayPal（`paypal`）、Square（`square`）、Revolut（`revolut`）。
+> 各平台个人收款实现路径不同：微信/支付宝走原生收款码；云闪付走后台交易二维码消费 + 代付；PayPal 走发票（Invoicing）二维码 + Payouts 提现；Square 走 Online Checkout Quick Pay；Revolut 走 Merchant Orders + 复用转账接口；Stripe 走 Checkout Session + Payouts 提现。
+> 注意：云闪付无交易列表接口，`queryRecords` 需逐笔传入 `out_trade_no`；Square 无主动提现能力，`withdraw` 会抛出「无此方法」异常。
+
 ```php
 <?php
 
@@ -1184,23 +1188,23 @@ try {
 |------|------|----------|
 | 微信支付 | `wechat` | JSAPI、Native、App、H5、小程序、委托代扣（papay） |
 | 支付宝 | `alipay` | 电脑网站、手机网站、App、小程序、当面付、周期扣款 |
-| 云闪付 | `unionpay` | App、H5、小程序、二维码 |
+| 云闪付 | `unionpay` | App、H5、小程序、二维码、个人收款（二维码消费）、代付提现 |
 | 抖音支付 | `douyin` | App、小程序 |
 | 美团支付 | `meituan` | App、外卖、小程序 |
 | 京东支付 | `jd` | App、网页、白条 |
 | 快手支付 | `kuaishou` | App、小程序 |
 | QQ 支付 | `qq` | QQ 钱包、扫码支付、JSAPI 支付 |
 | 支付宝国际版 | `alipay_global` | 跨境支付、Alipay+ |
-| PayPal | `paypal` | Checkout、订阅 |
-| Stripe | `stripe` | PaymentIntent、Checkout Session、退款 |
-| Square | `square` | 在线支付、订单管理、Subscriptions |
+| PayPal | `paypal` | Checkout、订阅、个人收款（发票二维码、Payouts 提现） |
+| Stripe | `stripe` | PaymentIntent、Checkout Session、退款、个人收款、提现（Payouts） |
+| Square | `square` | 在线支付、订单管理、Subscriptions、个人收款（Quick Pay） |
 | Adyen | `adyen` | 全球 200+ 国家、250+ 支付方式、Recurring 代扣 |
 | Amazon Pay | `amazon` | 亚马逊账户支付 |
 | Klarna | `klarna` | 先买后付、分期付款 |
 | Apple Pay | `apple` | iOS App、网页、手表 |
 | Google Pay | `google` | Android App、网页 |
 | Wise | `wise` | 跨境汇款、50+ 货币 |
-| Revolut | `revolut` | 数字银行支付、卡支付、Apple Pay、Google Pay |
+| Revolut | `revolut` | 数字银行支付、卡支付、Apple Pay、Google Pay、个人收款（Merchant Orders）、转账提现 |
 | Payoneer | `payoneer` | 跨境 B2B 支付、200+ 国家 |
 | Coinbase Commerce | `coinbase` | 加密货币支付（BTC/ETH/USDT/USDC 等） |
 | Afterpay/Clearpay | `afterpay` | 先买后付（BNPL）、4 期免息 |

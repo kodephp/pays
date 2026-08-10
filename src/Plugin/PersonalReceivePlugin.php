@@ -19,9 +19,13 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  * 本插件仅负责「参数校验 + 类型安全转发」，不承载平台组装逻辑。
  *
  * 支持网关：
- * - 微信支付（个人收款码、赞赏码、企业付款到银行卡）
+ * - 微信支付 / 微信 V3（个人收款码、赞赏码、企业付款到银行卡 / 零钱）
  * - 支付宝（个人收款码、转账到银行卡）
- * - Stripe（Payment Link 个人收款；提现能力暂未提供，调用会报「无此方法」）
+ * - 云闪付（二维码消费收款、代付提现，逐笔查询）
+ * - Stripe（Payment Link 个人收款、Payouts 提现到已关联外部账户）
+ * - PayPal（Invoicing 发票二维码、Transaction Search、Payouts 提现）
+ * - Square（Quick Pay 收款链接、Payments 查询；无主动提现接口，`withdraw` 报「无此方法」）
+ * - Revolut（Merchant Order 收款链接、Orders 查询、复用出款接口提现）
  *
  * 使用示例：
  * ```php

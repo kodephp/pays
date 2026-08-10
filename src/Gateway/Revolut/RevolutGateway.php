@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Revolut;
 
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
@@ -22,7 +23,8 @@ class RevolutGateway extends AbstractGateway implements
     TransferCapableInterface,
     ReconciliationCapableInterface,
     RefundCapableInterface,
-    SettlementCapableInterface
+    SettlementCapableInterface,
+    PersonalReceiveCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -552,6 +554,128 @@ class RevolutGateway extends AbstractGateway implements
      */
     #[\Override]
     public function querySettlement(string $outBizNo): array
+    {
+        return $this->queryTransfer($outBizNo);
+    }
+
+    /* ==================== 个人收款能力（PersonalReceiveCapableInterface） ==================== */
+
+    /**
+     * 生成个人收款链接（Revolut Merchant Order 的 checkout_url）
+     *
+     * Revolut 不返回二维码图片，返回的 `qr_code`（收款链接）可由调用方生成二维码。
+     * 金额单位为最小货币单位（分），与 Revolut Orders 原生一致，不做换算。
+     *
+     * @param array<string, mixed> $params 收款参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createQrCode(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'description']);
+
+        $outTradeNo = (string) ($params['out_trade_no'] ?? 'PERSONAL_' . date('YmdHis') . random_int(1000, 9999));
+        $currency = strtoupper((string) ($params['currency'] ?? $this->getConfig('currency', 'EUR')));
+
+        $requestData = [
+            'amount' => (int) $params['amount'],
+            'currency' => $currency,
+            'merchant_order_ext_ref' => $outTradeNo,
+            'description' => (string) $params['description'],
+            'capture_mode' => $params['capture_mode'] ?? 'AUTOMATIC',
+        ];
+
+        if (isset($params['return_url'])) {
+            $requestData['merchant_order_data'] = ['ref' => $params['return_url']];
+        }
+
+        $response = $this->post('api/1.0/orders', $requestData, [
+            'Content-Type' => 'application/json',
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+
+        $checkoutUrl = $response['checkout_url'] ?? '';
+
+        return [
+            'out_trade_no' => $outTradeNo,
+            'order_id' => $response['id'] ?? '',
+            'qr_code' => $checkoutUrl,
+            'payment_link' => $checkoutUrl,
+            'amount' => (int) $params['amount'],
+            'currency' => $currency,
+            'description' => (string) $params['description'],
+        ];
+    }
+
+    /**
+     * 查询个人收款记录（Merchant Orders 列表）
+     *
+     * @param array<string, mixed> $params 查询参数
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryRecords(array $params): array
+    {
+        $startTime = strtotime((string) ($params['start_time'] ?? '-30 days'));
+        $endTime = strtotime((string) ($params['end_time'] ?? 'now'));
+
+        if ($startTime === false || $endTime === false) {
+            throw PayException::paramError('start_time / end_time 时间格式无法解析');
+        }
+
+        $query = [
+            'from_created_date' => gmdate('Y-m-d\TH:i:s.v\Z', $startTime),
+            'to_created_date' => gmdate('Y-m-d\TH:i:s.v\Z', $endTime),
+            'limit' => (int) ($params['limit'] ?? 100),
+        ];
+
+        if (isset($params['email'])) {
+            $query['email'] = $params['email'];
+        }
+
+        return $this->get('api/1.0/orders', $query, [
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+    }
+
+    /**
+     * 提现到银行账户（复用 Revolut 出款 /api/1.0/pay）
+     *
+     * @param array<string, mixed> $params 提现参数（out_biz_no / amount / account 必填）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function withdraw(array $params): array
+    {
+        $this->validateRequired($params, ['out_biz_no', 'amount', 'account']);
+
+        return $this->singleTransfer([
+            'out_biz_no' => $params['out_biz_no'],
+            'amount' => $params['amount'],
+            'currency' => $params['currency'] ?? $this->getConfig('currency', 'EUR'),
+            'recipient' => [
+                'type' => $params['recipient_type'] ?? 'bank',
+                'account' => $params['account'],
+                'name' => $params['real_name'] ?? '',
+                'iban' => $params['iban'] ?? null,
+            ],
+            'description' => $params['description'] ?? 'Personal withdraw',
+            'account_id' => $params['account_id'] ?? null,
+        ]);
+    }
+
+    /**
+     * 查询提现结果（按 request_id 过滤交易列表）
+     *
+     * @param string $outBizNo 商户提现单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryWithdraw(string $outBizNo): array
     {
         return $this->queryTransfer($outBizNo);
     }

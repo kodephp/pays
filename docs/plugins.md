@@ -12,7 +12,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
 | 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal、Square、支付宝、微信 V2、Adyen | 订阅计划、订阅管理、暂停/恢复/取消 |
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
-| 个人收款插件 | `PersonalReceivePlugin` | 微信、微信 V3、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
+| 个人收款插件 | `PersonalReceivePlugin` | 微信、微信 V3、支付宝、云闪付、Stripe、PayPal、Square、Revolut | 收款码、查询记录、提现到银行卡 |
 | 自动结算插件 | `AutoSettlementPlugin` | 微信、微信 V3、支付宝、Stripe、PayPal | 支付后自动提现到钱包（网关原生方法 + 插件编排转发） |
 | 加密货币插件 | `CryptoPlugin` | Coinbase | 加密货币订单、链上确认、汇率查询（网关原生方法 + 插件校验转发） |
 
@@ -513,11 +513,13 @@ if ($diff['is_consistent']) {
 
 ## 个人收款插件 (PersonalReceivePlugin)
 
-支持微信、支付宝、Stripe 的个人收款码、查询记录、提现到银行卡。
+支持微信、微信 V3、支付宝、云闪付、Stripe、PayPal、Square、Revolut 的个人收款码、
+查询记录、提现到银行卡。
 
 > 架构说明：个人收款能力已下沉到各网关原生方法（网关声明 `PersonalReceiveCapableInterface`），
-> 本插件仅做「参数校验 + 类型安全转发」，不再承载平台组装逻辑。Stripe 未提供提现能力，
-> 调用 `withdraw` / `queryWithdraw` 会明确报「无此方法」。完整设计见
+> 本插件仅做「参数校验 + 类型安全转发」，不再承载平台组装逻辑。平台没有对应端点的方法
+> （如 Square 的 `withdraw`）会明确报「无此方法」。`queryWithdraw` 在部分平台支持前缀标识
+> （Stripe `meta:`、PayPal `item:`、Square `entries:`）。完整设计见
 > [个人收款能力设计](personal-receive.md)。
 
 ### 配置
