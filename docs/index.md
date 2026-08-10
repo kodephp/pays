@@ -89,6 +89,7 @@
 - [个人收款插件](plugins.md#个人收款插件-personalreceiveplugin) - 个人收款码/提现
 - [个人收款验证器](personal_receive.md) - 进程内/后台进程抓取收款数据并验证订单匹配
 - [统一收款码路由器](unified-qr.md) - 一码聚合多支付通道、`QrEntry` 值对象、状态机与后台守护进程抓取收款状态
+- [性能与压测数据](performance.md) - 热路径基准、运行方式（`composer bench`）与优化要点
 - [自动结算插件](plugins.md#自动结算插件-autosettlementplugin) - 支付后自动提现
 - [加密货币插件](plugins.md#加密货币插件-cryptoplugin) - 加密货币订单管理
 

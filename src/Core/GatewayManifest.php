@@ -345,6 +345,8 @@ class GatewayManifest
 
         if ($url === '' && is_string($entry['gateway_class'] ?? null)) {
             $url = self::resolveBaseUrlFromClass($entry['gateway_class'], $sandbox);
+            // 回写缓存，避免后续调用重复反射
+            self::$entries[$name][$key] = $url;
         }
 
         return $url;

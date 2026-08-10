@@ -46,7 +46,7 @@ class Signer
         $sign = $params[$signField];
         unset($params[$signField]);
 
-        return self::md5($params, $key, $excludeEmpty) === $sign;
+        return hash_equals(self::md5($params, $key, $excludeEmpty), $sign);
     }
 
     /**
@@ -63,7 +63,9 @@ class Signer
         $string = self::buildQueryString($params);
         $key = self::loadPrivateKey($privateKey, $isFile);
 
-        openssl_sign($string, $signature, $key, OPENSSL_ALGO_SHA1);
+        if (openssl_sign($string, $signature, $key, OPENSSL_ALGO_SHA1) === false) {
+            throw PayException::configError('RSA 签名失败，请检查私钥配置');
+        }
 
         return base64_encode($signature);
     }
@@ -82,7 +84,9 @@ class Signer
         $string = self::buildQueryString($params);
         $key = self::loadPrivateKey($privateKey, $isFile);
 
-        openssl_sign($string, $signature, $key, OPENSSL_ALGO_SHA256);
+        if (openssl_sign($string, $signature, $key, OPENSSL_ALGO_SHA256) === false) {
+            throw PayException::configError('RSA2 签名失败，请检查私钥配置');
+        }
 
         return base64_encode($signature);
     }

@@ -197,4 +197,42 @@ class SignerTest extends TestCase
         // 错误的签名（无效 Base64 内容）
         $this->assertFalse(Signer::verifyRsa($params, $publicKeyPem, 'invalid-sign', false, 'SHA256'));
     }
+
+    /**
+     * 测试 RSA2：私钥无效时抛 configError（不再 TypeError）
+     */
+    public function testRsa2ThrowsOnInvalidKey(): void
+    {
+        $this->expectException(\Kode\Pays\Core\PayException::class);
+
+        Signer::rsa2(['a' => '1'], 'not-a-valid-private-key');
+    }
+
+    /**
+     * 测试 RSA（SHA1）：私钥无效时抛 configError
+     */
+    public function testRsaThrowsOnInvalidKey(): void
+    {
+        $this->expectException(\Kode\Pays\Core\PayException::class);
+
+        Signer::rsa(['a' => '1'], 'not-a-valid-private-key');
+    }
+
+    /**
+     * 测试 verifyMd5：改为 hash_equals 后行为不变（正确通过、错误拒绝）
+     */
+    public function testVerifyMd5TimingSafeEquivalence(): void
+    {
+        $params = ['a' => '1', 'b' => '2'];
+        $key = 'k';
+        $sign = Signer::md5($params, $key);
+
+        $ok = $params;
+        $ok['sign'] = $sign;
+        $this->assertTrue(Signer::verifyMd5($ok, $key), '正确签名应验签通过');
+
+        $bad = $params;
+        $bad['sign'] = str_repeat('0', 32);
+        $this->assertFalse(Signer::verifyMd5($bad, $key), '错误签名应被拒绝');
+    }
 }

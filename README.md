@@ -1251,6 +1251,16 @@ composer run phpstan
 composer run test
 ```
 
+## 性能与压测
+
+SDK 提供零网络的微基准套件，用于回归对比热路径吞吐（请求分发、签名/验签、清单反射等）：
+
+```bash
+composer bench          # 等价于 php scripts/bench.php
+```
+
+基准采用 Guzzle `MockHandler` 模拟零延迟响应，仅测量 SDK 自身开销；实测数据与运行方式见 [docs/performance.md](docs/performance.md)。发布前建议运行并与历史数据对比，捕捉显著回退。
+
 ## 生态扩展
 
 Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
@@ -1285,6 +1295,7 @@ Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
 | [docs/alipay.md](docs/alipay.md) | 支付宝接入文档 |
 | [docs/aggregate.md](docs/aggregate.md) | 聚合支付接入文档 |
 | [docs/personal_receive.md](docs/personal_receive.md) | 个人收款验证器（进程内/后台进程抓取） |
+| [docs/performance.md](docs/performance.md) | 性能与压测数据（热路径基准、运行方式、优化要点） |
 | [docs/unified_qr.md](docs/unified_qr.md) | 统一收款码路由器（一码聚合多通道 + 后台监控） |
 
 各网关接入文档完整列表见 [docs/index.md](docs/index.md)。

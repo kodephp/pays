@@ -256,9 +256,13 @@ class AlipayGlobalGateway extends AbstractGateway
         $signType = $this->getConfig('sign_type') ?? 'RSA2';
 
         if ($signType === 'RSA2') {
-            openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+            $ok = openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA256);
         } else {
-            openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA1);
+            $ok = openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA1);
+        }
+
+        if ($ok === false) {
+            throw PayException::configError('支付宝国际版签名失败，请检查 private_key 配置');
         }
 
         return base64_encode($signature);

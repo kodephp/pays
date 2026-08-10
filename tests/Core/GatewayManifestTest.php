@@ -42,6 +42,27 @@ class GatewayManifestTest extends TestCase
     }
 
     /**
+     * baseUrl 反射结果应回写缓存，避免重复反射
+     */
+    public function testBaseUrlMemoizesReflectionResult(): void
+    {
+        // 预热，清除可能已缓存的值
+        $refClass = new \ReflectionClass(GatewayManifest::class);
+        $entries = $refClass->getStaticPropertyValue('entries');
+        unset($entries['wechat']['base_url'], $entries['wechat']['sandbox_url']);
+        $refClass->setStaticPropertyValue('entries', $entries);
+
+        $first = GatewayManifest::baseUrl('wechat');
+        $this->assertNotEmpty($first);
+
+        // 再次访问应直接命中缓存，值一致
+        $this->assertSame($first, GatewayManifest::baseUrl('wechat'));
+
+        $refreshed = $refClass->getStaticPropertyValue('entries');
+        $this->assertSame($first, $refreshed['wechat']['base_url'] ?? null, '反射结果应已回写缓存');
+    }
+
+    /**
      * 显式声明的域名优先于反射回退
      */
     public function testExplicitBaseUrlWins(): void

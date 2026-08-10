@@ -157,7 +157,7 @@ interface GatewayInterface
 
 | 组件 | 职责 |
 |------|------|
-| `HttpClient` | 基于 Guzzle 的 PSR-18 风格 HTTP 客户端 |
+| `HttpClient` | 基于 Guzzle 的 PSR-18 风格 HTTP 客户端；连接池复用（`setTimeout/setConnectTimeout` 不再重建 Client），重试仅对连接异常或幂等方法（GET/HEAD 等）做指数退避 + 抖动，并提供响应体大小上限保护 |
 | `Signer` | MD5/RSA/RSA2/HMAC-SHA256 签名工具 |
 | `Encryptor` | 敏感数据加密 |
 | `Validator` | 参数验证工具 |

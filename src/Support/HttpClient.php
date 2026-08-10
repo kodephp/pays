@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Support;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use Kode\Pays\Contract\HttpClientInterface;
 use Psr\Log\LoggerInterface;
@@ -50,12 +51,29 @@ class HttpClient implements HttpClientInterface
     protected int $retryDelay = 1000;
 
     /**
+     * 可安全重试的 HTTP 方法（幂等，或仅在连接未建立时重试）
+     *
+     * @var string[]
+     */
+    protected array $retrySafeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
+
+    /**
+     * 响应体大小上限（字节），0 表示不限制
+     *
+     * 防止对账单等超大响应耗尽内存；超过则抛出网络异常。
+     */
+    protected int $maxResponseBytes = 0;
+
+    /**
      * 请求日志记录器
      */
     protected ?LoggerInterface $logger = null;
 
     /**
      * 构造函数
+     *
+     * 客户端实例只构建一次，超时等参数通过请求级选项覆盖，
+     * 避免重建 Client 导致的 curl 连接池（keep-alive）失效。
      *
      * @param array<string, mixed> $options Guzzle 额外配置
      */
@@ -186,15 +204,18 @@ class HttpClient implements HttpClientInterface
     protected function requestWithRetry(string $method, string $url, array $options): string
     {
         $lastException = null;
-        $attempts = $this->maxRetries + 1;
 
-        for ($i = 0; $i < $attempts; $i++) {
+        // 请求级覆盖超时，避免重建 Client 导致 curl 连接池失效
+        $options['timeout'] = $options['timeout'] ?? $this->timeout;
+        $options['connect_timeout'] = $options['connect_timeout'] ?? $this->connectTimeout;
+
+        for ($i = 0; $i <= $this->maxRetries; $i++) {
             try {
                 $startTime = microtime(true);
                 $response = $this->client->request($method, $url, $options);
                 $duration = round((microtime(true) - $startTime) * 1000, 2);
 
-                $body = (string) $response->getBody();
+                $body = $this->readBody($response);
 
                 $this->logRequest($method, $url, $options, $response->getStatusCode(), $duration);
 
@@ -204,15 +225,44 @@ class HttpClient implements HttpClientInterface
 
                 $this->logError($method, $url, $e, $i + 1);
 
-                if ($i < $this->maxRetries) {
-                    usleep($this->retryDelay * 1000);
+                // 仅在可安全重试时退避后重试：连接未建立（无副作用），或幂等安全方法
+                $retryable = $e instanceof ConnectException
+                    || in_array(strtoupper($method), $this->retrySafeMethods, true);
+
+                if ($i < $this->maxRetries && $retryable) {
+                    // 指数退避 + 随机抖动，避免重试风暴
+                    $base = (int) ($this->retryDelay * (2 ** $i));
+                    $jitter = random_int(0, max(1, (int) ($this->retryDelay / 2)));
+                    usleep(($base + $jitter) * 1000);
+
+                    continue;
                 }
+
+                break;
             }
         }
 
         throw $lastException ?? new \RuntimeException(
             sprintf('HTTP 请求失败：%s %s（重试 %d 次后仍未成功）', strtoupper($method), $url, $this->maxRetries),
         );
+    }
+
+    /**
+     * 读取响应体并施加大小上限保护
+     *
+     * @param \Psr\Http\Message\ResponseInterface $response
+     * @return string
+     * @throws GuzzleException
+     */
+    protected function readBody(\Psr\Http\Message\ResponseInterface $response): string
+    {
+        if ($this->maxResponseBytes > 0 && $response->getBody()->getSize() > $this->maxResponseBytes) {
+            throw new \RuntimeException(
+                sprintf('响应体超出大小上限（%d 字节）', $this->maxResponseBytes),
+            );
+        }
+
+        return (string) $response->getBody();
     }
 
     /**
@@ -277,13 +327,14 @@ class HttpClient implements HttpClientInterface
     {
         $this->timeout = $seconds;
         $this->options['timeout'] = $seconds;
-        $this->client = new Client($this->options);
 
         return $this;
     }
 
     /**
      * 设置连接超时时间
+     *
+     * 仅更新属性，请求时通过请求级选项覆盖，保留 curl 连接池。
      *
      * @param int $seconds 秒数
      * @return self
@@ -292,9 +343,31 @@ class HttpClient implements HttpClientInterface
     {
         $this->connectTimeout = $seconds;
         $this->options['connect_timeout'] = $seconds;
-        $this->client = new Client($this->options);
 
         return $this;
+    }
+
+    /**
+     * 设置响应体大小上限
+     *
+     * @param int $bytes 字节数，0 表示不限制
+     * @return self
+     */
+    public function setMaxResponseBytes(int $bytes): self
+    {
+        $this->maxResponseBytes = $bytes;
+
+        return $this;
+    }
+
+    /**
+     * 获取响应体大小上限
+     *
+     * @return int
+     */
+    public function getMaxResponseBytes(): int
+    {
+        return $this->maxResponseBytes;
     }
 
     /**

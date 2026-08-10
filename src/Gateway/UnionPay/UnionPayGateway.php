@@ -61,6 +61,11 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     private const WITHDRAW_BIZ_TYPE = '000401';
 
     /**
+     * 缓存的证书私钥对象（懒加载，避免每次签名/验签重复读盘与解析 PEM）
+     */
+    private ?\OpenSSLAsymmetricKey $certKey = null;
+
+    /**
      * 初始化
      */
     protected function initialize(): void
@@ -622,14 +627,41 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
 
         $string = implode('&', $pairs);
 
-        $privateKey = file_get_contents($this->getConfig('cert_path'));
-        if ($privateKey === false) {
+        $privateKey = $this->loadCertKey();
+
+        if (openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA256) === false) {
+            throw PayException::configError('云闪付签名失败，请检查证书配置');
+        }
+
+        return base64_encode($signature);
+    }
+
+    /**
+     * 加载并缓存证书私钥对象
+     *
+     * 证书（.pfx / PEM）仅在首次签名或验签时读取并解析一次，后续复用，
+     * 避免每次请求都读盘与解析带来的性能损耗。
+     *
+     * @return \OpenSSLAsymmetricKey
+     * @throws PayException
+     */
+    protected function loadCertKey(): \OpenSSLAsymmetricKey
+    {
+        if ($this->certKey !== null) {
+            return $this->certKey;
+        }
+
+        $cert = file_get_contents($this->getConfig('cert_path'));
+        if ($cert === false) {
             throw PayException::configError('无法读取云闪付证书文件');
         }
 
-        openssl_sign($string, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+        $key = openssl_pkey_get_private($cert, (string) ($this->getConfig('cert_pwd') ?? ''));
+        if ($key === false) {
+            throw PayException::configError('云闪付证书加载失败，请检查 cert_path 与 cert_pwd');
+        }
 
-        return base64_encode($signature);
+        return $this->certKey = $key;
     }
 
     /**
@@ -654,10 +686,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
 
         $string = implode('&', $pairs);
 
-        $publicKey = file_get_contents($this->getConfig('cert_path'));
-        if ($publicKey === false) {
-            throw PayException::configError('无法读取云闪付证书文件');
-        }
+        $publicKey = $this->loadCertKey();
 
         return openssl_verify($string, base64_decode($signature), $publicKey, OPENSSL_ALGO_SHA256) === 1;
     }

@@ -180,7 +180,7 @@ class JdGateway extends AbstractGateway implements
         $sign = $data['sign'];
         unset($data['sign']);
 
-        return $this->sign($data) === $sign;
+        return hash_equals($this->sign($data), $sign);
     }
 
     /**
