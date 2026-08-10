@@ -10,6 +10,7 @@ use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -21,7 +22,15 @@ use Kode\Pays\Support\Signer;
  *
  * 支持电脑网站、手机网站、App、小程序、当面付等支付场景
  */
-class AlipayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
+class AlipayGateway extends AbstractGateway implements
+    TransferCapableInterface,
+    RedPacketCapableInterface,
+    PersonalReceiveCapableInterface,
+    ReconciliationCapableInterface,
+    RefundCapableInterface,
+    ProfitSharingCapableInterface,
+    SettlementCapableInterface,
+    SubscriptionCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -948,5 +957,286 @@ class AlipayGateway extends AbstractGateway implements TransferCapableInterface,
     public function querySettlement(string $outBizNo): array
     {
         return $this->queryTransfer($outBizNo);
+    }
+
+    /* ==================== 订阅能力（SubscriptionCapableInterface） ==================== */
+
+    /**
+     * 创建订阅计划（本地周期规则）
+     *
+     * 支付宝周期扣款没有服务端「计划」实体，周期规则（period_rule_params）在
+     * 签约时随 alipay.user.agreement.page.sign 一并提交。因此本方法只做规则
+     * 组装与校验，返回可直接透传给 {@see createSubscription()} 的计划描述，
+     * 不产生网络请求。
+     *
+     * @param array<string, mixed> $params 计划参数
+     *        - name: 计划名称（用于 subject / 协议展示）
+     *        - amount: 单次扣款上限（元，支付宝周期扣款以元为单位）
+     *        - currency: 货币（仅支持 CNY）
+     *        - interval: 周期 day/month（支付宝仅支持 DAY / MONTH）
+     *        - interval_count: 周期数量（可选，默认 1）
+     *        - execute_time: 首次扣款日（可选，默认次日）
+     *        - total_amount: 总金额上限（可选）
+     *        - total_payments: 总扣款次数（可选）
+     * @return array<string, mixed> 计划描述（含 plan_id / period_rule_params）
+     * @throws PayException
+     */
+    #[\Override]
+    public function createPlan(array $params): array
+    {
+        $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
+
+        $currency = strtoupper((string) $params['currency']);
+        if ($currency !== 'CNY') {
+            throw PayException::paramError('支付宝周期扣款仅支持 CNY');
+        }
+
+        $periodRuleParams = $this->buildPeriodRuleParams($params);
+
+        return [
+            'plan_id' => 'alipay_plan_' . md5((string) $params['name'] . serialize($periodRuleParams)),
+            'name' => $params['name'],
+            'currency' => $currency,
+            'period_rule_params' => $periodRuleParams,
+        ];
+    }
+
+    /**
+     * 创建订阅（alipay.user.agreement.page.sign 页面签约）
+     *
+     * 支付宝周期扣款需用户在收银台完成签约授权，故本方法返回可跳转的签约链接，
+     * 而非同步的订阅实体；签约结果由 notify_url 异步回调，或用
+     * {@see getSubscription()} 以协议号查询。
+     *
+     * @param array<string, mixed> $params 订阅参数
+     *        - customer_id: 商户侧协议号（映射 external_agreement_no，用户维度唯一）
+     *        - plan_id: 计划标识（仅作商户侧标记，周期规则以 period_rule_params 为准）
+     *        - period_rule_params: 周期规则（可选，缺省时由本方法按 amount/interval 组装）
+     *        - amount / interval / interval_count / execute_time: 未传 period_rule_params 时必需
+     *        - sign_scene: 签约场景（可选，默认 INDUSTRY|DEFAULT_SCENE）
+     *        - product_code: 产品码（可选，默认 CYCLE_PAY_AUTH_P）
+     *        - notify_url / return_url: 回调地址（可选）
+     * @return array<string, mixed> 含 method / url 的跳转描述
+     * @throws PayException
+     */
+    #[\Override]
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['customer_id', 'plan_id']);
+
+        /** @var array<string, mixed> $periodRuleParams */
+        $periodRuleParams = is_array($params['period_rule_params'] ?? null)
+            ? $params['period_rule_params']
+            : $this->buildPeriodRuleParams($params);
+
+        $bizContent = [
+            'personal_product_code' => $params['product_code'] ?? 'CYCLE_PAY_AUTH_P',
+            'sign_scene' => $params['sign_scene'] ?? 'INDUSTRY|DEFAULT_SCENE',
+            'external_agreement_no' => $params['customer_id'],
+            'access_params' => ['channel' => $params['channel'] ?? 'ALIPAYAPP'],
+            'period_rule_params' => $periodRuleParams,
+        ];
+
+        if (isset($params['notify_url'])) {
+            $bizContent['sign_notify_url'] = $params['notify_url'];
+        }
+
+        $requestParams = $this->buildRequestParams('alipay.user.agreement.page.sign', $bizContent);
+
+        if (isset($params['return_url'])) {
+            $requestParams['return_url'] = $params['return_url'];
+            $requestParams['sign'] = Signer::rsa2($requestParams, $this->getConfig('private_key'));
+        }
+
+        return [
+            'method' => 'GET',
+            'url' => $this->getBaseUrl() . '?' . http_build_query($requestParams),
+            'external_agreement_no' => $params['customer_id'],
+            'plan_id' => $params['plan_id'],
+        ];
+    }
+
+    /**
+     * 取消订阅（alipay.user.agreement.unsign 解约）
+     *
+     * @param string $subscriptionId 支付宝协议号（agreement_no）；
+     *        以 `ext:` 前缀传入时按商户侧协议号（external_agreement_no）解约
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        $requestParams = $this->buildRequestParams(
+            'alipay.user.agreement.unsign',
+            $this->buildAgreementIdentity($subscriptionId),
+        );
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 支付宝周期扣款无「暂停」端点，调用即报「无此方法」
+     *
+     * 如需延后扣款，请改用 {@see modifyExecutionPlan()}（周期扣款执行计划修改）。
+     *
+     * @param string $subscriptionId 协议号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('alipay', 'pauseSubscription');
+    }
+
+    /**
+     * 支付宝周期扣款无「恢复」端点，调用即报「无此方法」
+     *
+     * @param string $subscriptionId 协议号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('alipay', 'resumeSubscription');
+    }
+
+    /**
+     * 查询订阅详情（alipay.user.agreement.query）
+     *
+     * @param string $subscriptionId 支付宝协议号（agreement_no）；
+     *        以 `ext:` 前缀传入时按商户侧协议号查询
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function getSubscription(string $subscriptionId): array
+    {
+        $requestParams = $this->buildRequestParams(
+            'alipay.user.agreement.query',
+            $this->buildAgreementIdentity($subscriptionId),
+        );
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 协议代扣（alipay.trade.pay，扣款场景 agreement_id）
+     *
+     * 周期扣款签约成功后由商户按周期主动发起扣款；支付宝要求扣款前
+     * 至少提前一天调用 alipay.user.agreement.executionplan.modify 或依据
+     * 签约时的执行计划发送通知，具体以商户签约的行业方案为准。
+     *
+     * @param array<string, mixed> $params 扣款参数
+     *        - out_trade_no: 商户订单号
+     *        - total_amount: 扣款金额（元）
+     *        - subject: 订单标题
+     *        - agreement_no: 支付宝协议号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function payWithAgreement(array $params): array
+    {
+        $this->validateRequired($params, ['out_trade_no', 'total_amount', 'subject', 'agreement_no']);
+
+        $bizContent = [
+            'out_trade_no' => $params['out_trade_no'],
+            'total_amount' => $params['total_amount'],
+            'subject' => $params['subject'],
+            'product_code' => $params['product_code'] ?? 'CYCLE_PAY_AUTH',
+            'agreement_params' => ['agreement_no' => $params['agreement_no']],
+        ];
+
+        if (isset($params['notify_url'])) {
+            $bizContent['notify_url'] = $params['notify_url'];
+        }
+
+        $requestParams = $this->buildRequestParams('alipay.trade.pay', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 修改周期扣款执行计划（alipay.user.agreement.executionplan.modify）
+     *
+     * 用于延后下一次扣款日期，是支付宝对「暂停订阅」最接近的替代能力。
+     *
+     * @param array<string, mixed> $params
+     *        - agreement_no: 支付宝协议号
+     *        - deduct_time: 下次扣款时间（yyyy-MM-dd）
+     *        - memo: 修改原因（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function modifyExecutionPlan(array $params): array
+    {
+        $this->validateRequired($params, ['agreement_no', 'deduct_time']);
+
+        $bizContent = [
+            'agreement_no' => $params['agreement_no'],
+            'deduct_time' => $params['deduct_time'],
+        ];
+
+        if (isset($params['memo'])) {
+            $bizContent['memo'] = $params['memo'];
+        }
+
+        $requestParams = $this->buildRequestParams('alipay.user.agreement.executionplan.modify', $bizContent);
+
+        return $this->post('', $requestParams);
+    }
+
+    /**
+     * 组装支付宝周期扣款规则（period_rule_params）
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    protected function buildPeriodRuleParams(array $params): array
+    {
+        $this->validateRequired($params, ['amount', 'interval']);
+
+        $periodType = strtoupper((string) $params['interval']);
+        if (!in_array($periodType, ['DAY', 'MONTH'], true)) {
+            throw PayException::paramError('支付宝周期扣款的 interval 仅支持 day / month');
+        }
+
+        $rule = [
+            'period_type' => $periodType,
+            'period' => (int) ($params['interval_count'] ?? 1),
+            'execute_time' => $params['execute_time'] ?? date('Y-m-d', strtotime('+1 day')),
+            'single_amount' => (float) $params['amount'],
+        ];
+
+        if (isset($params['total_amount'])) {
+            $rule['total_amount'] = (float) $params['total_amount'];
+        }
+
+        if (isset($params['total_payments'])) {
+            $rule['total_payments'] = (int) $params['total_payments'];
+        }
+
+        return $rule;
+    }
+
+    /**
+     * 解析协议标识：默认按支付宝协议号，`ext:` 前缀表示商户侧协议号
+     *
+     * @return array<string, string>
+     */
+    protected function buildAgreementIdentity(string $subscriptionId): array
+    {
+        if (str_starts_with($subscriptionId, 'ext:')) {
+            return [
+                'personal_product_code' => 'CYCLE_PAY_AUTH_P',
+                'sign_scene' => 'INDUSTRY|DEFAULT_SCENE',
+                'external_agreement_no' => substr($subscriptionId, 4),
+            ];
+        }
+
+        return ['agreement_no' => $subscriptionId];
     }
 }

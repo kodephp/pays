@@ -244,6 +244,48 @@ $result = $gateway->queryRefund('PSP_882211');
 $gateway->cancelRefund('R_20260809000001');
 ```
 
+## 订阅能力（Recurring 令牌化代扣）
+
+Adyen 无服务端「订阅计划」实体，周期扣款由「令牌化支付方式
+（`recurringDetailReference`）+ 商户侧调度」组成。`AdyenGateway` 实现
+`SubscriptionCapableInterface` 做语义映射，金额单位为「最小货币单位」。
+
+| 方法 | Adyen 接口 | 说明 |
+|------|-----------|------|
+| `createPlan(array)` | 无 | 抛「无此方法」，金额与周期由商户每期自行决定 |
+| `createSubscription(array)` | `POST checkout/v70/payments` | 首期支付并令牌化（`recurringProcessingModel=Subscription`、`storePaymentMethod=true`） |
+| `cancelSubscription(string)` | `POST pal/servlet/Recurring/v68/disable` | 禁用令牌 |
+| `pauseSubscription(string)` | 无 | 抛「无此方法」，停扣只需不再发起扣款 |
+| `resumeSubscription(string)` | 无 | 抛「无此方法」 |
+| `getSubscription(string)` | `POST pal/servlet/Recurring/v68/listRecurringDetails` | 列出购物者的令牌 |
+| `chargeRecurring(array)` | `POST checkout/v70/payments` | 后续期次扣款（ContAuth 场景） |
+
+标识约定：`cancelSubscription()` 传 `shopper:{shopperReference}` 时禁用该购物者的
+全部令牌，否则按单个 `recurringDetailReference` 禁用；`getSubscription()` 传
+`token:` 前缀时改用配置的 `shopper_reference` 反查。
+
+```php
+use Kode\Pays\Facade\Pay;
+
+// 首期支付并存卡
+$first = Pay::call('adyen', 'createSubscription', [[
+    'customer_id' => 'SHOPPER_123',
+    'plan_id' => 'PRO_MONTHLY',
+    'amount' => 2999,
+    'currency' => 'EUR',
+    'return_url' => 'https://example.com/return',
+]]);
+
+// 后续期次扣款
+Pay::call('adyen', 'chargeRecurring', [[
+    'reference' => 'SUB_202608',
+    'amount' => 2999,
+    'currency' => 'EUR',
+    'customer_id' => 'SHOPPER_123',
+    'token' => '8415***',
+]]);
+```
+
 ## 异步通知处理
 
 ```php

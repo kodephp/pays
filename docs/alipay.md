@@ -112,6 +112,58 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+## 周期扣款（订阅能力）
+
+支付宝周期扣款经 `SubscriptionCapableInterface` 统一暴露，全部请求走 RSA2 签名
+（`buildRequestParams`）。金额单位为「元」，仅支持 CNY。
+
+| 方法 | 支付宝接口 | 说明 |
+|------|-----------|------|
+| `createPlan(array)` | 无（本地组装） | 支付宝无服务端计划实体，本方法只组装并校验 `period_rule_params` |
+| `createSubscription(array)` | `alipay.user.agreement.page.sign` | 返回签约跳转链接（`method` / `url`） |
+| `cancelSubscription(string)` | `alipay.user.agreement.unsign` | 解约 |
+| `pauseSubscription(string)` | 无 | 抛「无此方法」，改用 `modifyExecutionPlan()` 延后扣款 |
+| `resumeSubscription(string)` | 无 | 抛「无此方法」 |
+| `getSubscription(string)` | `alipay.user.agreement.query` | 查询协议 |
+| `payWithAgreement(array)` | `alipay.trade.pay` | 按协议号发起代扣 |
+| `modifyExecutionPlan(array)` | `alipay.user.agreement.executionplan.modify` | 修改下次扣款日 |
+
+协议标识：`cancelSubscription()` / `getSubscription()` 默认按支付宝协议号
+（`agreement_no`）；传 `ext:` 前缀（如 `ext:SUB_20260810`）时按商户侧协议号
+（`external_agreement_no`）定位。
+
+```php
+use Kode\Pays\Facade\Pay;
+
+// 1. 组装周期规则（本地，不发请求）
+$plan = Pay::call('alipay', 'createPlan', [[
+    'name' => '会员月卡',
+    'amount' => 29.90,      // 元
+    'currency' => 'CNY',
+    'interval' => 'month',  // 仅支持 day / month
+    'interval_count' => 1,
+    'total_payments' => 12,
+]]);
+
+// 2. 生成签约跳转链接
+$sign = Pay::call('alipay', 'createSubscription', [[
+    'customer_id' => 'SUB_20260810',   // external_agreement_no
+    'plan_id' => $plan['plan_id'],
+    'period_rule_params' => $plan['period_rule_params'],
+    'notify_url' => 'https://example.com/notify/alipay-sign',
+]]);
+// $sign['url'] 引导用户跳转完成签约
+
+// 3. 签约成功后按周期发起代扣
+Pay::call('alipay', 'payWithAgreement', [[
+    'out_trade_no' => 'CYCLE_202608',
+    'total_amount' => '29.90',
+    'subject' => '会员月卡续费',
+    'agreement_no' => '20260810...',
+    'notify_url' => 'https://example.com/notify/alipay-pay',
+]]);
+```
+
 ## 完整使用示例
 
 ### 查询订单

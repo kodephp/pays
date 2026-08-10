@@ -10,6 +10,7 @@ use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -22,7 +23,15 @@ use Kode\Pays\Support\WechatBillParser;
  *
  * 支持 JSAPI、Native、H5、App、小程序等支付场景
  */
-class WechatPayGateway extends AbstractGateway implements TransferCapableInterface, RedPacketCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
+class WechatPayGateway extends AbstractGateway implements
+    TransferCapableInterface,
+    RedPacketCapableInterface,
+    PersonalReceiveCapableInterface,
+    ReconciliationCapableInterface,
+    RefundCapableInterface,
+    ProfitSharingCapableInterface,
+    SettlementCapableInterface,
+    SubscriptionCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -1025,5 +1034,224 @@ class WechatPayGateway extends AbstractGateway implements TransferCapableInterfa
     public function querySettlement(string $outBizNo): array
     {
         return $this->queryTransfer($outBizNo);
+    }
+
+    /* ==================== 订阅能力（SubscriptionCapableInterface，委托代扣 papay） ==================== */
+
+    /**
+     * 微信「委托代扣」模板（plan_id）只能在商户平台后台配置，无开放接口，
+     * 调用即报「无此方法」
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createPlan(array $params): array
+    {
+        throw PayException::methodNotSupported('wechat', 'createPlan');
+    }
+
+    /**
+     * 创建订阅（papay/entrustweb 公众号纯签约）
+     *
+     * 微信委托代扣需用户在微信内完成签约授权，故本方法返回可跳转的签约链接，
+     * 而非同步的订阅实体；签约结果由 notify_url 异步回调，或用
+     * {@see getSubscription()} 以委托代扣协议号查询。
+     *
+     * 签名参与字节与实际发送的查询串一致（MD5 + api_key）。
+     *
+     * @param array<string, mixed> $params 订阅参数
+     *        - customer_id: 商户侧签约协议号（映射 contract_code，用户维度唯一）
+     *        - plan_id: 商户平台配置的模板 ID
+     *        - contract_display_account: 用户账户展示名（可选，默认取 customer_id）
+     *        - notify_url: 签约结果回调地址
+     *        - request_serial: 请求序列号（可选，默认取当前时间戳）
+     *        - return_web / return_app_id: 签约完成跳转参数（可选）
+     * @return array<string, mixed> 含 method / url 的跳转描述
+     * @throws PayException
+     */
+    #[\Override]
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['customer_id', 'plan_id', 'notify_url']);
+
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'plan_id' => $params['plan_id'],
+            'contract_code' => $params['customer_id'],
+            'request_serial' => (string) ($params['request_serial'] ?? time()),
+            'contract_display_account' => $params['contract_display_account'] ?? $params['customer_id'],
+            'notify_url' => $params['notify_url'],
+            'version' => '1.0',
+            'timestamp' => (string) time(),
+        ];
+
+        if (isset($params['return_web'])) {
+            $requestData['return_web'] = $params['return_web'];
+        }
+
+        if (isset($params['return_app_id'])) {
+            $requestData['return_appid'] = $params['return_app_id'];
+        }
+
+        $requestData['sign'] = Signer::md5($requestData, (string) $this->getConfig('api_key'));
+
+        return [
+            'method' => 'GET',
+            'url' => $this->getBaseUrl() . 'papay/entrustweb?' . http_build_query($requestData),
+            'contract_code' => $params['customer_id'],
+            'plan_id' => $params['plan_id'],
+        ];
+    }
+
+    /**
+     * 取消订阅（papay/deletecontract 申请解约）
+     *
+     * @param string $subscriptionId 委托代扣协议号（contract_id）；
+     *        以 `plan:{plan_id}:{contract_code}` 形式传入时按模板 + 商户协议号解约
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        $requestData = array_merge([
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'version' => '1.0',
+        ], $this->buildContractIdentity($subscriptionId), [
+            'contract_termination_remark' => '用户申请解约',
+        ]);
+
+        return $this->signedV2Post('papay/deletecontract', $requestData);
+    }
+
+    /**
+     * 微信委托代扣无「暂停」端点，调用即报「无此方法」
+     *
+     * 委托代扣由商户按需发起 {@see payWithContract()} 扣款，
+     * 停止扣款只需不再发起请求，或直接解约。
+     *
+     * @param string $subscriptionId 协议号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('wechat', 'pauseSubscription');
+    }
+
+    /**
+     * 微信委托代扣无「恢复」端点，调用即报「无此方法」
+     *
+     * @param string $subscriptionId 协议号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('wechat', 'resumeSubscription');
+    }
+
+    /**
+     * 查询订阅详情（papay/querycontract 查询签约关系）
+     *
+     * @param string $subscriptionId 委托代扣协议号（contract_id）；
+     *        以 `plan:{plan_id}:{contract_code}` 形式传入时按模板 + 商户协议号查询
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function getSubscription(string $subscriptionId): array
+    {
+        $requestData = array_merge([
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'version' => '1.0',
+        ], $this->buildContractIdentity($subscriptionId));
+
+        return $this->signedV2Post('papay/querycontract', $requestData);
+    }
+
+    /**
+     * 委托代扣申请扣款（pay/pappayapply）
+     *
+     * 签约成功后由商户按周期主动发起扣款，微信侧异步返回扣款结果，
+     * 可用 {@see queryContractOrder()} 查询最终状态。
+     *
+     * @param array<string, mixed> $params 扣款参数
+     *        - out_trade_no: 商户订单号
+     *        - total_fee: 扣款金额（分）
+     *        - body: 商品描述
+     *        - contract_id: 委托代扣协议号
+     *        - notify_url: 扣款结果回调地址
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function payWithContract(array $params): array
+    {
+        $this->validateRequired($params, ['out_trade_no', 'total_fee', 'body', 'contract_id', 'notify_url']);
+
+        $requestData = [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'body' => $params['body'],
+            'out_trade_no' => $params['out_trade_no'],
+            'total_fee' => (int) $params['total_fee'],
+            'spbill_create_ip' => $params['client_ip'] ?? '127.0.0.1',
+            'notify_url' => $params['notify_url'],
+            'trade_type' => 'PAP',
+            'contract_id' => $params['contract_id'],
+        ];
+
+        return $this->signedV2Post('pay/pappayapply', $requestData);
+    }
+
+    /**
+     * 查询委托代扣订单（pay/paporderquery）
+     *
+     * @param string $outTradeNo 商户订单号
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function queryContractOrder(string $outTradeNo): array
+    {
+        return $this->signedV2Post('pay/paporderquery', [
+            'appid' => $this->getConfig('app_id'),
+            'mch_id' => $this->getConfig('mch_id'),
+            'nonce_str' => $this->generateNonceStr(),
+            'out_trade_no' => $outTradeNo,
+        ]);
+    }
+
+    /**
+     * 解析签约关系标识
+     *
+     * 默认按微信委托代扣协议号（contract_id）；传入 `plan:{plan_id}:{contract_code}`
+     * 时按「模板 ID + 商户协议号」定位，对应微信文档的二选一入参。
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    protected function buildContractIdentity(string $subscriptionId): array
+    {
+        if (!str_starts_with($subscriptionId, 'plan:')) {
+            return ['contract_id' => $subscriptionId];
+        }
+
+        $segments = explode(':', $subscriptionId, 3);
+        if (count($segments) !== 3 || $segments[1] === '' || $segments[2] === '') {
+            throw PayException::paramError('委托代扣标识格式应为 plan:{plan_id}:{contract_code}');
+        }
+
+        return [
+            'plan_id' => $segments[1],
+            'contract_code' => $segments[2],
+        ];
     }
 }

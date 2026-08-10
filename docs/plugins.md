@@ -10,7 +10,7 @@ Kode Pays 提供丰富的插件体系，覆盖支付业务的完整生命周期�
 | 转账插件 | `TransferPlugin` | 微信、支付宝、Stripe | 单笔转账、批量转账、查询转账、电子回单 |
 | 退款插件 | `RefundPlugin` | 微信、微信 V3、支付宝、Stripe、PayPal、Adyen、Revolut | 申请退款、查询退款、取消退款 |
 | 红包插件 | `RedPacketPlugin` | 微信、支付宝 | 普通红包、裂变红包、查询红包 |
-| 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal | 订阅计划、订阅管理、暂停/恢复/取消 |
+| 订阅插件 | `SubscriptionPlugin` | Stripe、PayPal、Square、支付宝、微信 V2、Adyen | 订阅计划、订阅管理、暂停/恢复/取消 |
 | 对账插件 | `ReconciliationPlugin` | 微信、支付宝、Stripe | 下载对账单、解析对账单、差异比对（网关原生方法 + 插件校验转发） |
 | 个人收款插件 | `PersonalReceivePlugin` | 微信、微信 V3、支付宝、Stripe | 收款码、查询记录、提现到银行卡 |
 | 自动结算插件 | `AutoSettlementPlugin` | 微信、微信 V3、支付宝、Stripe、PayPal | 支付后自动提现到钱包（网关原生方法 + 插件编排转发） |
@@ -342,13 +342,19 @@ Pay::redPacketQuery('wechat', 'REDPACK_20240425000001');
 
 ## 订阅插件 (SubscriptionPlugin)
 
-支持 Stripe、PayPal 的订阅与周期扣款能力。订阅逻辑已下沉到各网关原生方法，插件只做「参数校验
-+ 类型安全转发」（架构说明见 [订阅能力设计](subscription.md)）。
+支持 Stripe、PayPal、Square、支付宝、微信支付 V2、Adyen 的订阅与周期扣款能力。订阅逻辑已下沉到
+各网关原生方法，插件只做「参数校验 + 类型安全转发」（架构说明见 [订阅能力设计](subscription.md)）。
 
 ### 配置
 
-Stripe 需 `secret_key`；PayPal 需 `client_id` / `client_secret`。两网关在 `GatewayManifest`
-中声明 `CAP_SUBSCRIPTION => true`。
+Stripe 需 `secret_key`；PayPal 需 `client_id` / `client_secret`；Square 需 `access_token`
+与 `location_id`；支付宝需 `app_id` / `private_key`；微信支付需 `app_id` / `mch_id` / `api_key`
+及商户平台配置的委托代扣模板；Adyen 需 `api_key` / `merchant_account`。以上网关均在
+`GatewayManifest` 中声明 `CAP_SUBSCRIPTION => true`。
+
+> 支付宝 / 微信 V2 / Adyen 无「暂停 / 恢复」端点，调用即抛「无此方法」；
+> 支付宝与微信的 `createSubscription` 返回**签约跳转链接**而非订阅实体，
+> 签约结果由异步回调通知。各平台差异与原生扩展方法见 [订阅能力设计](subscription.md)。
 
 ### 使用示例（插件）
 
@@ -437,7 +443,10 @@ Pay::subscriptionGet('paypal', 'sub_xxx');
 - 平台未实现 `SubscriptionCapableInterface`（或不支持某方法）时，插件 / 统一入口统一抛「无此方法」
 - Stripe 订阅扣款失败会自动重试；PayPal 按订阅计划配置的重试策略执行
 - 取消订阅前请确认是否有未结算账单
-- 金额单位：Stripe / PayPal 订阅金额统一以「分」传入（`amount`），网关内部换算为最小货币单位字符串
+- 金额单位：Stripe / PayPal / Square / Adyen 以「分」传入（`amount`）；
+  **支付宝周期扣款以「元」传入**；微信委托代扣 `total_fee` 以「分」传入
+- 国内平台签约后需商户主动发起扣款：支付宝 `payWithAgreement()`、微信 `payWithContract()`；
+  Adyen 后续期次用 `chargeRecurring()`
 
 ## 对账插件 (ReconciliationPlugin)
 

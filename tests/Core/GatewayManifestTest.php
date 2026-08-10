@@ -66,8 +66,14 @@ class GatewayManifestTest extends TestCase
     {
         $this->assertTrue(GatewayManifest::supports('wechat', GatewayManifest::CAP_PROFIT_SHARING));
         $this->assertTrue(GatewayManifest::supports('wechat', GatewayManifest::CAP_CREATE_ORDER));
-        $this->assertFalse(GatewayManifest::supports('wechat', GatewayManifest::CAP_SUBSCRIPTION));
+        // 增值能力默认关闭：快手未声明订阅
+        $this->assertFalse(GatewayManifest::supports('kuaishou', GatewayManifest::CAP_SUBSCRIPTION));
 
+        // 委托代扣 / 周期扣款：微信 V2、支付宝、Square、Adyen 均已支持
+        $this->assertTrue(GatewayManifest::supports('wechat', GatewayManifest::CAP_SUBSCRIPTION));
+        $this->assertTrue(GatewayManifest::supports('alipay', GatewayManifest::CAP_SUBSCRIPTION));
+        $this->assertTrue(GatewayManifest::supports('square', GatewayManifest::CAP_SUBSCRIPTION));
+        $this->assertTrue(GatewayManifest::supports('adyen', GatewayManifest::CAP_SUBSCRIPTION));
         $this->assertTrue(GatewayManifest::supports('stripe', GatewayManifest::CAP_SUBSCRIPTION));
         $this->assertTrue(GatewayManifest::supports('alipay', GatewayManifest::CAP_TRANSFER));
 

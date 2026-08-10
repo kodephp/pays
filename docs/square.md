@@ -138,6 +138,42 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+## 订阅能力（Subscriptions）
+
+`SquareGateway` 实现 `SubscriptionCapableInterface`，全部端点走 REST +
+Bearer Token（无签名），金额单位为「最小货币单位（分）」。
+
+| 方法 | Square 接口 | 说明 |
+|------|------------|------|
+| `createPlan(array)` | `POST v2/catalog/object` | 创建 `SUBSCRIPTION_PLAN` 及其变体（含 cadence 与定价） |
+| `createSubscription(array)` | `POST v2/subscriptions` | 需 `customer_id` + `plan_id`（变体 ID），`location_id` 缺省取配置 |
+| `cancelSubscription(string)` | `POST v2/subscriptions/{id}/cancel` | 当前计费周期结束时生效 |
+| `pauseSubscription(string)` | `POST v2/subscriptions/{id}/pause` | 原生支持 |
+| `resumeSubscription(string)` | `POST v2/subscriptions/{id}/resume` | 原生支持 |
+| `getSubscription(string)` | `GET v2/subscriptions/{id}` | 查询订阅 |
+
+周期映射：`interval` + `interval_count` 会映射为 Square 的 `cadence` 枚举
+（如 `month`+1 → `MONTHLY`、`month`+3 → `QUARTERLY`、`week`+2 → `EVERY_TWO_WEEKS`），
+不被支持的组合会抛参数异常。
+
+```php
+use Kode\Pays\Facade\Pay;
+
+$plan = Pay::call('square', 'createPlan', [[
+    'name' => 'Pro Monthly',
+    'amount' => 2999,       // 分
+    'currency' => 'USD',
+    'interval' => 'month',
+    'interval_count' => 1,
+]]);
+
+Pay::call('square', 'createSubscription', [[
+    'customer_id' => 'CUST_123',
+    'plan_id' => 'PLAN_VARIATION_ID',
+    'location_id' => 'L123456',
+]]);
+```
+
 ## 异步通知处理
 
 Square Webhook 通知需根据 Square 官方签名验证规范处理：

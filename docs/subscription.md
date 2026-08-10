@@ -26,9 +26,27 @@
 |------|-----------|-------------------|--------|-------|--------|-----|
 | Stripe | ✅ Price | ✅ Subscription | ✅ | ✅ | ✅ | ✅ |
 | PayPal | ✅ Product+Plan | ✅ Subscription | ✅ | ✅ | ✅ | ✅ |
+| Square | ✅ Catalog Plan | ✅ Subscriptions | ✅ | ✅ | ✅ | ✅ |
+| 支付宝 | ✅ 本地周期规则 | ✅ 页面签约（返回跳转链接） | ✅ 解约 | ❌ | ❌ | ✅ 协议查询 |
+| 微信支付（V2） | ❌ 后台配置模板 | ✅ entrustweb（返回跳转链接） | ✅ 解约 | ❌ | ❌ | ✅ 签约关系查询 |
+| Adyen | ❌ 无计划实体 | ✅ 令牌化首期支付 | ✅ 禁用令牌 | ❌ | ❌ | ✅ 令牌列表 |
 
-> 能力开关：Stripe / PayPal 在 `GatewayManifest` 中声明 `CAP_SUBSCRIPTION => true`。
-> 调用前可用 `GatewayManifest::supports('stripe', GatewayManifest::CAP_SUBSCRIPTION)` 判断。
+> ❌ 表示平台无对应端点，调用即抛「无此方法」（`ERROR_METHOD_NOT_SUPPORTED`）。
+>
+> 能力开关：以上平台均在 `GatewayManifest` 中声明 `CAP_SUBSCRIPTION => true`。
+> 调用前可用 `GatewayManifest::supports('alipay', GatewayManifest::CAP_SUBSCRIPTION)` 判断。
+
+### 平台原生扩展方法
+
+统一契约之外，各平台还提供订阅闭环所需的原生方法（经 `Pay::call()` 派发）：
+
+| 平台 | 方法 | 说明 |
+|------|------|------|
+| 支付宝 | `payWithAgreement(array)` | 协议代扣（`alipay.trade.pay`，`CYCLE_PAY_AUTH`） |
+| 支付宝 | `modifyExecutionPlan(array)` | 修改周期扣款执行计划（延后扣款日，最接近「暂停」的替代） |
+| 微信支付 | `payWithContract(array)` | 委托代扣申请扣款（`pay/pappayapply`） |
+| 微信支付 | `queryContractOrder(string)` | 查询代扣订单（`pay/paporderquery`） |
+| Adyen | `chargeRecurring(array)` | 后续期次扣款（ContAuth + Subscription） |
 
 ## 统一入口
 
@@ -99,4 +117,24 @@ $plugin->getSubscription('sub_xxx');
 - **PayPal**：`createPlan` 先 `v1/catalogs/products` 建 Product，再 `v1/billing/plans` 建 Plan
   （金额按分，两位小数字符串）；其余操作走 `v1/billing/subscriptions/*`。所有请求经
   `getAccessToken()` 获取 Bearer Token，金额按分（`amount / 100`，两位小数）。
-- **金额单位**：Stripe / PayPal 订阅金额统一以「最小货币单位（分）」传入。
+- **Square**：`createPlan` 一次性提交 `SUBSCRIPTION_PLAN` 及其下的
+  `SUBSCRIPTION_PLAN_VARIATION`（周期由 cadence 枚举描述，`interval + interval_count`
+  会自动映射为 `MONTHLY` / `QUARTERLY` / `ANNUAL` 等，不支持的组合直接报参数错误）；
+  `createSubscription` 的 `plan_id` 需传**变体 ID**，`location_id` 未传时取配置项。
+- **支付宝**：周期扣款无服务端计划实体，`createPlan` 只在本地组装 `period_rule_params`
+  且不发请求；`createSubscription` 返回签约跳转链接（`alipay.user.agreement.page.sign`），
+  签约结果由 `notify_url` 异步回调。协议标识默认按支付宝协议号，传 `ext:{外部协议号}`
+  时按商户侧协议号定位。**金额以「元」为单位**（与其他平台的分不同），且仅支持 CNY、
+  周期仅支持 day / month。签约后需商户按周期主动调 `payWithAgreement()` 扣款。
+- **微信支付（V2）**：委托代扣模板（`plan_id`）只能在商户平台后台配置，故 `createPlan`
+  报「无此方法」；`createSubscription` 返回 `papay/entrustweb` 签约跳转链接（查询串经
+  MD5 签名，签名字节与发送字节一致）。协议标识默认按 `contract_id`，传
+  `plan:{plan_id}:{contract_code}` 时按「模板 + 商户协议号」定位。扣款走
+  `payWithContract()`（异步返回，需用 `queryContractOrder()` 确认最终状态）。
+- **Adyen**：无计划 / 订阅实体，订阅 = 令牌化支付方式 + 商户侧调度。
+  `createSubscription` 以 `shopperInteraction=Ecommerce` +
+  `recurringProcessingModel=Subscription` + `storePaymentMethod=true` 发起首期支付并拿到
+  令牌；后续期次用 `chargeRecurring()`（ContAuth）。取消即禁用令牌，传
+  `shopper:{shopperReference}` 可一次性禁用该购物者全部令牌。
+- **金额单位**：Stripe / PayPal / Square / Adyen 以「最小货币单位（分）」传入；
+  **支付宝周期扣款以「元」传入**；微信委托代扣 `total_fee` 以「分」传入。

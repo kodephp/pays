@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Square;
 
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -11,8 +12,9 @@ use Kode\Pays\Core\PayException;
  * Square 网关
  *
  * 支持 Square Payments API，覆盖美国、加拿大、英国、澳大利亚、日本等国家/地区。
+ * 另通过 Catalog + Subscriptions API 提供完整的订阅能力。
  */
-class SquareGateway extends AbstractGateway
+class SquareGateway extends AbstractGateway implements SubscriptionCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -190,6 +192,187 @@ class SquareGateway extends AbstractGateway
         $headers = $this->buildAuthHeaders();
 
         return $this->post('v2/orders', $requestData, $headers);
+    }
+
+    /* ==================== 订阅能力（SubscriptionCapableInterface） ==================== */
+
+    /**
+     * 创建订阅计划（Catalog SUBSCRIPTION_PLAN_VARIATION）
+     *
+     * Square 的订阅计划是 Catalog 对象：计划本体（SUBSCRIPTION_PLAN）承载名称，
+     * 计费周期与金额由其下的 SUBSCRIPTION_PLAN_VARIATION 描述。本方法一次性
+     * 提交「计划 + 单一变体」，返回 Catalog 写入结果。
+     *
+     * @param array<string, mixed> $params 计划参数
+     *        - name: 计划名称
+     *        - amount: 每期金额（最小货币单位）
+     *        - currency: 货币
+     *        - interval: 周期 day/week/month/year
+     *        - interval_count: 周期数量（可选，默认 1）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createPlan(array $params): array
+    {
+        $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
+
+        $requestData = [
+            'idempotency_key' => $params['idempotency_key'] ?? uniqid('sq_plan_', true),
+            'object' => [
+                'type' => 'SUBSCRIPTION_PLAN',
+                'id' => '#plan',
+                'subscription_plan_data' => [
+                    'name' => $params['name'],
+                    'subscription_plan_variations' => [
+                        [
+                            'type' => 'SUBSCRIPTION_PLAN_VARIATION',
+                            'id' => '#plan_variation',
+                            'subscription_plan_variation_data' => [
+                                'name' => $params['variation_name'] ?? $params['name'],
+                                'phases' => [
+                                    [
+                                        'cadence' => $this->mapCadence(
+                                            (string) $params['interval'],
+                                            (int) ($params['interval_count'] ?? 1),
+                                        ),
+                                        'pricing' => [
+                                            'type' => 'STATIC',
+                                            'price_money' => [
+                                                'amount' => (int) $params['amount'],
+                                                'currency' => strtoupper((string) $params['currency']),
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        return $this->post('v2/catalog/object', $requestData, $this->buildAuthHeaders());
+    }
+
+    /**
+     * 创建订阅（Square Subscriptions API）
+     *
+     * @param array<string, mixed> $params 订阅参数
+     *        - customer_id: Square 客户 ID
+     *        - plan_id: 订阅计划变体 ID（SUBSCRIPTION_PLAN_VARIATION）
+     *        - location_id: 门店 ID（未传时取配置 location_id）
+     *        - card_id / start_date / timezone: 可选
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['customer_id', 'plan_id']);
+
+        $locationId = $params['location_id'] ?? $this->getConfig('location_id');
+        if (!is_string($locationId) || $locationId === '') {
+            throw PayException::paramError('缺少必填参数：location_id');
+        }
+
+        $requestData = [
+            'idempotency_key' => $params['idempotency_key'] ?? uniqid('sq_sub_', true),
+            'location_id' => $locationId,
+            'customer_id' => $params['customer_id'],
+            'plan_variation_id' => $params['plan_id'],
+        ];
+
+        foreach (['card_id' => 'card_id', 'start_date' => 'start_date', 'timezone' => 'timezone'] as $key => $field) {
+            if (isset($params[$key])) {
+                $requestData[$field] = $params[$key];
+            }
+        }
+
+        return $this->post('v2/subscriptions', $requestData, $this->buildAuthHeaders());
+    }
+
+    /**
+     * 取消订阅（当前计费周期结束时生效）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        return $this->post("v2/subscriptions/{$subscriptionId}/cancel", [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 暂停订阅（Square Pause Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        return $this->post("v2/subscriptions/{$subscriptionId}/pause", [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 恢复订阅（Square Resume Subscription）
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        return $this->post("v2/subscriptions/{$subscriptionId}/resume", [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 查询订阅详情
+     *
+     * @param string $subscriptionId 订阅 ID
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function getSubscription(string $subscriptionId): array
+    {
+        return $this->get("v2/subscriptions/{$subscriptionId}", [], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 将统一周期语义映射为 Square cadence 枚举
+     *
+     * @throws PayException 当周期组合不被 Square 支持时
+     */
+    protected function mapCadence(string $interval, int $intervalCount): string
+    {
+        $cadences = [
+            'day' => [1 => 'DAILY'],
+            'week' => [1 => 'WEEKLY', 2 => 'EVERY_TWO_WEEKS'],
+            'month' => [
+                1 => 'MONTHLY',
+                2 => 'EVERY_TWO_MONTHS',
+                3 => 'QUARTERLY',
+                4 => 'EVERY_FOUR_MONTHS',
+                6 => 'EVERY_SIX_MONTHS',
+            ],
+            'year' => [1 => 'ANNUAL', 2 => 'EVERY_TWO_YEARS'],
+        ];
+
+        $cadence = $cadences[strtolower($interval)][$intervalCount] ?? null;
+
+        if ($cadence === null) {
+            throw PayException::paramError(
+                sprintf('Square 不支持的订阅周期：%d %s', $intervalCount, $interval),
+            );
+        }
+
+        return $cadence;
     }
 
     /**

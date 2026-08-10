@@ -530,6 +530,7 @@ class GatewayManifest
                     self::CAP_RECONCILIATION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_SUBSCRIPTION => true,
                 ]),
             ],
             'alipay' => [
@@ -542,6 +543,7 @@ class GatewayManifest
                     self::CAP_RECONCILIATION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_SUBSCRIPTION => true,
                 ]),
             ],
             'wechat_v3' => [
@@ -635,7 +637,7 @@ class GatewayManifest
                 'label' => 'Square',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true, self::CAP_SUBSCRIPTION => true],
             ],
             'adyen' => [
                 'label' => 'Adyen',
@@ -646,6 +648,7 @@ class GatewayManifest
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_SUBSCRIPTION => true,
                 ],
             ],
             'amazon' => [

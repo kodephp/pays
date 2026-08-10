@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\Adyen;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
@@ -21,7 +22,8 @@ class AdyenGateway extends AbstractGateway implements
     TransferCapableInterface,
     ReconciliationCapableInterface,
     RefundCapableInterface,
-    SettlementCapableInterface
+    SettlementCapableInterface,
+    SubscriptionCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -615,6 +617,185 @@ class AdyenGateway extends AbstractGateway implements
     public function querySettlement(string $outBizNo): array
     {
         return $this->queryTransfer($outBizNo);
+    }
+
+    /* ==================== 订阅能力（SubscriptionCapableInterface，Recurring） ==================== */
+
+    /**
+     * Adyen 无服务端「订阅计划」实体，调用即报「无此方法」
+     *
+     * Adyen 的周期扣款由「令牌化支付方式（recurringDetailReference）+ 商户侧调度」
+     * 组成：金额与周期由商户每期发起 {@see chargeRecurring()} 时决定，
+     * 平台不维护计划对象。
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createPlan(array $params): array
+    {
+        throw PayException::methodNotSupported('adyen', 'createPlan');
+    }
+
+    /**
+     * 创建订阅（首期支付并令牌化支付方式）
+     *
+     * 以 shopperInteraction=Ecommerce + recurringProcessingModel=Subscription
+     * 发起首期支付，Adyen 在成功后返回 recurringDetailReference（令牌），
+     * 后续各期用 {@see chargeRecurring()} 扣款。
+     *
+     * @param array<string, mixed> $params 订阅参数
+     *        - customer_id: 购物者标识（映射 shopperReference）
+     *        - plan_id: 商户侧计划标记（映射 reference，用于对账）
+     *        - amount / currency: 首期金额（未传时按 0 元验卡）
+     *        - payment_method: 支付方式对象（可选，缺省走 Sessions 收集）
+     *        - return_url: 3DS 跳转地址（可选）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function createSubscription(array $params): array
+    {
+        $this->validateRequired($params, ['customer_id', 'plan_id']);
+
+        $requestData = [
+            'merchantAccount' => $this->getConfig('merchant_account'),
+            'reference' => $params['plan_id'],
+            'shopperReference' => $params['customer_id'],
+            'shopperInteraction' => 'Ecommerce',
+            'recurringProcessingModel' => 'Subscription',
+            'storePaymentMethod' => true,
+            'amount' => [
+                'value' => (int) ($params['amount'] ?? 0),
+                'currency' => strtoupper((string) ($params['currency'] ?? 'EUR')),
+            ],
+            'returnUrl' => $params['return_url'] ?? '',
+        ];
+
+        if (isset($params['payment_method'])) {
+            $requestData['paymentMethod'] = $params['payment_method'];
+        }
+
+        if (isset($params['shopper_email'])) {
+            $requestData['shopperEmail'] = $params['shopper_email'];
+        }
+
+        return $this->post('checkout/v70/payments', $requestData, $this->buildAuthHeaders());
+    }
+
+    /**
+     * 取消订阅（禁用令牌化支付方式）
+     *
+     * @param string $subscriptionId 令牌标识（recurringDetailReference）；
+     *        以 `shopper:{shopperReference}` 形式传入时禁用该购物者的全部令牌
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function cancelSubscription(string $subscriptionId): array
+    {
+        $requestData = [
+            'merchantAccount' => $this->getConfig('merchant_account'),
+        ];
+
+        if (str_starts_with($subscriptionId, 'shopper:')) {
+            $requestData['shopperReference'] = substr($subscriptionId, 8);
+        } else {
+            $requestData['shopperReference'] = $this->getConfig('shopper_reference', '');
+            $requestData['recurringDetailReference'] = $subscriptionId;
+        }
+
+        return $this->post('pal/servlet/Recurring/v68/disable', $requestData, $this->buildAuthHeaders());
+    }
+
+    /**
+     * Adyen 无「暂停订阅」端点，调用即报「无此方法」
+     *
+     * 周期由商户侧调度，暂停只需不再发起 {@see chargeRecurring()}。
+     *
+     * @param string $subscriptionId 令牌标识
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function pauseSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('adyen', 'pauseSubscription');
+    }
+
+    /**
+     * Adyen 无「恢复订阅」端点，调用即报「无此方法」
+     *
+     * @param string $subscriptionId 令牌标识
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function resumeSubscription(string $subscriptionId): array
+    {
+        throw PayException::methodNotSupported('adyen', 'resumeSubscription');
+    }
+
+    /**
+     * 查询订阅详情（列出购物者的令牌化支付方式）
+     *
+     * @param string $subscriptionId 购物者标识（shopperReference）；
+     *        以 `token:{recurringDetailReference}` 形式传入时按令牌反查所属购物者，
+     *        需配置 shopper_reference
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    #[\Override]
+    public function getSubscription(string $subscriptionId): array
+    {
+        $shopperReference = str_starts_with($subscriptionId, 'token:')
+            ? (string) $this->getConfig('shopper_reference', '')
+            : $subscriptionId;
+
+        if ($shopperReference === '') {
+            throw PayException::paramError('Adyen 查询令牌需配置 shopper_reference');
+        }
+
+        return $this->post('pal/servlet/Recurring/v68/listRecurringDetails', [
+            'merchantAccount' => $this->getConfig('merchant_account'),
+            'shopperReference' => $shopperReference,
+        ], $this->buildAuthHeaders());
+    }
+
+    /**
+     * 使用已令牌化的支付方式发起后续期次扣款
+     *
+     * 对应 Adyen 的 ContAuth 场景：shopperInteraction=ContAuth +
+     * recurringProcessingModel=Subscription。
+     *
+     * @param array<string, mixed> $params
+     *        - reference: 商户订单号
+     *        - amount / currency: 本期扣款金额
+     *        - customer_id: 购物者标识（shopperReference）
+     *        - token: 令牌（recurringDetailReference）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function chargeRecurring(array $params): array
+    {
+        $this->validateRequired($params, ['reference', 'amount', 'currency', 'customer_id', 'token']);
+
+        return $this->post('checkout/v70/payments', [
+            'merchantAccount' => $this->getConfig('merchant_account'),
+            'reference' => $params['reference'],
+            'amount' => [
+                'value' => (int) $params['amount'],
+                'currency' => strtoupper((string) $params['currency']),
+            ],
+            'shopperReference' => $params['customer_id'],
+            'shopperInteraction' => 'ContAuth',
+            'recurringProcessingModel' => 'Subscription',
+            'paymentMethod' => [
+                'type' => $params['payment_method_type'] ?? 'scheme',
+                'storedPaymentMethodId' => $params['token'],
+            ],
+        ], $this->buildAuthHeaders());
     }
 
     /**

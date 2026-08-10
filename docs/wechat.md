@@ -136,6 +136,49 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+## 委托代扣（订阅能力，V2 专有）
+
+微信自动续费（papay 委托代扣）仅 V2 提供，V3 无对应端点。`WechatPayGateway`
+经 `SubscriptionCapableInterface` 统一暴露，请求均走 `signedV2Post`（MD5 + XML），
+金额单位为「分」。
+
+| 方法 | 微信接口 | 说明 |
+|------|---------|------|
+| `createPlan(array)` | 无 | 模板（`plan_id`）只能在商户平台后台配置，抛「无此方法」 |
+| `createSubscription(array)` | `papay/entrustweb` | 返回签约跳转链接（`method` / `url`），签名参与字节与查询串一致 |
+| `cancelSubscription(string)` | `papay/deletecontract` | 申请解约 |
+| `pauseSubscription(string)` | 无 | 抛「无此方法」，停扣只需不再发起扣款 |
+| `resumeSubscription(string)` | 无 | 抛「无此方法」 |
+| `getSubscription(string)` | `papay/querycontract` | 查询签约关系 |
+| `payWithContract(array)` | `pay/pappayapply` | 按协议号申请扣款（`trade_type=PAP`） |
+| `queryContractOrder(string)` | `pay/paporderquery` | 查询代扣订单最终状态 |
+
+协议标识：`cancelSubscription()` / `getSubscription()` 默认按 `contract_id`；
+传 `plan:{plan_id}:{contract_code}` 时按「模板 ID + 商户协议号」定位（对应微信文档二选一入参）。
+
+```php
+use Kode\Pays\Facade\Pay;
+
+// 1. 生成签约跳转链接
+$sign = Pay::call('wechat', 'createSubscription', [[
+    'customer_id' => 'CONTRACT_20260810',  // contract_code
+    'plan_id' => '123456',                 // 商户平台配置的模板 ID
+    'notify_url' => 'https://example.com/notify/wechat-sign',
+]]);
+
+// 2. 查询签约关系（按模板 + 商户协议号）
+Pay::call('wechat', 'getSubscription', ['plan:123456:CONTRACT_20260810']);
+
+// 3. 按周期发起代扣
+Pay::call('wechat', 'payWithContract', [[
+    'out_trade_no' => 'PAP_202608',
+    'total_fee' => 2990,          // 分
+    'body' => '会员月卡续费',
+    'contract_id' => 'Wx1522***',
+    'notify_url' => 'https://example.com/notify/wechat-pay',
+]]);
+```
+
 ## V3 网关扩展能力
 
 `wechat_v3` 网关（`WechatPayV3Gateway`）除基础下单/查询/关单/退款外，还实现了以下能力接口，

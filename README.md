@@ -781,6 +781,38 @@ $plugin->resumeSubscription($subscription['id']);
 $plugin->cancelSubscription($subscription['id']);
 ```
 
+支持 Stripe、PayPal、Square（完整六方法）以及支付宝周期扣款、微信支付 V2 委托代扣、
+Adyen Recurring（受平台端点限制不支持暂停 / 恢复）。国内平台的 `createSubscription`
+返回**签约跳转链接**，签约后需商户按周期主动扣款：
+
+```php
+// 支付宝周期扣款：签约 → 代扣（金额单位为元）
+$alipay = Pay::alipay([...]);
+$sign = Pay::call('alipay', 'createSubscription', [
+    'customer_id' => 'AGREEMENT_001',   // 商户侧协议号
+    'plan_id'     => 'plan_monthly',
+    'amount'      => 19.9,
+    'interval'    => 'month',
+    'notify_url'  => 'https://example.com/sign-notify',
+]);
+// $sign['url'] 引导用户完成签约，回调拿到 agreement_no 后按周期扣款
+Pay::call('alipay', 'payWithAgreement', [
+    'out_trade_no' => 'SUB_202608_001',
+    'total_amount' => 19.9,
+    'subject'      => '月度会员续费',
+    'agreement_no' => '20260810000000000001',
+]);
+
+// 微信委托代扣：模板 ID 需在商户平台后台配置
+Pay::call('wechat', 'createSubscription', [
+    'customer_id' => 'CONTRACT_001',
+    'plan_id'     => '100001',
+    'notify_url'  => 'https://example.com/sign-notify',
+]);
+```
+
+详见 [订阅能力设计](docs/subscription.md)。
+
 ## 转账插件
 
 ```php
@@ -1150,8 +1182,8 @@ try {
 
 | 网关 | 标识 | 支持场景 |
 |------|------|----------|
-| 微信支付 | `wechat` | JSAPI、Native、App、H5、小程序 |
-| 支付宝 | `alipay` | 电脑网站、手机网站、App、小程序、当面付 |
+| 微信支付 | `wechat` | JSAPI、Native、App、H5、小程序、委托代扣（papay） |
+| 支付宝 | `alipay` | 电脑网站、手机网站、App、小程序、当面付、周期扣款 |
 | 云闪付 | `unionpay` | App、H5、小程序、二维码 |
 | 抖音支付 | `douyin` | App、小程序 |
 | 美团支付 | `meituan` | App、外卖、小程序 |
@@ -1161,8 +1193,8 @@ try {
 | 支付宝国际版 | `alipay_global` | 跨境支付、Alipay+ |
 | PayPal | `paypal` | Checkout、订阅 |
 | Stripe | `stripe` | PaymentIntent、Checkout Session、退款 |
-| Square | `square` | 在线支付、订单管理 |
-| Adyen | `adyen` | 全球 200+ 国家、250+ 支付方式 |
+| Square | `square` | 在线支付、订单管理、Subscriptions |
+| Adyen | `adyen` | 全球 200+ 国家、250+ 支付方式、Recurring 代扣 |
 | Amazon Pay | `amazon` | 亚马逊账户支付 |
 | Klarna | `klarna` | 先买后付、分期付款 |
 | Apple Pay | `apple` | iOS App、网页、手表 |

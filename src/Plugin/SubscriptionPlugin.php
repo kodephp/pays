@@ -17,15 +17,16 @@ use Kode\Pays\Plugin\Concerns\InteractsWithGateway;
  * 取消、暂停、恢复、查询订阅。
  *
  * 架构说明（对齐「统一入口」设计）：
- * 各平台的订阅逻辑已下沉到各自的网关类内部，实现 {@see SubscriptionCapableInterface}
- * （Stripe、PayPal 均已实现）。本插件只做「参数校验 + 类型安全转发」，不重复承载
- * 平台组装逻辑，保证单一职责：
+ * 各平台的订阅逻辑已下沉到各自的网关类内部，实现 {@see SubscriptionCapableInterface}。
+ * 本插件只做「参数校验 + 类型安全转发」，不重复承载平台组装逻辑，保证单一职责：
  * - 校验通过后，经 {@see forwardToCapableGateway()} 调用网关原生方法；
  * - 网关未实现 {@see SubscriptionCapableInterface}（或不支持某方法）时，统一抛「无此方法」。
  *
  * 与平台无关的差异对比方法 {@see diff()} 保留在插件内。
  *
- * 支持网关：Stripe、PayPal。
+ * 支持网关：Stripe、PayPal、Square（完整六方法）；
+ * 支付宝（周期扣款）、微信支付 V2（委托代扣 papay）、Adyen（Recurring 令牌）
+ * 受平台端点限制不支持暂停 / 恢复，调用即抛「无此方法」，详见 docs/subscription.md。
  *
  * 使用示例：
  * ```php
