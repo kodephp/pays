@@ -18,6 +18,33 @@ use Kode\Pays\Tests\TestCase;
 class WechatPayGatewayTest extends TestCase
 {
     /**
+     * 测试用 RSA 私钥（PEM），供 V3 签名通道（批量转账等）使用
+     */
+    private static ?string $privateKey = null;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (self::$privateKey !== null) {
+            return;
+        }
+
+        $keyResource = @openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
+
+        if ($keyResource === false) {
+            $this->markTestSkipped('当前环境不支持 openssl_pkey_new 生成密钥对');
+        }
+
+        $privateKeyPem = '';
+        @openssl_pkey_export($keyResource, $privateKeyPem);
+        self::$privateKey = $privateKeyPem;
+    }
+
+    /**
      * 创建网关实例并注入 MockHttpClient
      *
      * @param array<string, string> $responses 预设响应
@@ -450,7 +477,10 @@ class WechatPayGatewayTest extends TestCase
         $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
             . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
 
-        $gateway = $this->createGateway(['v3/transfer/batches' => $xml]);
+        $gateway = $this->createGateway(
+            ['v3/transfer/batches' => $xml],
+            ['serial_no' => 'SERIAL123', 'private_key' => self::$privateKey],
+        );
 
         $gateway->batchTransfer([
             'out_biz_no' => 'B1',
@@ -463,10 +493,56 @@ class WechatPayGatewayTest extends TestCase
         $client = $this->getMockClient($gateway);
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
+        $this->assertSame('POST_RAW', $last['method']);
         $this->assertStringContainsString('v3/transfer/batches', $last['url']);
-        $this->assertSame('B1', $last['data']['out_batch_no'] ?? '');
-        $this->assertSame(300, $last['data']['total_amount'] ?? 0);
-        $this->assertCount(2, $last['data']['transfer_detail_list'] ?? []);
+
+        // 走 V3 通道后须携带 Authorization 证书头
+        $this->assertArrayHasKey('Authorization', $last['headers']);
+        $this->assertStringStartsWith('WECHATPAY2-SHA256-RSA2048', $last['headers']['Authorization']);
+
+        // body 为 JSON，复算字段断言
+        $body = json_decode((string) ($last['data']['body'] ?? ''), true);
+        $this->assertIsArray($body);
+        $this->assertSame('B1', $body['out_batch_no'] ?? '');
+        $this->assertSame(300, $body['total_amount'] ?? 0);
+        $this->assertCount(2, $body['transfer_detail_list'] ?? []);
+    }
+
+    /**
+     * 测试批量转账（服务商模式）：自动注入 sub_mchid / sub_appid 并携带 V3 证书头
+     */
+    public function testBatchTransferServiceProviderInjectsSubFields(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(
+            ['v3/transfer/batches' => $xml],
+            [
+                'serial_no' => 'SERIAL123',
+                'private_key' => self::$privateKey,
+                'sub_mchid' => '1900000000',
+                'sub_appid' => 'wxSubAppid',
+            ],
+        );
+
+        $gateway->batchTransfer([
+            'out_biz_no' => 'B2',
+            'transfer_detail_list' => [
+                ['out_detail_no' => 'D1', 'amount' => 100, 'recipient' => ['account' => 'o1']],
+            ],
+        ]);
+
+        $client = $this->getMockClient($gateway);
+        $last = $client->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertArrayHasKey('Authorization', $last['headers']);
+
+        $body = json_decode((string) ($last['data']['body'] ?? ''), true);
+        $this->assertIsArray($body);
+        $this->assertSame('wxSubAppid', $body['appid'] ?? '');
+        $this->assertSame('1900000000', $body['sub_mchid'] ?? '');
+        $this->assertSame('wxSubAppid', $body['sub_appid'] ?? '');
     }
 
     /**
@@ -477,7 +553,10 @@ class WechatPayGatewayTest extends TestCase
         $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
             . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
 
-        $gateway = $this->createGateway(['v3/transfer/batches/out-batch-no/T1' => $xml]);
+        $gateway = $this->createGateway(
+            ['v3/transfer/batches/out-batch-no/T1' => $xml],
+            ['serial_no' => 'SERIAL123', 'private_key' => self::$privateKey],
+        );
 
         $gateway->queryTransfer('T1');
 
@@ -486,6 +565,8 @@ class WechatPayGatewayTest extends TestCase
         $this->assertNotNull($last);
         $this->assertSame('GET', $last['method']);
         $this->assertStringContainsString('v3/transfer/batches/out-batch-no/T1', $last['url']);
+        $this->assertArrayHasKey('Authorization', $last['headers']);
+        $this->assertStringStartsWith('WECHATPAY2-SHA256-RSA2048', $last['headers']['Authorization']);
     }
 
     /**
@@ -498,6 +579,7 @@ class WechatPayGatewayTest extends TestCase
 
         $gateway = $this->createGateway(
             ['v3/transfer/batches/out-batch-no/T1/details/out-detail-no/T1/electronic-receipt' => $xml],
+            ['serial_no' => 'SERIAL123', 'private_key' => self::$privateKey],
         );
 
         $gateway->transferReceipt('T1');
@@ -506,6 +588,8 @@ class WechatPayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertStringContainsString('electronic-receipt', $last['url']);
+        $this->assertArrayHasKey('Authorization', $last['headers']);
+        $this->assertStringStartsWith('WECHATPAY2-SHA256-RSA2048', $last['headers']['Authorization']);
     }
 
     /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */
@@ -683,7 +767,10 @@ class WechatPayGatewayTest extends TestCase
         $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
             . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
 
-        $gateway = $this->createGateway(['transfer/batches' => $xml]);
+        $gateway = $this->createGateway(
+            ['transfer/batches' => $xml],
+            ['serial_no' => 'SERIAL123', 'private_key' => self::$privateKey],
+        );
 
         $gateway->querySettlement('SETTLE_3');
 

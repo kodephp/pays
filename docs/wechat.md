@@ -258,6 +258,12 @@ $wechat->createProfitSharing([
 | `settleToPayout(array $params)` | 微信无外部账户 Payout 语义，抛「无此方法」 |
 | `querySettlement(string $outBizNo)` | 复用 `GET /v3/transfer/batches/out-batch-no/{out_batch_no}` |
 
+> 注：V2 网关的 `batchTransfer` / `queryTransfer` / `transferReceipt`（以及复用的 `querySettlement`）
+> 底层调用的是微信 **APIv3** 批量转账接口，因此必须配置 V3 证书信息
+> （`serial_no` / `private_key`，与服务商字段 `sub_mchid` / `sub_appid`），
+> SDK 会自动按 APIv3 规范生成 `Authorization` 证书头并注入服务商标识，无需开发者手动处理。
+> 普通商户（未配置 `sub_*`）请求行为不变。
+
 ### 个人收款能力（PersonalReceiveCapableInterface）
 
 | 方法 | 实现 |

@@ -18,6 +18,7 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
 use Kode\Pays\Support\WechatBillParser;
 
+
 /**
  * 微信支付网关
  *
@@ -33,6 +34,8 @@ class WechatPayGateway extends AbstractGateway implements
     SettlementCapableInterface,
     SubscriptionCapableInterface
 {
+    use WechatV3SigningTrait;
+
     /**
      * 沙箱环境基础 URL
      */
@@ -263,8 +266,9 @@ class WechatPayGateway extends AbstractGateway implements
             ];
         }, $list);
 
-        return $this->post('v3/transfer/batches', [
-            'appid' => $this->getConfig('app_id'),
+        // 批量转账到零钱为微信 V3 接口，须以 V3 Authorization 证书头发起（含服务商字段注入）
+        return $this->signedV3Post('v3/transfer/batches', [
+            'appid' => $this->getEffectiveAppId(),
             'out_batch_no' => $params['out_biz_no'],
             'batch_name' => $params['batch_name'] ?? '批量转账',
             'batch_remark' => $params['batch_remark'] ?? '',
@@ -281,7 +285,7 @@ class WechatPayGateway extends AbstractGateway implements
      */
     public function queryTransfer(string $outBizNo): array
     {
-        return $this->get("v3/transfer/batches/out-batch-no/{$outBizNo}");
+        return $this->signedV3Get("v3/transfer/batches/out-batch-no/{$outBizNo}");
     }
 
     /**
@@ -291,7 +295,7 @@ class WechatPayGateway extends AbstractGateway implements
      */
     public function transferReceipt(string $outBizNo): array
     {
-        return $this->get(
+        return $this->signedV3Get(
             "v3/transfer/batches/out-batch-no/{$outBizNo}"
             . "/details/out-detail-no/{$outBizNo}/electronic-receipt",
         );
