@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Wechat;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
@@ -32,7 +33,8 @@ class WechatPayV3Gateway extends AbstractGateway implements
     RefundCapableInterface,
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
-    PersonalReceiveCapableInterface
+    PersonalReceiveCapableInterface,
+    BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -590,6 +592,71 @@ class WechatPayV3Gateway extends AbstractGateway implements
     public function parseBill(string $rawData): array
     {
         return WechatBillParser::parse($rawData);
+    }
+
+    /**
+     * 查询账户实时余额
+     *
+     * APIv3 余额接口：GET /v3/merchant/fund/balance
+     * 服务商模式会自动注入 sub_mchid，无需调用方显式传入。
+     *
+     * @param array<string, mixed> $params 可选：account_type（BASIC/OPERATION/FEES，默认 BASIC）
+     * @return array<string, mixed> 含 available_amount / pending_amount / currency
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $accountType = $params['account_type'] ?? 'BASIC';
+        if (!in_array($accountType, ['BASIC', 'OPERATION', 'FEES'], true)) {
+            throw PayException::paramError('account_type 仅支持 BASIC / OPERATION / FEES');
+        }
+
+        $response = $this->signedGet('merchant/fund/balance', ['account_type' => $accountType]);
+
+        return [
+            'account_type' => $accountType,
+            'available_amount' => (int) ($response['available_amount'] ?? 0),
+            'pending_amount' => (int) ($response['pending_amount'] ?? 0),
+            'currency' => $response['currency'] ?? 'CNY',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额（服务商模式按子商户结算）
+     *
+     * APIv3 日终余额接口：GET /v3/merchant/fund/dayendbalance/{date}
+     * 服务商模式会自动注入 sub_mchid，无需调用方显式传入。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选：account_type（默认 BASIC）
+     * @return array<string, mixed> 含 available_amount / pending_amount / day_end_balance
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            throw PayException::paramError('date 格式必须为 YYYY-MM-DD');
+        }
+
+        $accountType = $params['account_type'] ?? 'BASIC';
+        if (!in_array($accountType, ['BASIC', 'OPERATION', 'FEES'], true)) {
+            throw PayException::paramError('account_type 仅支持 BASIC / OPERATION / FEES');
+        }
+
+        $response = $this->signedGet("merchant/fund/dayendbalance/{$date}", ['account_type' => $accountType]);
+
+        return [
+            'date' => $date,
+            'account_type' => $accountType,
+            'available_amount' => (int) ($response['available_amount'] ?? 0),
+            'pending_amount' => (int) ($response['pending_amount'] ?? 0),
+            'day_end_balance' => (int) ($response['day_end_balance'] ?? 0),
+            'currency' => $response['currency'] ?? 'CNY',
+            'raw' => $response,
+        ];
     }
 
     /* ==================== 分账能力（ProfitSharingCapableInterface） ==================== */

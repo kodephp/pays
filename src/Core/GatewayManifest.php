@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Core;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\ConfigInterface;
 use Kode\Pays\Contract\CryptoCapableInterface;
 use Kode\Pays\Contract\GatewayInterface;
@@ -143,6 +144,11 @@ class GatewayManifest
     public const CAP_RECONCILIATION = 'reconciliation';
 
     /**
+     * 能力：余额查询（实时余额 / 日终余额）
+     */
+    public const CAP_BALANCE = 'balance';
+
+    /**
      * 能力：二维码支付
      */
     public const CAP_QR = 'qr';
@@ -186,6 +192,7 @@ class GatewayManifest
         self::CAP_PROFIT_SHARING => ProfitSharingCapableInterface::class,
         self::CAP_SUBSCRIPTION => SubscriptionCapableInterface::class,
         self::CAP_RECONCILIATION => ReconciliationCapableInterface::class,
+        self::CAP_BALANCE => BalanceCapableInterface::class,
         self::CAP_RED_PACKET => RedPacketCapableInterface::class,
         self::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
         self::CAP_SETTLEMENT => SettlementCapableInterface::class,
@@ -560,6 +567,7 @@ class GatewayManifest
                     self::CAP_VERIFY_NOTIFY => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_BALANCE => true,
                     self::CAP_PROFIT_SHARING => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_PERSONAL_RECEIVE => true,

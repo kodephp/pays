@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Gateway;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\PayException;
@@ -599,6 +600,109 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 实时余额：GET /v3/merchant/fund/balance，带 account_type 与鉴权头。
+     */
+    public function testQueryBalanceHitsV3Endpoint(): void
+    {
+        $gateway = $this->createGateway([
+            'merchant/fund/balance' => json_encode([
+                'available_amount' => 8800,
+                'pending_amount' => 1200,
+                'currency' => 'CNY',
+            ]),
+        ]);
+
+        $result = $gateway->queryBalance(['account_type' => 'OPERATION']);
+
+        $this->assertSame(8800, $result['available_amount']);
+        $this->assertSame(1200, $result['pending_amount']);
+        $this->assertSame('CNY', $result['currency']);
+        $this->assertSame('OPERATION', $result['account_type']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertStringContainsString('merchant/fund/balance', $history[0]['url']);
+        $this->assertSame('OPERATION', $history[0]['data']['account_type'] ?? null);
+        $this->assertArrayHasKey('Authorization', $history[0]['headers']);
+    }
+
+    /**
+     * 默认账户类型为 BASIC。
+     */
+    public function testQueryBalanceDefaultsToBasic(): void
+    {
+        $gateway = $this->createGateway([
+            'merchant/fund/balance' => json_encode(['available_amount' => 0, 'pending_amount' => 0]),
+        ]);
+
+        $gateway->queryBalance();
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertSame('BASIC', $history[0]['data']['account_type'] ?? null);
+    }
+
+    /**
+     * 非法 account_type 抛参数错误。
+     */
+    public function testQueryBalanceRejectsInvalidAccountType(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $gateway->queryBalance(['account_type' => 'NOPE']);
+    }
+
+    /**
+     * 日终余额：GET /v3/merchant/fund/dayendbalance/{date}。
+     */
+    public function testQueryDayEndBalanceHitsV3Endpoint(): void
+    {
+        $gateway = $this->createGateway([
+            'merchant/fund/dayendbalance/2026-08-01' => json_encode([
+                'available_amount' => 5000,
+                'pending_amount' => 0,
+                'day_end_balance' => 5000,
+                'currency' => 'CNY',
+            ]),
+        ]);
+
+        $result = $gateway->queryDayEndBalance('2026-08-01');
+
+        $this->assertSame('2026-08-01', $result['date']);
+        $this->assertSame(5000, $result['day_end_balance']);
+        $this->assertSame(5000, $result['available_amount']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertStringContainsString('merchant/fund/dayendbalance/2026-08-01', $history[0]['url']);
+        $this->assertArrayHasKey('Authorization', $history[0]['headers']);
+    }
+
+    /**
+     * 服务商模式：余额查询自动注入 sub_mchid。
+     */
+    public function testQueryBalanceInjectsSubMchidInServiceProviderMode(): void
+    {
+        $gateway = $this->createGateway([
+            'merchant/fund/balance' => json_encode(['available_amount' => 0, 'pending_amount' => 0]),
+        ], ['sub_mchid' => 'SUB_MCH_001', 'sub_appid' => 'SUB_APP_001']);
+
+        $gateway->queryBalance();
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertSame('SUB_MCH_001', $history[0]['data']['sub_mchid'] ?? null);
+    }
+
+    /**
+     * 日终余额日期格式非法时抛参数错误。
+     */
+    public function testQueryDayEndBalanceRejectsInvalidDate(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $gateway->queryDayEndBalance('20260801');
+    }
+
+    /**
      * 网关声明的能力接口与实现一致
      */
     public function testImplementsDeclaredCapabilities(): void
@@ -607,6 +711,7 @@ class WechatPayV3GatewayTest extends TestCase
 
         $this->assertInstanceOf(TransferCapableInterface::class, $gateway);
         $this->assertInstanceOf(ReconciliationCapableInterface::class, $gateway);
+        $this->assertInstanceOf(BalanceCapableInterface::class, $gateway);
         $this->assertSame('wechat_v3', WechatPayV3Gateway::getName());
     }
 

@@ -35,6 +35,23 @@
 > 能力开关：微信 / 微信 V3 / 支付宝 / Stripe / 美团 / 京东 / Adyen / Revolut 在 `GatewayManifest` 中声明 `CAP_RECONCILIATION => true`。
 > 调用前可用 `GatewayManifest::supports('wechat', GatewayManifest::CAP_RECONCILIATION)` 判断。
 
+## 余额查询（BalanceCapableInterface）
+
+与对账单下载互补，用于账实核对与可用资金监控。目前仅微信支付 V3 提供标准余额接口：
+
+| 平台 | `queryBalance` | `queryDayEndBalance` | 说明 |
+|------|----------------|----------------------|------|
+| 微信支付 V3 | ✅ `GET /v3/merchant/fund/balance` | ✅ `GET /v3/merchant/fund/dayendbalance/{date}` | 实时余额 / 日终余额；服务商模式自动注入 `sub_mchid` |
+
+> 能力开关：微信支付 V3 在 `GatewayManifest` 中声明 `CAP_BALANCE => true`，
+> 可用 `GatewayManifest::supports('wechat_v3', GatewayManifest::CAP_BALANCE)` 判断。
+> `account_type` 仅接受 `BASIC` / `OPERATION` / `FEES`；`queryDayEndBalance` 的 `date` 必须为 `YYYY-MM-DD`。
+
+```php
+$balance = Pay::call('wechat_v3', 'queryBalance', [['account_type' => 'BASIC']]);
+$dayEnd  = Pay::call('wechat_v3', 'queryDayEndBalance', ['2026-08-01', ['account_type' => 'OPERATION']]);
+```
+
 ## 统一入口
 
 ```php

@@ -275,6 +275,27 @@ $wechat->createProfitSharing([
 
 > 现金红包为微信 V2 专有接口，APIv3 无对应端点，`wechat_v3` 不提供红包能力，请使用 V2 网关 `wechat`。
 
+### 余额查询能力（BalanceCapableInterface）
+
+生产对账链路（账实核对、可用资金监控）的关键一环，与对账单下载互补。
+
+| 方法 | 实现 |
+|------|------|
+| `queryBalance(array $params = [])` | `GET /v3/merchant/fund/balance`，按 `account_type`（BASIC/OPERATION/FEES，默认 BASIC）返回实时可用余额 |
+| `queryDayEndBalance(string $date, array $params = [])` | `GET /v3/merchant/fund/dayendbalance/{date}`，按 `date`（YYYY-MM-DD）返回日终余额（服务商模式按子商户结算） |
+
+> 服务商模式下 `sub_mchid` / `sub_appid` 由 SDK 自动注入，无需手动传；`date` 格式不合法或 `account_type` 非法会抛 `PayException`。
+
+```php
+// 实时余额
+$balance = $gateway->queryBalance(['account_type' => 'BASIC']);
+// => ['available_amount' => 8800, 'pending_amount' => 0, 'currency' => 'CNY', 'raw' => [...]]
+
+// 日终余额
+$dayEnd = $gateway->queryDayEndBalance('2026-08-01', ['account_type' => 'OPERATION']);
+// => ['date' => '2026-08-01', 'day_end_balance' => 5000, 'available_amount' => 5000, ...]
+```
+
 ## 完整使用示例
 
 ### 查询订单
