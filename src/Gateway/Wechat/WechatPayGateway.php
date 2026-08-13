@@ -77,17 +77,54 @@ class WechatPayGateway extends AbstractGateway implements
             throw PayException::paramError('JSAPI 支付必须提供 openid');
         }
 
-        // 服务商模式字段（sub_appid / sub_mch_id 等）与 H5 的 scene_info
-        // 均由调用方在 $params 中传入，此处整体透传至统一下单接口。
+        // 服务商模式字段（sub_appid / sub_mch_id）由配置驱动，
+        // 经 signedV2Post 自动并入请求（见 applyServiceProviderFields）。
         $params['appid'] = $this->getConfig('app_id');
         $params['mch_id'] = $this->getConfig('mch_id');
         $params['nonce_str'] = $this->generateNonceStr();
-        $params['sign'] = Signer::md5($params, $this->getConfig('api_key'));
 
-        $xml = $this->arrayToXml($params);
-        $response = $this->postRaw('pay/unifiedorder', $xml, ['Content-Type' => 'text/xml']);
+        return $this->signedV2Post('pay/unifiedorder', $params);
+    }
 
-        return $response;
+    /**
+     * 生成 JSAPI 调起支付参数（二次签名）
+     *
+     * 统一下单拿到 prepay_id 后，前端需以 `WeixinJSBridge.invoke('getBrandWCPayRequest', ...)`
+     * 调起支付。本方法按微信规范用 api_key 做 MD5 二次签名，返回前端所需全部字段。
+     *
+     * @param string $prepayId 统一下单返回的 prepay_id
+     * @return array<string, string> 含 appId / timeStamp / nonceStr / package / signType / paySign
+     * @throws PayException
+     */
+    public function buildJsApiConfig(string $prepayId): array
+    {
+        $params = [
+            'appId' => $this->getConfig('app_id'),
+            'timeStamp' => (string) time(),
+            'nonceStr' => $this->generateNonceStr(),
+            'package' => 'prepay_id=' . $prepayId,
+            'signType' => 'MD5',
+        ];
+
+        $params['paySign'] = $this->signJsApi($params);
+
+        return $params;
+    }
+
+    /**
+     * JSAPI 二次签名（MD5）
+     *
+     * 签名串为「按 key 升序拼接的 query string」追加 `&key=api_key` 后做 MD5 并转大写。
+     *
+     * @param array<string, string> $params
+     */
+    private function signJsApi(array $params): string
+    {
+        ksort($params);
+
+        $string = urldecode(http_build_query($params)) . '&key=' . $this->getConfig('api_key');
+
+        return strtoupper(md5($string));
     }
 
     /**
@@ -112,12 +149,7 @@ class WechatPayGateway extends AbstractGateway implements
             $params['out_trade_no'] = $orderId;
         }
 
-        $params['sign'] = Signer::md5($params, $this->getConfig('api_key'));
-
-        $xml = $this->arrayToXml($params);
-        $response = $this->postRaw('pay/orderquery', $xml, ['Content-Type' => 'text/xml']);
-
-        return $response;
+        return $this->signedV2Post('pay/orderquery', $params);
     }
 
     /**
@@ -134,12 +166,8 @@ class WechatPayGateway extends AbstractGateway implements
         $params['appid'] = $this->getConfig('app_id');
         $params['mch_id'] = $this->getConfig('mch_id');
         $params['nonce_str'] = $this->generateNonceStr();
-        $params['sign'] = Signer::md5($params, $this->getConfig('api_key'));
 
-        $xml = $this->arrayToXml($params);
-        $response = $this->postRaw('secapi/pay/refund', $xml, ['Content-Type' => 'text/xml']);
-
-        return $response;
+        return $this->signedV2Post('secapi/pay/refund', $params, true);
     }
 
     /**
@@ -173,12 +201,7 @@ class WechatPayGateway extends AbstractGateway implements
             'nonce_str' => $this->generateNonceStr(),
         ];
 
-        $params['sign'] = Signer::md5($params, $this->getConfig('api_key'));
-
-        $xml = $this->arrayToXml($params);
-        $response = $this->postRaw('pay/closeorder', $xml, ['Content-Type' => 'text/xml']);
-
-        return $response;
+        return $this->signedV2Post('pay/closeorder', $params);
     }
 
     /**
@@ -671,6 +694,8 @@ class WechatPayGateway extends AbstractGateway implements
      */
     protected function signedV2Post(string $endpoint, array $data, bool $withCert = false): array
     {
+        $data = $this->applyServiceProviderFields($data);
+
         $data['sign'] = Signer::md5($data, (string) $this->getConfig('api_key'));
 
         $options = [];
@@ -698,6 +723,8 @@ class WechatPayGateway extends AbstractGateway implements
      */
     protected function signedV2Raw(string $endpoint, array $data): string
     {
+        $data = $this->applyServiceProviderFields($data);
+
         $data['sign'] = Signer::md5($data, (string) $this->getConfig('api_key'));
 
         return $this->httpClient->postRaw(
@@ -705,6 +732,30 @@ class WechatPayGateway extends AbstractGateway implements
             $this->arrayToXml($data),
             ['Content-Type' => 'text/xml'],
         );
+    }
+
+    /**
+     * 服务商模式字段注入（V2）
+     *
+     * 当网关配置包含 `sub_mch_id` / `sub_appid` 时并入请求，
+     * 使一个开放平台主体可关联多个公众号 / 小程序 / 子商户。
+     * 仅注入配置中实际存在的字段，且不覆盖调用方已显式传入的同名字段，
+     * 因此普通商户请求（未配置这些字段）行为完全不变。
+     *
+     * @param array<string, mixed> $data 已组装的请求字段
+     * @return array<string, mixed>
+     */
+    private function applyServiceProviderFields(array $data): array
+    {
+        foreach (['sub_mch_id', 'sub_appid'] as $key) {
+            $value = $this->getConfig($key);
+
+            if (is_string($value) && $value !== '' && !array_key_exists($key, $data)) {
+                $data[$key] = $value;
+            }
+        }
+
+        return $data;
     }
 
     /**

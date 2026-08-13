@@ -394,12 +394,22 @@ SDK 只负责：`app_id` 发起统一下单 → 拿 `prepay_id` → 把支付参
 是**控制台配置 + 账号主体一致**事项，**非 SDK 功能**。SDK 要做的是保证账号标识正确传参：
 
 - 普通模式：每个公众号 / 小程序用各自的 `app_id` 初始化一个 Gateway 实例即可；`unionid` 打通由开放平台保证。
-- **服务商模式（一个主体关联多公众号 / 小程序 / 子商户）**：通过 `sp_*` / `sub_*` 字段将交易落到对应关联账号。
-  SDK 已支持透传这些字段（V2 随 `createOrder($params)` 整体转发；V3 在 `createOrder` 显式透传
-  `sp_appid` / `sp_mchid` / `sub_appid` / `sub_mchid`）：
+- **服务商模式（一个主体关联多公众号 / 小程序 / 子商户）**：在 Gateway 配置中设置 `sp_*` / `sub_*` 字段，
+  SDK 会在**下单 / 查询 / 关单 / 退款 / 转账 / 分账等全链路**自动透传，将交易落到对应关联账号。
+  配置方式（仅需设置实际存在的字段，普通商户不配置则完全不影响）：
 
 ```php
-// 服务商模式示例（V3）
+use Kode\Pays\Facade\Pay;
+
+$gateway = Pay::wechat([
+    'app_id'     => 'wxServiceProvider',   // 服务商公众号 appid（即 sp_appid）
+    'mch_id'     => '1900000109',          // 服务商商户号（即 sp_mchid）
+    'sub_mchid'  => '1900000000',          // 子商户号
+    'sub_appid'  => 'wxSubAppid',          // 关联的公众号 / 小程序 appid
+    // ... 其余密钥配置
+]);
+
+// 此后所有接口（下单 / 查询 / 关单 / 退款 / 转账 / 分账）均自动带上 sub_mchid / sub_appid
 $order = $gateway->createOrder([
     'out_trade_no' => 'ORDER_' . time(),
     'description'  => '商品',
@@ -407,18 +417,46 @@ $order = $gateway->createOrder([
     'notify_url'   => 'https://domain.com/notify',
     'trade_type'   => 'jsapi',
     'openid'       => $userOpenid,          // 子商户 / 子公众号下的 openid
-    'sub_mchid'    => '1900000000',         // 子商户号
-    'sub_appid'    => 'wxSubAppid',         // 关联的公众号 / 小程序 appid
 ]);
 ```
 
+> 说明：V2 字段名为 `sub_mch_id` / `sub_appid`；V3 字段名为 `sub_mchid` / `sub_appid`（另支持 `sp_appid` / `sp_mchid`）。
+> 透传仅在配置实际存在时生效，且不会覆盖调用方显式传入的同名字段，普通商户请求行为完全不变。
+
 ### openid 获取（OAuth 网页授权）
 
-JSAPI / 小程序支付必须传入**对应该 `app_id` 的 `openid`**。公众号场景需通过 `snsapi_base` 网页授权获取：
+JSAPI / 小程序支付必须传入**对应该 `app_id` 的 `openid`**。公众号场景需通过 `snsapi_base` 网页授权获取，
+SDK 提供 `WechatOauth` 助手封装「引导授权 → 用 code 换 openid」流程：
 
-1. 引导用户访问 `https://open.weixin.qq.com/connect/oauth2/authorize?appid=APPID&redirect_uri=REDIRECT&response_type=code&scope=snsapi_base&state=STATE#wechat_redirect`；
-2. 回调中用 `code` 换 `openid`（调用 `sns/oauth2/access_token`）；
-3. 将 `openid` 传入 `createOrder`。
+```php
+use Kode\Pays\Gateway\Wechat\WechatOauth;
 
-> 注：当前版本未内置 OAuth 取 `openid` 与 JSAPI 二次签名（`paySign`）helper，需由接入方实现；
-> 后续版本计划补充以降低接入成本。
+$oauth = new WechatOauth(['app_id' => 'wx123', 'app_secret' => 'APP_SECRET']);
+
+// 1) 引导用户访问以下地址（微信回跳 $redirectUri 并携带 code）
+$authUrl = $oauth->buildAuthorizeUrl('https://domain.com/callback', 'snsapi_base', 'STATE');
+
+// 2) 回调中用 code 换取 openid（已绑定开放平台且 scope=snsapi_userinfo 时还会返回 unionid）
+$result = $oauth->getOpenId($_GET['code']);
+$openid = $result['openid'];
+
+// 3) 将 openid 传入 createOrder
+```
+
+> 小程序场景无需 OAuth：由小程序前端 `wx.login` 拿 `code`，后端调 `auth.code2Session` 换 `openid`（微信小程序官方接口）。
+
+### JSAPI 二次签名（前端调起支付）
+
+统一下单拿到 `prepay_id` 后，前端需二次签名才能调起支付。SDK 提供 `buildJsApiConfig()` 直接返回前端所需字段：
+
+```php
+// V2（公众号 JSAPI，MD5 二次签名）
+$config = $gateway->buildJsApiConfig($prepayId);
+// => ['appId','timeStamp','nonceStr','package'=>'prepay_id=xxx','signType'=>'MD5','paySign']
+
+// V3（小程序 / 公众号 JSAPI，RSA 二次签名，用商户私钥签发）
+$config = $gateway->buildJsApiConfig($prepayId);
+// => ['appId','timeStamp','nonceStr','package'=>'prepay_id=xxx','signType'=>'RSA','paySign']
+```
+
+前端据此调用 `WeixinJSBridge.invoke('getBrandWCPayRequest', config)`（V2）或 `wx.requestPayment(config)`（V3 小程序）。

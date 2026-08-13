@@ -233,6 +233,62 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 配置驱动的服务商模式：退款 / 关单全链路自动透传 sub_ 字段
+     */
+    public function testServiceProviderFieldsFromConfig(): void
+    {
+        $gateway = $this->createGateway([
+            'pay/transactions/out-trade-no/O1/close' => '{}',
+            'refund/domestic/refunds' => json_encode(['refund_id' => 'R1']),
+        ], [
+            'sub_mchid' => '1900000000',
+            'sub_appid' => 'wxSubAppid',
+        ]);
+
+        // 关单（POST）：sub_mchid 进入请求体
+        $gateway->closeOrder('O1');
+        $closeLast = $this->getMockClient($gateway)->getLastRequest();
+        $closeDecoded = json_decode($closeLast['data']['body'], true);
+        $this->assertSame('1900000000', $closeDecoded['sub_mchid']);
+
+        // 退款（POST）：sub_mchid / sub_appid 进入请求体
+        $gateway->refund([
+            'out_refund_no' => 'R1',
+            'out_trade_no' => 'O1',
+            'amount' => ['refund' => 100, 'total' => 100],
+        ]);
+        $refundLast = $this->getMockClient($gateway)->getLastRequest();
+        $decoded = json_decode($refundLast['data']['body'], true);
+        $this->assertSame('1900000000', $decoded['sub_mchid']);
+        $this->assertSame('wxSubAppid', $decoded['sub_appid']);
+    }
+
+    /**
+     * JSAPI 二次签名（RSA）：返回前端所需字段，且 paySign 可用商户公钥验签通过
+     */
+    public function testBuildJsApiConfigSignsCorrectly(): void
+    {
+        $gateway = $this->createGateway();
+
+        $config = $gateway->buildJsApiConfig('wx1234567890');
+
+        $this->assertSame('wx123', $config['appId']);
+        $this->assertSame('prepay_id=wx1234567890', $config['package']);
+        $this->assertSame('RSA', $config['signType']);
+        $this->assertNotEmpty($config['paySign']);
+
+        // 用商户公钥复验签名，确保与微信前端调起要求一致
+        $privateKey = openssl_pkey_get_private(self::$privateKey);
+        $publicKey = openssl_pkey_get_details($privateKey)['key'];
+
+        $message = $config['appId'] . "\n" . $config['timeStamp'] . "\n"
+            . $config['nonceStr'] . "\n" . $config['package'] . "\n";
+
+        $verified = openssl_verify($message, base64_decode($config['paySign']), $publicKey, OPENSSL_ALGO_SHA256);
+        $this->assertSame(1, $verified, 'JSAPI paySign 应由商户私钥签发且可用公钥验签');
+    }
+
+    /**
      * GET 请求的查询参数须一并纳入签名串
      */
     public function testQueryOrderIncludesQueryStringInSignature(): void

@@ -128,6 +128,44 @@ class WechatPayV3Gateway extends AbstractGateway implements
     }
 
     /**
+     * 生成 JSAPI 调起支付参数（二次签名）
+     *
+     * 统一下单拿到 prepay_id 后，小程序 / 公众号前端需以 `wx.requestPayment(...)` 调起支付。
+     * 本方法按微信 APIv3 规范用商户私钥做 RSA-SHA256 二次签名，返回前端所需全部字段。
+     *
+     * @param string $prepayId 统一下单返回的 prepay_id
+     * @return array<string, string> 含 appId / timeStamp / nonceStr / package / signType / paySign
+     * @throws PayException
+     */
+    public function buildJsApiConfig(string $prepayId): array
+    {
+        $timeStamp = (string) time();
+        $nonceStr = $this->generateNonceStr();
+        $package = 'prepay_id=' . $prepayId;
+
+        // APIv3 JSAPI 签名串：appId\n timeStamp\n nonceStr\n package\n（末尾换行）
+        $message = $this->getConfig('app_id') . "\n" . $timeStamp . "\n" . $nonceStr . "\n" . $package . "\n";
+        $paySign = Encryptor::rsaSign($message, (string) $this->getConfig('private_key'), 'sha256');
+
+        return [
+            'appId' => $this->getConfig('app_id'),
+            'timeStamp' => $timeStamp,
+            'nonceStr' => $nonceStr,
+            'package' => $package,
+            'signType' => 'RSA',
+            'paySign' => $paySign,
+        ];
+    }
+
+    /**
+     * 生成随机串
+     */
+    protected function generateNonceStr(int $length = 32): string
+    {
+        return substr(str_replace(['+', '/', '='], '', base64_encode(random_bytes(32))), 0, $length);
+    }
+
+    /**
      * 查询订单
      *
      * @param string $orderId 商户订单号
@@ -903,6 +941,8 @@ class WechatPayV3Gateway extends AbstractGateway implements
      */
     protected function signedPost(string $endpoint, array $data): array
     {
+        $data = $this->applyServiceProviderFields($data);
+
         $body = (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $headers = $this->buildV3Headers('POST', $this->canonicalPath($endpoint), $body);
 
@@ -919,9 +959,37 @@ class WechatPayV3Gateway extends AbstractGateway implements
      */
     protected function signedGet(string $endpoint, array $query = []): array
     {
+        $query = $this->applyServiceProviderFields($query);
+
         $headers = $this->buildV3Headers('GET', $this->canonicalPath($endpoint, $query));
 
         return $this->get($endpoint, $query, $headers);
+    }
+
+    /**
+     * 服务商模式字段注入
+     *
+     * 当网关配置包含 `sp_appid` / `sp_mchid` / `sub_appid` / `sub_mchid` 时，
+     * 将其并入请求（下单 / 查询 / 退款 / 转账 / 分账等全链路），
+     * 使一个开放平台主体可关联多个公众号 / 小程序 / 子商户。
+     *
+     * 仅注入配置中实际存在的字段，且不覆盖调用方已显式传入的同名字段，
+     * 因此普通商户请求（未配置这些字段）行为完全不变。
+     *
+     * @param array<string, mixed> $payload 请求体或查询参数
+     * @return array<string, mixed>
+     */
+    private function applyServiceProviderFields(array $payload): array
+    {
+        foreach (['sp_appid', 'sp_mchid', 'sub_appid', 'sub_mchid'] as $key) {
+            $value = $this->getConfig($key);
+
+            if (is_string($value) && $value !== '' && !array_key_exists($key, $payload)) {
+                $payload[$key] = $value;
+            }
+        }
+
+        return $payload;
     }
 
     /**

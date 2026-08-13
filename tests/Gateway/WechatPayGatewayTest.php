@@ -154,6 +154,53 @@ class WechatPayGatewayTest extends TestCase
     }
 
     /**
+     * 配置驱动的服务商模式：退款请求自动透传 sub_mch_id / sub_appid
+     */
+    public function testServiceProviderFieldsFromConfig(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(['secapi/pay/refund' => $xml], [
+            'sub_mch_id' => '1900000000',
+            'sub_appid' => 'wxSubAppid',
+        ]);
+
+        $gateway->refund([
+            'out_refund_no' => 'R1',
+            'total_fee' => 100,
+            'refund_fee' => 100,
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        $this->assertStringContainsString('<sub_mch_id>1900000000</sub_mch_id>', $body);
+        $this->assertStringContainsString('<sub_appid><![CDATA[wxSubAppid]]></sub_appid>', $body);
+    }
+
+    /**
+     * JSAPI 二次签名：返回前端所需字段且 paySign 为正确的 MD5
+     */
+    public function testBuildJsApiConfigSignsCorrectly(): void
+    {
+        $gateway = $this->createGateway();
+
+        $config = $gateway->buildJsApiConfig('wx1234567890');
+
+        $this->assertSame('wx123', $config['appId']);
+        $this->assertSame('prepay_id=wx1234567890', $config['package']);
+        $this->assertSame('MD5', $config['signType']);
+        $this->assertMatchesRegularExpression('/^[0-9A-F]{32}$/', $config['paySign']);
+
+        // 复算签名，确保与 SDK 一致
+        $expected = strtoupper(md5(
+            'appId=wx123&nonceStr=' . $config['nonceStr']
+            . '&package=prepay_id=wx1234567890&signType=MD5&timeStamp=' . $config['timeStamp']
+            . '&key=testkey',
+        ));
+        $this->assertSame($expected, $config['paySign']);
+    }
+
+    /**
      * 测试查询订单：验证请求 URL
      */
     public function testQueryOrder(): void
