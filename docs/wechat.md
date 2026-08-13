@@ -369,3 +369,56 @@ if ($response->isSuccess()) {
     $orderNo = $response->getOutTradeNo();
 }
 ```
+
+## 支付授权目录与开放平台关联
+
+### 支付授权目录（商户平台配置，非 SDK 暴露）
+
+「支付授权目录」是 **微信商户平台**（`pay.weixin.qq.com → 产品中心 → 开发配置`）里的后台配置项，
+指**调起 JSAPI 支付的 H5 网页所在的 URL 目录**。它**不是 SDK 代码需要暴露或生成的目录**，
+而是开发者把前端支付页部署到的已备案目录（精确到最后一级，如 `https://domain.com/pay/`）。
+
+SDK 只负责：`app_id` 发起统一下单 → 拿 `prepay_id` → 把支付参数交给前端页；
+该前端页**必须位于已配置的授权目录下**并调用 `WeixinJSBridge.invoke('getBrandWCPayRequest', …)`。
+
+| 场景 | 是否需要授权目录 | 关键入参 |
+| --- | --- | --- |
+| 公众号 JSAPI | 需要 | `openid`（必填，缺省会直接抛 `paramError`） |
+| H5 支付（MWEB） | 需配置 H5 授权域名 | `scene_info.h5_info.wap_url/wap_name`，浏览器跳转 `mweb_url` 的 `Referer` 须命中授权域名 |
+| 小程序支付 | 不需要 | 用小程序自身 `app_id` |
+| Native 扫码 | 不需要 | `product_id` |
+
+### 微信开放平台关联（公众号 / 小程序共享 unionid）
+
+开放平台绑定（`open.weixin.qq.com` 将多个公众号 / 小程序绑到同一开放平台账号 → 共享 `unionid`）
+是**控制台配置 + 账号主体一致**事项，**非 SDK 功能**。SDK 要做的是保证账号标识正确传参：
+
+- 普通模式：每个公众号 / 小程序用各自的 `app_id` 初始化一个 Gateway 实例即可；`unionid` 打通由开放平台保证。
+- **服务商模式（一个主体关联多公众号 / 小程序 / 子商户）**：通过 `sp_*` / `sub_*` 字段将交易落到对应关联账号。
+  SDK 已支持透传这些字段（V2 随 `createOrder($params)` 整体转发；V3 在 `createOrder` 显式透传
+  `sp_appid` / `sp_mchid` / `sub_appid` / `sub_mchid`）：
+
+```php
+// 服务商模式示例（V3）
+$order = $gateway->createOrder([
+    'out_trade_no' => 'ORDER_' . time(),
+    'description'  => '商品',
+    'amount'       => 1,
+    'notify_url'   => 'https://domain.com/notify',
+    'trade_type'   => 'jsapi',
+    'openid'       => $userOpenid,          // 子商户 / 子公众号下的 openid
+    'sub_mchid'    => '1900000000',         // 子商户号
+    'sub_appid'    => 'wxSubAppid',         // 关联的公众号 / 小程序 appid
+]);
+```
+
+### openid 获取（OAuth 网页授权）
+
+JSAPI / 小程序支付必须传入**对应该 `app_id` 的 `openid`**。公众号场景需通过 `snsapi_base` 网页授权获取：
+
+1. 引导用户访问 `https://open.weixin.qq.com/connect/oauth2/authorize?appid=APPID&redirect_uri=REDIRECT&response_type=code&scope=snsapi_base&state=STATE#wechat_redirect`；
+2. 回调中用 `code` 换 `openid`（调用 `sns/oauth2/access_token`）；
+3. 将 `openid` 传入 `createOrder`。
+
+> 注：当前版本未内置 OAuth 取 `openid` 与 JSAPI 二次签名（`paySign`）helper，需由接入方实现；
+> 后续版本计划补充以降低接入成本。

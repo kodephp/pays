@@ -70,6 +70,15 @@ class WechatPayGateway extends AbstractGateway implements
     {
         $this->validateRequired($params, ['out_trade_no', 'total_fee', 'body', 'trade_type']);
 
+        $tradeType = strtoupper((string) ($params['trade_type'] ?? ''));
+
+        // JSAPI 支付必须提供支付用户的 openid（公众号 / 关联小程序场景）
+        if ($tradeType === 'JSAPI' && empty($params['openid'])) {
+            throw PayException::paramError('JSAPI 支付必须提供 openid');
+        }
+
+        // 服务商模式字段（sub_appid / sub_mch_id 等）与 H5 的 scene_info
+        // 均由调用方在 $params 中传入，此处整体透传至统一下单接口。
         $params['appid'] = $this->getConfig('app_id');
         $params['mch_id'] = $this->getConfig('mch_id');
         $params['nonce_str'] = $this->generateNonceStr();

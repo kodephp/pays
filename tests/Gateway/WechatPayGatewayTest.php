@@ -108,6 +108,52 @@ class WechatPayGatewayTest extends TestCase
     }
 
     /**
+     * JSAPI 支付缺少 openid 时抛出参数错误
+     */
+    public function testJsapiRequiresOpenid(): void
+    {
+        $gateway = $this->createGateway(['pay/unifiedorder' => '<xml/>']);
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/openid/');
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'JSAPI',
+        ]);
+    }
+
+    /**
+     * JSAPI 支付带上 openid 应正常发起下单（服务商字段随参数透传）
+     */
+    public function testJsapiWithOpenidForwardsSubFields(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code>'
+            . '<prepay_id><![CDATA[wx123]]></prepay_id></xml>';
+
+        $gateway = $this->createGateway(['pay/unifiedorder' => $xml]);
+
+        $result = $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'JSAPI',
+            'openid' => 'oABC',
+            'sub_mch_id' => '1900000000',
+            'sub_appid' => 'wxSubAppid',
+        ]);
+
+        $this->assertSame('SUCCESS', $result['return_code']);
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        $this->assertStringContainsString('<openid><![CDATA[oABC]]></openid>', $body);
+        $this->assertStringContainsString('<sub_mch_id>1900000000</sub_mch_id>', $body);
+        $this->assertStringContainsString('<sub_appid><![CDATA[wxSubAppid]]></sub_appid>', $body);
+    }
+
+    /**
      * 测试查询订单：验证请求 URL
      */
     public function testQueryOrder(): void

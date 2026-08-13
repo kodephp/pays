@@ -184,6 +184,55 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * JSAPI / 小程序支付缺少 openid 时抛出参数错误
+     */
+    public function testJsapiRequiresOpenid(): void
+    {
+        $gateway = $this->createGateway([
+            'pay/transactions/jsapi' => json_encode(['prepay_id' => 'wx123']),
+        ]);
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/openid/');
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试商品',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+            'trade_type' => 'jsapi',
+        ]);
+    }
+
+    /**
+     * 服务商模式字段（sp_ / sub_ 前缀）应透传至下单请求体
+     */
+    public function testServiceProviderFieldsForwarded(): void
+    {
+        $gateway = $this->createGateway([
+            'pay/transactions/jsapi' => json_encode(['prepay_id' => 'wx123']),
+        ]);
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试商品',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+            'trade_type' => 'jsapi',
+            'openid' => 'oABC',
+            'sub_mchid' => '1900000000',
+            'sub_appid' => 'wxSubAppid',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $decoded = json_decode($last['data']['body'], true);
+
+        $this->assertSame('1900000000', $decoded['sub_mchid']);
+        $this->assertSame('wxSubAppid', $decoded['sub_appid']);
+        $this->assertSame('oABC', $decoded['payer']['openid']);
+    }
+
+    /**
      * GET 请求的查询参数须一并纳入签名串
      */
     public function testQueryOrderIncludesQueryStringInSignature(): void

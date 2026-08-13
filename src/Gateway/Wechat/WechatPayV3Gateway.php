@@ -96,8 +96,24 @@ class WechatPayV3Gateway extends AbstractGateway implements
             $requestData['attach'] = $params['attach'];
         }
 
+        $tradeType = $params['trade_type'] ?? 'native';
+
+        // JSAPI / 小程序支付必须提供支付用户的 openid
+        if (in_array($tradeType, ['jsapi', 'miniprogram'], true) && empty($params['openid'])) {
+            throw PayException::paramError('JSAPI / 小程序支付必须提供 openid');
+        }
+
+        // 服务商模式：透传服务商 / 子商户标识（sp_*/sub_*）。
+        // 一个开放平台主体可同时关联多个公众号 / 小程序 / 子商户，
+        // 通过 sub_appid / sub_mchid 将交易落到对应关联账号。
+        foreach (['sp_appid', 'sp_mchid', 'sub_appid', 'sub_mchid'] as $subKey) {
+            if (isset($params[$subKey])) {
+                $requestData[$subKey] = $params[$subKey];
+            }
+        }
+
         // 根据场景添加不同参数
-        $requestData = match ($params['trade_type'] ?? 'native') {
+        $requestData = match ($tradeType) {
             'jsapi', 'miniprogram' => array_merge($requestData, [
                 'payer' => ['openid' => $params['openid']],
             ]),
@@ -108,7 +124,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
             default => $requestData,
         };
 
-        return $this->signedPost('pay/transactions/' . ($params['trade_type'] ?? 'native'), $requestData);
+        return $this->signedPost('pay/transactions/' . $tradeType, $requestData);
     }
 
     /**
