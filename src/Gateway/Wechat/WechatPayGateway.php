@@ -99,7 +99,7 @@ class WechatPayGateway extends AbstractGateway implements
     public function buildJsApiConfig(string $prepayId): array
     {
         $params = [
-            'appId' => $this->getConfig('app_id'),
+            'appId' => $this->getEffectiveAppId(),
             'timeStamp' => (string) time(),
             'nonceStr' => $this->generateNonceStr(),
             'package' => 'prepay_id=' . $prepayId,
@@ -747,6 +747,17 @@ class WechatPayGateway extends AbstractGateway implements
      */
     private function applyServiceProviderFields(array $data): array
     {
+        // 服务商模式下，顶层 appid / mchid 即服务商主体。当配置 sp_appid / sp_mchid 时
+        // 优先采用并覆盖统一下单等入口已写入的 app_id / mch_id，使 V2 与 V3 的服务商
+        // 配置契约保持一致（sp_* 为服务商，sub_* 为子商户）。
+        foreach (['sp_appid' => 'appid', 'sp_mchid' => 'mch_id'] as $cfgKey => $field) {
+            $value = $this->getConfig($cfgKey);
+
+            if (is_string($value) && $value !== '') {
+                $data[$field] = $value;
+            }
+        }
+
         foreach (['sub_mch_id', 'sub_appid'] as $key) {
             $value = $this->getConfig($key);
 
@@ -756,6 +767,19 @@ class WechatPayGateway extends AbstractGateway implements
         }
 
         return $data;
+    }
+
+    /**
+     * 取 JSAPI / 小程序调起支付所用的有效 appId
+     *
+     * 服务商模式下，前端调起支付应使用子商户的 sub_appid（交易归属的公众号 / 小程序），
+     * 而非服务商顶层的 app_id；未配置 sub_appid 时回落到 app_id。
+     */
+    private function getEffectiveAppId(): string
+    {
+        $subAppId = $this->getConfig('sub_appid');
+
+        return is_string($subAppId) && $subAppId !== '' ? $subAppId : (string) $this->getConfig('app_id');
     }
 
     /**

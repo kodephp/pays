@@ -289,6 +289,28 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 服务商模式：JSAPI 二次签名的 appId 应为子商户 sub_appid
+     */
+    public function testBuildJsApiConfigUsesSubAppIdInServiceProvider(): void
+    {
+        $gateway = $this->createGateway([], ['sub_appid' => 'wxSubAppid']);
+
+        $config = $gateway->buildJsApiConfig('wx1234567890');
+
+        $this->assertSame('wxSubAppid', $config['appId']);
+        $this->assertSame('prepay_id=wx1234567890', $config['package']);
+
+        // 用商户公钥复验签名，确认以 sub_appid 参与签名串
+        $privateKey = openssl_pkey_get_private(self::$privateKey);
+        $publicKey = openssl_pkey_get_details($privateKey)['key'];
+
+        $message = $config['appId'] . "\n" . $config['timeStamp'] . "\n"
+            . $config['nonceStr'] . "\n" . $config['package'] . "\n";
+
+        $this->assertSame(1, openssl_verify($message, base64_decode($config['paySign']), $publicKey, OPENSSL_ALGO_SHA256));
+    }
+
+    /**
      * GET 请求的查询参数须一并纳入签名串
      */
     public function testQueryOrderIncludesQueryStringInSignature(): void

@@ -24,6 +24,10 @@ composer require kode/pays
 | api_key | string | 是 | API 密钥（32位） |
 | app_secret | string | 否 | 应用密钥（JSAPI/小程序需要） |
 | sandbox | bool | 否 | 是否使用沙箱环境，默认 false |
+| sp_appid | string | 否 | 服务商模式：服务商公众号 appid（覆盖顶层 appid） |
+| sp_mchid | string | 否 | 服务商模式：服务商商户号（覆盖顶层 mchid） |
+| sub_mch_id | string | 否 | 服务商模式：子商户号 |
+| sub_appid | string | 否 | 服务商模式：子商户 appid（同时作为 JSAPI 二次签名的 appId） |
 
 ### V3 版本配置（WechatV3Config）
 
@@ -33,8 +37,12 @@ composer require kode/pays
 | serial_no | string | 是 | API 证书序列号 |
 | private_key | string | 是 | API 证书私钥（PEM 格式） |
 | api_key | string | 是 | APIv3 密钥 |
-| app_id | string | 否 | 应用 ID（JSAPI/小程序需要） |
+| app_id | string | 否 | 应用 ID（JSAPI/小程序需要；服务商模式填子商户 sub_appid） |
 | sandbox | bool | 否 | 是否使用沙箱环境，默认 false |
+| sp_appid | string | 否 | 服务商模式：服务商 appid |
+| sp_mchid | string | 否 | 服务商模式：服务商商户号 |
+| sub_appid | string | 否 | 服务商模式：子商户 appid（同时作为 JSAPI 二次签名的 appId） |
+| sub_mchid | string | 否 | 服务商模式：子商户商户号 |
 
 ## 快速开始
 
@@ -401,15 +409,25 @@ SDK 只负责：`app_id` 发起统一下单 → 拿 `prepay_id` → 把支付参
 ```php
 use Kode\Pays\Facade\Pay;
 
+// V2 服务商模式：sp_* 配置覆盖顶层 appid/mchid，sub_* 注入子商户字段
 $gateway = Pay::wechat([
-    'app_id'     => 'wxServiceProvider',   // 服务商公众号 appid（即 sp_appid）
-    'mch_id'     => '1900000109',          // 服务商商户号（即 sp_mchid）
+    'sp_appid'   => 'wxServiceProvider',   // 服务商公众号 appid（覆盖顶层 appid）
+    'sp_mchid'   => '1900000109',          // 服务商商户号（覆盖顶层 mchid）
     'sub_mchid'  => '1900000000',          // 子商户号
     'sub_appid'  => 'wxSubAppid',          // 关联的公众号 / 小程序 appid
-    // ... 其余密钥配置
+    // ... 其余密钥配置（api_key / app_secret / cert_path / key_path）
 ]);
 
-// 此后所有接口（下单 / 查询 / 关单 / 退款 / 转账 / 分账）均自动带上 sub_mchid / sub_appid
+// V3 服务商模式：sp_* / sub_* 直接作为下单请求体字段
+$gatewayV3 = Pay::wechat_v3([
+    'sp_appid'   => 'wxServiceProvider',
+    'sp_mchid'   => '1900000109',
+    'sub_mchid'  => '1900000000',
+    'sub_appid'  => 'wxSubAppid',
+    // ... 其余密钥配置（private_key / serial_no / api_key）
+]);
+
+// 此后所有接口（下单 / 查询 / 关单 / 退款 / 转账 / 分账）均自动带上服务商 / 子商户标识
 $order = $gateway->createOrder([
     'out_trade_no' => 'ORDER_' . time(),
     'description'  => '商品',
@@ -420,8 +438,9 @@ $order = $gateway->createOrder([
 ]);
 ```
 
-> 说明：V2 字段名为 `sub_mch_id` / `sub_appid`；V3 字段名为 `sub_mchid` / `sub_appid`（另支持 `sp_appid` / `sp_mchid`）。
-> 透传仅在配置实际存在时生效，且不会覆盖调用方显式传入的同名字段，普通商户请求行为完全不变。
+> 说明：V2 与 V3 配置契约已统一——两者均支持 `sp_appid` / `sp_mchid` / `sub_appid` / `sub_mch_id`（V2 的末位为下划线 `sub_mch_id`，V3 为 `sub_mchid`）。
+> V2 中 `sp_appid` / `sp_mchid` 会覆盖统一下单等入口写入的顶层 `appid` / `mchid`；V3 则将其作为请求体字段透传。
+> 透传仅在配置实际存在时生效，且 `sub_*` 不会覆盖调用方显式传入的同名字段，普通商户请求行为完全不变。
 
 ### openid 获取（OAuth 网页授权）
 
@@ -445,6 +464,24 @@ $openid = $result['openid'];
 
 > 小程序场景无需 OAuth：由小程序前端 `wx.login` 拿 `code`，后端调 `auth.code2Session` 换 `openid`（微信小程序官方接口）。
 
+### openid 获取（小程序 code2Session）
+
+小程序登录链路与公众号 OAuth 对称：小程序端 `wx.login()` 取得临时 `code` 后，后端用 `WechatMiniProgram` 助手调 `auth.code2Session` 换取 `openid` / `session_key`（已绑定开放平台时还会返回 `unionid`）。`session_key` 用于服务端解密小程序敏感数据，应妥善保管、不可下发前端。
+
+```php
+use Kode\Pays\Gateway\Wechat\WechatMiniProgram;
+
+$mp = new WechatMiniProgram(['app_id' => 'wx123', 'app_secret' => 'APP_SECRET']);
+
+// 1) 小程序端 wx.login() 取得 code 传给后端
+// 2) 后端用 code 换 openid / session_key
+$result = $mp->code2Session($codeFromClient);
+$openid     = $result['openid'];      // 用于 createOrder 的 openid
+$sessionKey = $result['session_key']; // 用于解密小程序用户数据
+
+// 3) 将 openid 传入 createOrder（trade_type=miniprogram 或 jsapi）
+```
+
 ### JSAPI 二次签名（前端调起支付）
 
 统一下单拿到 `prepay_id` 后，前端需二次签名才能调起支付。SDK 提供 `buildJsApiConfig()` 直接返回前端所需字段：
@@ -458,5 +495,7 @@ $config = $gateway->buildJsApiConfig($prepayId);
 $config = $gateway->buildJsApiConfig($prepayId);
 // => ['appId','timeStamp','nonceStr','package'=>'prepay_id=xxx','signType'=>'RSA','paySign']
 ```
+
+> **服务商模式注意**：`buildJsApiConfig()` 返回的 `appId` 自动采用子商户 `sub_appid`（即交易归属的公众号 / 小程序），而非服务商顶层 `app_id`；未配置 `sub_appid` 时回落到 `app_id`。这保证了前端调起支付所用的 `appId` 与 `prepay_id` 所属账号一致，避免「appId 与 prepay_id 不匹配」报错。
 
 前端据此调用 `WeixinJSBridge.invoke('getBrandWCPayRequest', config)`（V2）或 `wx.requestPayment(config)`（V3 小程序）。

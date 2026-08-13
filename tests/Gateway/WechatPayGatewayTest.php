@@ -201,6 +201,61 @@ class WechatPayGatewayTest extends TestCase
     }
 
     /**
+     * 服务商模式：JSAPI 二次签名的 appId 应为子商户 sub_appid
+     */
+    public function testBuildJsApiConfigUsesSubAppIdInServiceProvider(): void
+    {
+        $gateway = $this->createGateway([], ['sub_appid' => 'wxSubAppid']);
+
+        $config = $gateway->buildJsApiConfig('wx1234567890');
+
+        $this->assertSame('wxSubAppid', $config['appId']);
+
+        // 复算签名，确认以 sub_appid 参与签名
+        $expected = strtoupper(md5(
+            'appId=wxSubAppid&nonceStr=' . $config['nonceStr']
+            . '&package=prepay_id=wx1234567890&signType=MD5&timeStamp=' . $config['timeStamp']
+            . '&key=testkey',
+        ));
+        $this->assertSame($expected, $config['paySign']);
+    }
+
+    /**
+     * 配置驱动的服务商模式（sp_ 与 sub_ 前缀字段）：统一下单顶层的 appid/mchid 被
+     * 服务商主体覆盖，且子商户字段自动注入
+     */
+    public function testServiceProviderSpConfigOverridesTopLevel(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code>'
+            . '<code_url><![CDATA[weixin://wxpay/bizpayurl?pr=xxx]]></code_url></xml>';
+
+        $gateway = $this->createGateway(['pay/unifiedorder' => $xml], [
+            'sp_appid' => 'wxSpAppid',
+            'sp_mchid' => '1900000109',
+            'sub_mch_id' => '1900000000',
+            'sub_appid' => 'wxSubAppid',
+        ]);
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'NATIVE',
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        // 顶层 appid/mchid 应为服务商主体
+        $this->assertStringContainsString('<appid><![CDATA[wxSpAppid]]></appid>', $body);
+        $this->assertStringContainsString('<mch_id>1900000109</mch_id>', $body);
+        // 子商户字段注入
+        $this->assertStringContainsString('<sub_mch_id>1900000000</sub_mch_id>', $body);
+        $this->assertStringContainsString('<sub_appid><![CDATA[wxSubAppid]]></sub_appid>', $body);
+        // 普通商户 app_id/mch_id 不应再以原本值出现于顶层
+        $this->assertStringNotContainsString('<appid><![CDATA[wx123]]></appid>', $body);
+    }
+
+    /**
      * 测试查询订单：验证请求 URL
      */
     public function testQueryOrder(): void

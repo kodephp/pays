@@ -144,17 +144,31 @@ class WechatPayV3Gateway extends AbstractGateway implements
         $package = 'prepay_id=' . $prepayId;
 
         // APIv3 JSAPI 签名串：appId\n timeStamp\n nonceStr\n package\n（末尾换行）
-        $message = $this->getConfig('app_id') . "\n" . $timeStamp . "\n" . $nonceStr . "\n" . $package . "\n";
+        // appId 须使用有效 appId（服务商模式下为子商户 sub_appid），与返回给前端的 appId 一致
+        $message = $this->getEffectiveAppId() . "\n" . $timeStamp . "\n" . $nonceStr . "\n" . $package . "\n";
         $paySign = Encryptor::rsaSign($message, (string) $this->getConfig('private_key'), 'sha256');
 
         return [
-            'appId' => $this->getConfig('app_id'),
+            'appId' => $this->getEffectiveAppId(),
             'timeStamp' => $timeStamp,
             'nonceStr' => $nonceStr,
             'package' => $package,
             'signType' => 'RSA',
             'paySign' => $paySign,
         ];
+    }
+
+    /**
+     * 取 JSAPI / 小程序调起支付所用的有效 appId
+     *
+     * 服务商模式下，前端调起支付应使用子商户的 sub_appid（交易归属的小程序 / 公众号），
+     * 而非服务商顶层的 app_id；未配置 sub_appid 时回落到 app_id。
+     */
+    private function getEffectiveAppId(): string
+    {
+        $subAppId = $this->getConfig('sub_appid');
+
+        return is_string($subAppId) && $subAppId !== '' ? $subAppId : (string) $this->getConfig('app_id');
     }
 
     /**
