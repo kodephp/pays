@@ -8,6 +8,7 @@ use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Wechat\WechatPayV3Gateway;
+use Kode\Pays\Support\Encryptor;
 use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
 
@@ -623,5 +624,68 @@ class WechatPayV3GatewayTest extends TestCase
         ]);
 
         return $header . "\n" . $row . "\n总交易单数,1\n";
+    }
+
+    /**
+     * 解密通知 resource：用 Encryptor 造往返向量，断言返回原始明文数组
+     *
+     * 微信规范将 16 字节 GCM 认证标签拼接在密文末尾后整体 base64，
+     * decryptResource 须按此拆分并用 api_v3_key 解密。
+     */
+    public function testDecryptResourceRoundTrip(): void
+    {
+        $key = str_repeat('a', 32); // 32 字节 APIv3 密钥
+        $aad = 'transaction';
+        $plain = ['out_trade_no' => 'ORDER_1', 'transaction_id' => 'T_1', 'amount' => 1];
+
+        $enc = Encryptor::aesGcmEncrypt((string) json_encode($plain), $key, $aad);
+
+        // 微信格式：密文 + 16 字节 tag，整体 base64
+        $raw = base64_decode($enc['ciphertext'], true) . base64_decode($enc['tag'], true);
+        $resource = [
+            'ciphertext' => base64_encode($raw),
+            'nonce' => $enc['nonce'],
+            'associated_data' => $aad,
+        ];
+
+        $gateway = $this->createGateway([], ['api_v3_key' => $key]);
+        $decrypted = $gateway->decryptResource($resource);
+
+        $this->assertSame($plain, $decrypted);
+    }
+
+    /**
+     * 缺少 api_v3_key 时抛 configError
+     */
+    public function testDecryptResourceThrowsWithoutApiV3Key(): void
+    {
+        $gateway = $this->createGateway();
+        $resource = ['ciphertext' => base64_encode('x'), 'nonce' => base64_encode('n')];
+
+        $this->expectException(PayException::class);
+        $gateway->decryptResource($resource);
+    }
+
+    /**
+     * 非法 / 过短 ciphertext 抛 paramError
+     */
+    public function testDecryptResourceThrowsOnMalformedCiphertext(): void
+    {
+        $gateway = $this->createGateway([], ['api_v3_key' => str_repeat('b', 32)]);
+        $resource = ['ciphertext' => base64_encode('short'), 'nonce' => base64_encode('n')];
+
+        $this->expectException(PayException::class);
+        $gateway->decryptResource($resource);
+    }
+
+    /**
+     * 缺 ciphertext / nonce 字段时抛 paramError
+     */
+    public function testDecryptResourceThrowsOnMissingFields(): void
+    {
+        $gateway = $this->createGateway([], ['api_v3_key' => str_repeat('c', 32)]);
+
+        $this->expectException(PayException::class);
+        $gateway->decryptResource(['nonce' => base64_encode('n')]);
     }
 }

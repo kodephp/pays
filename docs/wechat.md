@@ -144,6 +144,28 @@ $gateway->queryRefund(string $refundId): array
 $gateway->verifyNotify(array $data): bool
 ```
 
+### V3 通知 resource 解密（AES-256-GCM）
+
+V3 通知的 `resource` 是密文，需先用 `api_v3_key` 做 AES-256-GCM 解密才能得到业务明文
+（退款 / 转账 / 分账结果等）。推荐流程：**先验签、再解密**。
+
+```php
+// $headers：回调请求头组装的数组（含 signature / timestamp / nonce / serial / body）
+if (!$gateway->verifyNotify($headers)) {
+    throw new \RuntimeException('通知签名无效');
+}
+
+// $notify：回调 JSON 解码后的数组，取其中的 resource
+$plain = $gateway->decryptResource($notify['resource']);
+// => ['out_trade_no' => '...', 'transaction_id' => '...', 'amount' => 1, ...]
+
+// 解密失败（缺 api_v3_key / 密文损坏 / 非 JSON）分别抛 configError / paramError / gatewayError
+```
+
+> 说明：微信将 16 字节 GCM 认证标签拼接在密文末尾，`decryptResource()` 已按规范拆分；
+> 配置需提供 32 字节 `api_v3_key`（商户平台 → APIv3 密钥），缺失时解密抛 `configError`。
+> V2 通知不加密（MD5 + XML），无需此步骤。
+
 ## 委托代扣（订阅能力，V2 专有）
 
 微信自动续费（papay 委托代扣）仅 V2 提供，V3 无对应端点。`WechatPayGateway`

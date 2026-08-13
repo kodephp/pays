@@ -318,6 +318,68 @@ class WechatPayV3Gateway extends AbstractGateway implements
     }
 
     /**
+     * 解密微信支付 V3 异步通知的 resource（AES-256-GCM）
+     *
+     * 微信 V3 通知的 resource 为密文，需用 APIv3 密钥（api_v3_key）做 AES-256-GCM 解密，
+     * 解密后即为业务明文（退款 / 转账 / 分账等结果）。微信将 16 字节 GCM 认证标签拼接在
+     * 密文末尾，本方法按规范拆分后调用 {@see Encryptor::aesGcmDecrypt}。
+     *
+     * 典型用法（先验签再解密）：
+     * ```php
+     * if (!$gateway->verifyNotify($headers)) {
+     *     throw new \Exception('通知签名无效');
+     * }
+     * $plain = $gateway->decryptResource($notify['resource']);
+     * ```
+     *
+     * @param array<string, mixed> $resource 通知中的 resource 对象（含 ciphertext / nonce / associated_data）
+     * @return array<string, mixed> 解密后的业务明文
+     * @throws PayException
+     */
+    public function decryptResource(array $resource): array
+    {
+        if (!isset($resource['ciphertext'], $resource['nonce'])) {
+            throw PayException::paramError('通知 resource 缺少 ciphertext / nonce');
+        }
+
+        $key = $this->getConfig('api_v3_key');
+        if (!is_string($key) || $key === '') {
+            throw PayException::configError('缺少 api_v3_key，无法解密微信支付 V3 通知');
+        }
+        if (strlen($key) !== 32) {
+            throw PayException::configError('api_v3_key 必须为 32 字节');
+        }
+
+        $raw = base64_decode((string) $resource['ciphertext'], true);
+        if ($raw === false || strlen($raw) < 16) {
+            throw PayException::paramError('通知 ciphertext 非法或长度不足');
+        }
+
+        // 微信将 16 字节 GCM 认证标签拼接在密文末尾
+        $tag = substr($raw, -16);
+        $ciphertext = substr($raw, 0, -16);
+        $nonce = (string) $resource['nonce'];
+        $aad = isset($resource['associated_data']) && $resource['associated_data'] !== ''
+            ? (string) $resource['associated_data']
+            : null;
+
+        $plaintext = Encryptor::aesGcmDecrypt(
+            base64_encode($ciphertext),
+            $key,
+            $nonce,
+            base64_encode($tag),
+            $aad,
+        );
+
+        $data = json_decode($plaintext, true);
+        if (!is_array($data)) {
+            throw PayException::gatewayError('通知解密结果非合法 JSON');
+        }
+
+        return $data;
+    }
+
+    /**
      * 获取网关标识
      */
     public static function getName(): string
