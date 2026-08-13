@@ -59,6 +59,9 @@ interface TransferCapableInterface
     /**
      * 查询转账电子回单
      *
+     * 各网关语义不同：微信 V3 会申请并下载、解密回单文件，返回含 file_content（解密后二进制）
+     * 与 file_sha256；京东 / 美团等仅返回申请响应；Stripe 不支持时抛「无此方法」。
+     *
      * @param string $outBizNo 商户转账单号
      * @return array<string, mixed>
      * @throws PayException

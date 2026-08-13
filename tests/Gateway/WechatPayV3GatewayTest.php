@@ -512,6 +512,75 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 完整链路：申请回单 → 下载密文 → 解密得到原始回单二进制
+     */
+    public function testTransferReceiptDecodesFile(): void
+    {
+        $aesKey = random_bytes(32);
+        $nonce = random_bytes(12);
+        $original = '%PDF-1.4 test receipt payload 测试回单内容';
+        $tag = '';
+        $ciphertext = openssl_encrypt($original, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $nonce, $tag);
+        $this->assertNotFalse($ciphertext, 'AES-256-GCM 加密失败');
+        $fileBlob = $nonce . $ciphertext . $tag;
+        $encryptKey = Encryptor::rsaEncrypt($aesKey, self::$publicKey);
+
+        $gateway = $this->createGateway([
+            'receipt/file' => $fileBlob,
+            'transfer/bill-receipt' => json_encode([
+                'out_batch_no' => 'T1',
+                'download_url' => 'https://download.example.com/receipt/file?token=ABC',
+                'encrypt_key' => $encryptKey,
+                'signature' => 'SIG_BASE64',
+            ]),
+        ]);
+
+        $result = $gateway->transferReceipt('T1');
+
+        $this->assertSame($original, $result['file_content']);
+        $this->assertSame(hash('sha256', $original), $result['file_sha256']);
+        $this->assertSame('SIG_BASE64', $result['signature']);
+        $this->assertSame(2, count($this->getMockClient($gateway)->getHistory()));
+    }
+
+    /**
+     * 回单未生成（无 download_url）时返回原元数据，file_content 为 null
+     */
+    public function testTransferReceiptReturnsMetaWhenNotReady(): void
+    {
+        $gateway = $this->createGateway([
+            'transfer/bill-receipt' => json_encode(['out_batch_no' => 'T1', 'status' => 'PROCESSING']),
+        ]);
+
+        $result = $gateway->transferReceipt('T1');
+
+        $this->assertNull($result['file_content']);
+        $this->assertNull($result['file_sha256']);
+        $this->assertSame('PROCESSING', $result['status']);
+        $this->assertCount(1, $this->getMockClient($gateway)->getHistory());
+    }
+
+    /**
+     * encrypt_key 解密后长度非 32 字节时抛错（防御异常密钥）
+     */
+    public function testTransferReceiptBadKeyLengthThrows(): void
+    {
+        $encryptKey = Encryptor::rsaEncrypt('short', self::$publicKey);
+
+        $gateway = $this->createGateway([
+            'transfer/bill-receipt' => json_encode([
+                'out_batch_no' => 'T1',
+                'download_url' => 'https://download.example.com/receipt/file?token=ABC',
+                'encrypt_key' => $encryptKey,
+            ]),
+        ]);
+
+        $this->expectException(PayException::class);
+
+        $gateway->transferReceipt('T1');
+    }
+
+    /**
      * 交易对账单：先取元数据，再下载并解析 CSV
      */
     public function testDownloadBillFetchesAndParsesCsv(): void

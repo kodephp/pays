@@ -498,18 +498,91 @@ class WechatPayV3Gateway extends AbstractGateway implements
     }
 
     /**
-     * 申请转账电子回单
+     * 申请并下载转账电子回单
+     *
+     * 两步流程：先申请回单（transfer/bill-receipt）获取 download_url / encrypt_key / signature，
+     * 再下载回单文件并解密。回单文件经「AES-256-GCM 加密 + RSA 信封加密密钥」双重保护：
+     *  - encrypt_key 由商户 API 公钥加密并 Base64 编码，需以商户 API 私钥（private_key）RSA 解密得到 32 字节 AES 密钥；
+     *  - 下载文件流结构为 nonce(12 字节) + 密文 + tag(16 字节)，使用 AES-256-GCM 解密得到回单（PDF 等二进制）。
+     *
+     * 当回单尚未生成（响应无 download_url / encrypt_key）时返回原始元数据，file_content 为 null，
+     * 调用方应稍后重试（申请接口幂等）。解密后 file_sha256 供调用方与平台回单摘要比对或自行验签 signature。
      *
      * @param string $outBizNo 商户批次单号
-     * @return array<string, mixed>
+     * @return array<string, mixed> 含原始元数据、file_content（解密后回单二进制）、file_sha256、signature
      * @throws PayException
      */
     #[\Override]
     public function transferReceipt(string $outBizNo): array
     {
-        return $this->signedPost('transfer/bill-receipt', [
+        $meta = $this->signedPost('transfer/bill-receipt', [
             'out_batch_no' => $outBizNo,
         ]);
+
+        $downloadUrl = $meta['download_url'] ?? '';
+        $encryptKey = $meta['encrypt_key'] ?? '';
+
+        $result = $meta + [
+            'file_content' => null,
+            'file_sha256' => null,
+        ];
+
+        if (!is_string($downloadUrl) || $downloadUrl === '' || !is_string($encryptKey) || $encryptKey === '') {
+            // 回单尚未生成，返回元数据；调用方稍后重试
+            return $result;
+        }
+
+        $result['file_content'] = $this->decodeReceipt($downloadUrl, $encryptKey);
+        $result['file_sha256'] = hash('sha256', (string) $result['file_content']);
+
+        return $result;
+    }
+
+    /**
+     * 下载并解密转账电子回单文件
+     *
+     * 顺序：商户 RSA 私钥解密 encrypt_key → 得到 AES-256 密钥；下载文件流按
+     * nonce(12) + 密文 + tag(16) 拆分后以 AES-256-GCM 解密。
+     *
+     * @param string $downloadUrl 回单下载地址
+     * @param string $encryptKey 经商户 API 公钥加密并 Base64 编码的 AES 密钥
+     * @return string 解密后的回单文件（原始二进制，通常为 PDF）
+     * @throws PayException
+     */
+    protected function decodeReceipt(string $downloadUrl, string $encryptKey): string
+    {
+        $privateKey = $this->getConfig('private_key');
+        if (!is_string($privateKey) || $privateKey === '') {
+            throw PayException::configError('缺少商户私钥 private_key，无法解密转账电子回单');
+        }
+
+        try {
+            $aesKey = Encryptor::rsaDecrypt($encryptKey, $privateKey);
+        } catch (\Throwable $e) {
+            throw PayException::gatewayError('电子回单 encrypt_key 解密失败：' . $e->getMessage(), previous: $e);
+        }
+
+        if (strlen($aesKey) !== 32) {
+            throw PayException::gatewayError('电子回单密钥长度异常（应为 32 字节）');
+        }
+
+        $data = $this->downloadBillFile($downloadUrl);
+
+        if (strlen($data) < 28) {
+            throw PayException::gatewayError('电子回单文件格式异常（长度不足，无法拆分 nonce/tag）');
+        }
+
+        $nonce = substr($data, 0, 12);
+        $tag = substr($data, -16);
+        $ciphertext = substr($data, 12, -16);
+
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $nonce, $tag);
+
+        if ($plaintext === false) {
+            throw PayException::gatewayError('电子回单 AES-256-GCM 解密失败');
+        }
+
+        return $plaintext;
     }
 
     /* ==================== 对账能力（ReconciliationCapableInterface） ==================== */

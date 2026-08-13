@@ -185,6 +185,27 @@ $fundFlow = $gateway->downloadFundFlow([
 > 对比交易账单（`downloadBill`）：下载内容为明文 CSV（以 GZIP 魔数开头时自动解压），不涉及加密。
 > 资金账单务必配置 32 字节 `api_v3_key`，否则解密无法执行。
 
+### V3 转账电子回单解密（AES-256-GCM + RSA 信封）
+
+转账电子回单（`transfer/bill-receipt`）下载到的文件受「RSA 信封密钥 + AES-256-GCM」双重保护：
+`encrypt_key` 由商户 API 公钥加密并 Base64 编码，需以商户 API 私钥（`private_key`）RSA 解密得到 32 字节 AES 密钥；
+下载文件流结构为 `nonce(12) + 密文 + tag(16)`，用 AES-256-GCM 解密即得到回单（PDF 等二进制）。
+
+`transferReceipt()` 已内建完整链路：**申请 → 下载 → RSA 解密密钥 → AES-256-GCM 解密**，返回
+`file_content`（解密后二进制）、`file_sha256`（明文的 SHA256）、`signature`（供调用方用平台证书验签）。
+
+```php
+$receipt = $gateway->transferReceipt('PLFK20240801');
+
+if ($receipt['file_content'] === null) {
+    // 回单尚未生成，稍后重试（申请接口幂等）
+}
+file_put_contents('/tmp/receipt.pdf', (string) $receipt['file_content']);
+```
+
+> 缺 `private_key` 时构造即报错；`encrypt_key` 解密后长度非 32 字节或 AES-GCM 解密失败抛 `gatewayError`。
+> 回单文件完整性可基于 `file_sha256` 与平台回单摘要比对，或使用 `signature` + 平台证书公钥自行验签。
+
 ## 委托代扣（订阅能力，V2 专有）
 
 微信自动续费（papay 委托代扣）仅 V2 提供，V3 无对应端点。`WechatPayGateway`
