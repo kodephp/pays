@@ -135,6 +135,58 @@ class Encryptor
     }
 
     /**
+     * AES-256-ECB 加密（原始二进制输出，不做 base64 编码）
+     *
+     * 与 {@see aesEcbEncrypt()} 的差异在于返回原始密文字节，用于微信资金账单等
+     * 「先加密后 GZIP」的复合场景：调用方拿到原始密文后自行压缩 / 传输。
+     *
+     * @param string $plaintext 明文
+     * @param string $key 密钥（32字节）
+     * @return string 原始密文（二进制）
+     * @throws PayException
+     */
+    public static function aesEcbEncryptRaw(string $plaintext, string $key): string
+    {
+        if (strlen($key) !== 32) {
+            throw PayException::paramError('AES-256-ECB 密钥必须为 32 字节');
+        }
+
+        $ciphertext = openssl_encrypt($plaintext, 'aes-256-ecb', $key, OPENSSL_RAW_DATA);
+
+        if ($ciphertext === false) {
+            throw PayException::paramError('AES-ECB 加密失败');
+        }
+
+        return $ciphertext;
+    }
+
+    /**
+     * AES-256-ECB 解密（原始二进制输入，不做 base64 解码）
+     *
+     * 与 {@see aesEcbDecrypt()} 的差异在于接收原始密文字节，用于微信资金账单等
+     * 「先加密后 GZIP」场景：下载到的文件经 GZIP 解压后得到原始密文，直接解密即可。
+     *
+     * @param string $ciphertext 原始密文（二进制）
+     * @param string $key 密钥（32字节）
+     * @return string 明文（经 PKCS7 去填充）
+     * @throws PayException
+     */
+    public static function aesEcbDecryptRaw(string $ciphertext, string $key): string
+    {
+        if (strlen($key) !== 32) {
+            throw PayException::paramError('AES-256-ECB 密钥必须为 32 字节');
+        }
+
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-ecb', $key, OPENSSL_RAW_DATA);
+
+        if ($plaintext === false) {
+            throw PayException::paramError('AES-ECB 解密失败');
+        }
+
+        return $plaintext;
+    }
+
+    /**
      * AES-256-CBC 加密
      *
      * @param string $plaintext 明文

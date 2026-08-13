@@ -588,6 +588,103 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 资金账单：下载加密 + GZIP 文件后，自动 AES-256-ECB 解密并解析
+     *
+     * 按微信 V3 规范构造「CSV → GZIP → AES-256-ECB 加密」的往返向量，断言：
+     * 1. 命中 fundflowbill 端点并携带 account_type；
+     * 2. 解密后 records 与原始 CSV 一致；
+     * 3. 当返回的 hash_value 与明文 SHA1 匹配时通过完整性校验。
+     */
+    public function testDownloadFundFlowDecryptsGzipThenAes(): void
+    {
+        $key = str_repeat('k', 32); // 32 字节 APIv3 密钥
+        $csv = $this->sampleCsv();
+        $expectedHash = sha1($csv);
+
+        // 模拟微信：先 GZIP 压缩，再 AES-256-ECB 加密（原始字节）
+        $encrypted = openssl_encrypt(gzencode($csv), 'aes-256-ecb', $key, OPENSSL_RAW_DATA);
+
+        $gateway = $this->createGateway([
+            'bill/fundflowbill' => json_encode([
+                'hash_type' => 'SHA1',
+                'hash_value' => $expectedHash,
+                'download_url' => 'https://api.mch.weixin.qq.com/v3/billdownload/flow?token=TK2',
+            ]),
+            'billdownload/flow' => $encrypted,
+        ], ['api_v3_key' => $key]);
+
+        $result = $gateway->downloadFundFlow(['bill_date' => '2026-08-01', 'account_type' => 'OPERATION']);
+
+        $this->assertSame('OPERATION', $result['account_type']);
+        $this->assertSame('SHA1', $result['hash_type']);
+        $this->assertSame($expectedHash, $result['hash_value']);
+        $this->assertCount(1, $result['records']);
+        $this->assertSame('TXN1', $result['records'][0]['transaction_id']);
+        $this->assertSame('OUT1', $result['records'][0]['out_trade_no']);
+    }
+
+    /**
+     * 资金账单哈希校验失败（hash_value 不匹配明文 SHA1）时抛 gatewayError
+     */
+    public function testDownloadFundFlowHashMismatchThrows(): void
+    {
+        $key = str_repeat('k', 32);
+        $csv = $this->sampleCsv();
+        $encrypted = openssl_encrypt(gzencode($csv), 'aes-256-ecb', $key, OPENSSL_RAW_DATA);
+
+        $gateway = $this->createGateway([
+            'bill/fundflowbill' => json_encode([
+                'hash_value' => 'deadbeef',
+                'download_url' => 'https://api.mch.weixin.qq.com/v3/billdownload/flow?token=TK3',
+            ]),
+            'billdownload/flow' => $encrypted,
+        ], ['api_v3_key' => $key]);
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/哈希校验失败/');
+
+        $gateway->downloadFundFlow(['bill_date' => '2026-08-01']);
+    }
+
+    /**
+     * 缺少 api_v3_key 时资金账单解密抛 configError
+     */
+    public function testDownloadFundFlowThrowsWithoutApiV3Key(): void
+    {
+        $gateway = $this->createGateway([
+            'bill/fundflowbill' => json_encode([
+                'download_url' => 'https://api.mch.weixin.qq.com/v3/billdownload/flow?token=TK4',
+            ]),
+            'billdownload/flow' => 'arbitrary-bytes',
+        ]);
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/api_v3_key/');
+
+        $gateway->downloadFundFlow(['bill_date' => '2026-08-01']);
+    }
+
+    /**
+     * 交易账单下载内容若以 GZIP 魔数开头，自动解压后解析（无需显式 tar_type）
+     */
+    public function testDownloadBillAutoGunzip(): void
+    {
+        $csv = $this->sampleCsv();
+
+        $gateway = $this->createGateway([
+            'bill/tradebill' => json_encode([
+                'download_url' => 'https://api.mch.weixin.qq.com/v3/billdownload/file?token=TK5',
+            ]),
+            'billdownload/file' => gzencode($csv),
+        ]);
+
+        $result = $gateway->downloadBill(['bill_date' => '2026-08-01']);
+
+        $this->assertCount(1, $result['records']);
+        $this->assertSame('TXN1', $result['records'][0]['transaction_id']);
+    }
+
+    /**
      * parseBill 可独立解析 CSV
      */
     public function testParseBillParsesCsvDirectly(): void

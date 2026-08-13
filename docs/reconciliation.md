@@ -26,7 +26,7 @@
 | 微信支付 | ✅ `pay/downloadbill` | ✅ `pay/downloadfundflow` | ✅ CSV | 金额单位为分；当前沿用既有构造，投产前请接入 `Signer::md5` 与 `arrayToXml` |
 | 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；对账单下载接口返回账单下载地址 |
 | Stripe | ✅ `v1/balance_transactions` | ❌ 报「无此方法」 | ✅ JSON | Balance Transaction 列表（`created` 时间区间）；资金账单能力暂未提供 |
-| 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV；`tar_type=GZIP` 时不解析，交由调用方解压后调用 `parseBill` |
+| 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV。**交易账单**下载内容若以 GZIP 魔数开头会自动解压；**资金账单**为「AES-256-ECB 加密 + GZIP 压缩」，网关自动解密（需 32 字节 `api_v3_key`）并校验 `hash_value`，解密后直接得到 CSV 记录 |
 | 美团支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`app_secret`) 签名，账单内容置于 `bill_content` |
 | 京东支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`md5_key`) 签名，账单内容置于 `billContent` |
 | Adyen | ✅ Report API（Settlement detail report） | ✅ Report API（Payment accounting report） | ✅ CSV | 两步：先 `getReport` 取 `url`，再下载并解析 CSV；`bill_date` 为 YYYYMMDD |
@@ -88,11 +88,22 @@ $bill = $plugin->downloadBill([
     'bill_type' => 'ALL',
 ]);
 
-// 下载资金账单
+// 下载资金账单（V3：自动 AES-256-ECB 解密 + GZIP 解压 + SHA1 校验）
 $fundFlow = $plugin->downloadFundFlow([
     'bill_date' => '20240425',
-    'account_type' => 'Basic',
+    'account_type' => 'BASIC', // BASIC / OPERATION / FEES
 ]);
+
+// $fundFlow 结构：
+// [
+//   'bill_date'   => '20240425',
+//   'account_type'=> 'BASIC',
+//   'download_url'=> 'https://...',
+//   'hash_type'   => 'SHA1',
+//   'hash_value'  => '...',          // 与解密明文 SHA1 比对，不一致抛 gatewayError
+//   'raw_data'    => [...],          // 微信返回的元数据
+//   'records'     => [ /* 解析后的资金流水 */ ],
+// ]
 
 // 解析对账单原始数据
 $records = $plugin->parseBill($rawCsvData);
@@ -114,9 +125,14 @@ $report = $plugin->diff($systemOrders, $billRecords);
 
 ## 生产联调提示
 
-- **微信对账**：当前实现沿用既有插件构造（`downloadbill` / `downloadfundflow` 请求数组经 `post` 直发）。
+- **微信 V3 对账**：`downloadBill` 先取 `bill/tradebill` 元数据再下载并解析 CSV（下载内容以 GZIP 魔数开头时自动解压）；
+  `downloadFundFlow` 先取 `bill/fundflowbill` 元数据，再下载「AES-256-ECB 加密 + GZIP 压缩」的文件，
+  网关自动以 `api_v3_key` 解密、GZIP 解压并解析，无需调用方介入。**需配置 32 字节 `api_v3_key`**，
+  缺失或长度不符时解密抛 `configError`；元数据的 `hash_value`（SHA1）与解密明文不一致时抛 `gatewayError`（防篡改）。
+  对账单接口返回 CSV 文本（统一入口将原始文本置于 `data` 字段），由 `parseBill` 解析。
+- **微信 V2 对账**：当前实现沿用既有插件构造（`downloadbill` / `downloadfundflow` 请求数组经 `post` 直发）。
   投产前如需严格合规，建议在网关 `downloadBill` / `downloadFundFlow` 内接入 `Signer::md5` 与 `arrayToXml`，
-  并按官方要求配置证书。对账单接口返回 CSV 文本（统一入口将原始文本置于 `data` 字段），由 `parseBill` 解析。
+  并按官方要求配置证书。
 - **支付宝对账**：已复用 `buildRequestParams` 标准 RSA2 签名；`downloadBill` 返回的是账单下载地址，
   需二次拉取账单文件后再用 `parseBill` 解析 CSV。
 - **Stripe 对账**：通过 `v1/balance_transactions` 按 `created` 时间区间拉取 Balance Transaction 列表，

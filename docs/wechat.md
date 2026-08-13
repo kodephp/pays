@@ -166,6 +166,25 @@ $plain = $gateway->decryptResource($notify['resource']);
 > 配置需提供 32 字节 `api_v3_key`（商户平台 → APIv3 密钥），缺失时解密抛 `configError`。
 > V2 通知不加密（MD5 + XML），无需此步骤。
 
+### V3 资金账单解密（AES-256-ECB + GZIP）
+
+资金账单（`bill/fundflowbill`）下载到的文件是「AES-256-ECB 加密（APIv3 密钥）+ GZIP 压缩」的复合体。
+`downloadFundFlow()` 已内建完整链路：**下载 → AES-256-ECB 解密 → GZIP 解压 → CSV 解析**，
+并依据元数据的 `hash_value`（SHA1）校验明文完整性，无需调用方处理密文。
+
+```php
+$fundFlow = $gateway->downloadFundFlow([
+    'bill_date'    => '2026-08-01',
+    'account_type' => 'BASIC', // BASIC / OPERATION / FEES
+]);
+
+// 成功：$fundFlow['records'] 即解密解析后的资金流水
+// 失败：缺 api_v3_key → configError；hash_value 与明文 SHA1 不符 → gatewayError（防篡改）
+```
+
+> 对比交易账单（`downloadBill`）：下载内容为明文 CSV（以 GZIP 魔数开头时自动解压），不涉及加密。
+> 资金账单务必配置 32 字节 `api_v3_key`，否则解密无法执行。
+
 ## 委托代扣（订阅能力，V2 专有）
 
 微信自动续费（papay 委托代扣）仅 V2 提供，V3 无对应端点。`WechatPayGateway`

@@ -552,6 +552,9 @@ class WechatPayV3Gateway extends AbstractGateway implements
     /**
      * 下载资金账单
      *
+     * 资金账单文件经「AES-256-ECB 加密 + GZIP 压缩」，本方法会自动下载、解密并解析为记录列表。
+     * 需配置 api_v3_key（32 字节）。返回结构含 download_url / hash_type / hash_value / records。
+     *
      * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
      * @return array<string, mixed>
      * @throws PayException
@@ -576,9 +579,10 @@ class WechatPayV3Gateway extends AbstractGateway implements
             'bill_date' => $query['bill_date'],
             'account_type' => $query['account_type'],
             'download_url' => $meta['download_url'] ?? '',
+            'hash_type' => $meta['hash_type'] ?? '',
             'hash_value' => $meta['hash_value'] ?? '',
             'raw_data' => $meta,
-            'records' => $this->fetchBillRecords($meta, isset($query['tar_type'])),
+            'records' => $this->fetchFundFlowRecords($meta),
         ];
     }
 
@@ -950,12 +954,13 @@ class WechatPayV3Gateway extends AbstractGateway implements
     }
 
     /**
-     * 依据账单元数据下载并解析 CSV
+     * 依据交易账单元数据下载并解析 CSV
      *
      * 压缩格式（tar_type=GZIP）交由调用方自行解压后调用 {@see parseBill()}。
+     * 未显式声明压缩、但下载内容以 GZIP 魔数（0x1f 0x8b）开头时，自动解压后解析。
      *
      * @param array<string, mixed> $meta 账单元数据
-     * @param bool $compressed 是否为压缩格式
+     * @param bool $compressed 是否显式声明压缩格式
      * @return array<int, array<string, mixed>>
      * @throws PayException
      */
@@ -967,7 +972,89 @@ class WechatPayV3Gateway extends AbstractGateway implements
             return [];
         }
 
-        return WechatBillParser::parse($this->downloadBillFile($downloadUrl));
+        $raw = $this->downloadBillFile($downloadUrl);
+
+        return WechatBillParser::parse($this->maybeGunzip($raw));
+    }
+
+    /**
+     * 依据资金账单元数据下载、解密并解析
+     *
+     * 微信 V3 资金账单文件为「AES-256-ECB 加密（APIv3 密钥）+ GZIP 压缩」的复合体：
+     * 先以 APIv3 密钥 AES-256-ECB 解密，再 GZIP 解压得到 CSV 明文。
+     * 若元数据携带 hash_value（SHA1），解密后校验完整性，防止传输/解密异常导致数据错乱。
+     *
+     * @param array<string, mixed> $meta 资金账单元数据
+     * @return array<int, array<string, mixed>>
+     * @throws PayException
+     */
+    protected function fetchFundFlowRecords(array $meta): array
+    {
+        $downloadUrl = $meta['download_url'] ?? '';
+
+        if (!is_string($downloadUrl) || $downloadUrl === '') {
+            return [];
+        }
+
+        $raw = $this->downloadBillFile($downloadUrl);
+        $csv = $this->decodeFundFlow($raw, $meta['hash_value'] ?? null);
+
+        return WechatBillParser::parse($csv);
+    }
+
+    /**
+     * 解密并解压资金账单原始内容
+     *
+     * 顺序：AES-256-ECB 解密（APIv3 密钥）→ GZIP 解压。解密产物若以 GZIP 魔数开头
+     * 则说明加密前曾被压缩，自动解压；否则视为解密即明文（CSV）。
+     * 当 $hashValue 非空且与解密明文的 SHA1 不一致时抛错（文件可能被篡改或损坏）。
+     *
+     * @param string $raw 下载到的原始字节（加密 + 压缩）
+     * @param string|null $hashValue 元数据中的 hash_value（SHA1，可选）
+     * @return string 解压后的 CSV 明文
+     * @throws PayException
+     */
+    protected function decodeFundFlow(string $raw, ?string $hashValue): string
+    {
+        $key = $this->getConfig('api_v3_key');
+
+        if (!is_string($key) || $key === '') {
+            throw PayException::configError('缺少 api_v3_key，无法解密资金账单');
+        }
+        if (strlen($key) !== 32) {
+            throw PayException::configError('api_v3_key 必须为 32 字节，无法解密资金账单');
+        }
+
+        $decrypted = Encryptor::aesEcbDecryptRaw($raw, $key);
+        $csv = $this->maybeGunzip($decrypted);
+
+        if ($hashValue !== null && $hashValue !== '' && strtolower(sha1($csv)) !== strtolower($hashValue)) {
+            throw PayException::gatewayError('资金账单哈希校验失败，文件可能被篡改或解密异常');
+        }
+
+        return $csv;
+    }
+
+    /**
+     * 若内容为 GZIP 压缩（魔数 0x1f 0x8b）则解压，否则原样返回
+     *
+     * @param string $raw 原始字节
+     * @return string 解压后内容（或原内容）
+     * @throws PayException
+     */
+    protected function maybeGunzip(string $raw): string
+    {
+        if ($raw === '' || substr($raw, 0, 2) !== "\x1f\x8b") {
+            return $raw;
+        }
+
+        $decoded = @gzdecode($raw);
+
+        if ($decoded === false) {
+            throw PayException::gatewayError('对账单 GZIP 解压失败');
+        }
+
+        return $decoded;
     }
 
     /**
