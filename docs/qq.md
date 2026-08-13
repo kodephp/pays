@@ -9,6 +9,8 @@ QQ 支付是腾讯公司推出的在线支付解决方案，支持 QQ 钱包、�
 - 商户应用 ID（app_id）
 - 商户号（mch_id）
 - API 密钥（api_key）
+- APIv3 证书序列号（serial_no）
+- APIv3 商户私钥（private_key）
 
 ## 安装
 
@@ -18,11 +20,17 @@ composer require kode/pays
 
 ## 配置说明
 
+> QQ 支付基于微信支付 V3 协议，所有请求均使用 `WECHATPAY2-SHA256-RSA2048` 鉴权头，
+> 因此 `serial_no` 与 `private_key` 为必填项；缺失会在构造网关时立即抛出 `PayException`。
+
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | app_id | string | 是 | QQ 支付商户应用 ID |
 | mch_id | string | 是 | QQ 支付商户号 |
-| api_key | string | 是 | QQ 支付 API 密钥 |
+| api_key | string | 是 | QQ 支付 API 密钥（用于异步通知 MD5 验签） |
+| serial_no | string | 是 | APIv3 证书序列号，用于 V3 请求鉴权头 |
+| private_key | string | 是 | APIv3 商户私钥（PEM），用于 V3 请求签名 |
+| api_v3_key | string | 否 | APIv3 密钥（用于通知资源解密等场景） |
 | notify_url | string | 否 | 异步通知回调地址 |
 | sandbox | bool | 否 | 是否沙箱模式，默认 false |
 
@@ -49,23 +57,8 @@ $result = $gateway->createOrder([
     'openid' => 'qq_openid',
 ]);
 
-// 构造前端支付参数
-$payParams = [
-    'appId' => $gateway->config['app_id'],
-    'timeStamp' => (string) time(),
-    'nonceStr' => uniqid(),
-    'package' => 'prepay_id=' . $result['prepay_id'],
-    'signType' => 'MD5',
-];
-
-// 计算签名
-ksort($payParams);
-$string = http_build_query($payParams, '', '&', PHP_QUERY_RFC3986);
-$string .= '&key=' . $gateway->config['api_key'];
-$payParams['paySign'] = strtoupper(md5($string));
-
-// 前端调用 QQ 支付
-// wx.chooseWXPay({...payParams});
+// $result['prepay_id'] 即为预支付交易会话标识，按 QQ 支付前端规范
+// 拼装 payParams 并调起 QQ 钱包支付即可（前端签名遵循 QQ 支付约定）。
 ```
 
 ## API 方法列表

@@ -9,6 +9,7 @@ use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
 use Kode\Pays\Exception\GatewayException;
 use Kode\Pays\Exception\SignException;
+use Kode\Pays\Gateway\Wechat\WechatV3SigningTrait;
 
 /**
  * QQ 支付网关
@@ -37,11 +38,14 @@ use Kode\Pays\Exception\SignException;
  */
 class QQGateway extends AbstractGateway
 {
-    // TODO: 实现 QQ Pay V3 签名头（WECHATPAY2-SHA256-RSA2048），当前所有请求缺鉴权头
+    use WechatV3SigningTrait;
 
     protected function initialize(): void
     {
-        $this->validateRequired($this->config, ['app_id', 'mch_id', 'api_key']);
+        // QQ 支付基于微信 V3 协议，所有请求需 WECHATPAY2-SHA256-RSA2048 鉴权头
+        $this->validateRequired($this->config, [
+            'app_id', 'mch_id', 'api_key', 'serial_no', 'private_key',
+        ]);
     }
 
     protected function getBaseUrl(): string
@@ -86,7 +90,7 @@ class QQGateway extends AbstractGateway
                 break;
         }
 
-        $response = $this->post('v3/pay/transaction/jsapi', $requestData);
+        $response = $this->signedV3Post('v3/pay/transaction/jsapi', $requestData);
 
         return [
             'out_trade_no' => $params['out_trade_no'],
@@ -103,10 +107,10 @@ class QQGateway extends AbstractGateway
         // QQ 支付支持通过 transaction_id 或 out_trade_no 查询
         if (strlen($orderId) > 32) {
             // transaction_id
-            $response = $this->get("v3/pay/transaction/id/{$orderId}");
+            $response = $this->signedV3Get("v3/pay/transaction/id/{$orderId}");
         } else {
             // out_trade_no
-            $response = $this->get("v3/pay/transaction/out-trade-no/{$orderId}");
+            $response = $this->signedV3Get("v3/pay/transaction/out-trade-no/{$orderId}");
         }
 
         return [
@@ -133,7 +137,7 @@ class QQGateway extends AbstractGateway
             'reason' => $params['refund_desc'] ?? '',
         ];
 
-        $response = $this->post('v3/refund/domestic/refunds', $requestData);
+        $response = $this->signedV3Post('v3/refund/domestic/refunds', $requestData);
 
         return [
             'refund_id' => $response['refund_id'] ?? '',
@@ -147,7 +151,7 @@ class QQGateway extends AbstractGateway
 
     public function queryRefund(string $refundId): array
     {
-        $response = $this->get("v3/refund/domestic/refunds/{$refundId}");
+        $response = $this->signedV3Get("v3/refund/domestic/refunds/{$refundId}");
 
         return [
             'refund_id' => $response['refund_id'] ?? '',
@@ -162,7 +166,7 @@ class QQGateway extends AbstractGateway
 
     public function closeOrder(string $orderId): array
     {
-        $response = $this->post("v3/pay/transaction/out-trade-no/{$orderId}/close", []);
+        $response = $this->signedV3Post("v3/pay/transaction/out-trade-no/{$orderId}/close", []);
 
         return [
             'out_trade_no' => $orderId,
