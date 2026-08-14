@@ -274,4 +274,107 @@ class GatewayManifestTest extends TestCase
         $this->assertTrue($info['valid']);
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $info['capabilities']);
     }
+
+    /**
+     * validate 返回结构化校验结果：缺必填、无未知键
+     */
+    public function testValidateReportsMissingRequired(): void
+    {
+        $result = GatewayManifest::validate('wechat', []);
+
+        $this->assertFalse($result['valid']);
+        $this->assertSame(['app_id', 'mch_id', 'api_key'], $result['missing']);
+        $this->assertSame([], $result['unknown']);
+        $this->assertNotEmpty($result['errors']);
+        $this->assertStringContainsString('app_id', $result['errors'][0]);
+    }
+
+    /**
+     * validate 检测到未知键（拼写错误），但必填齐全时 valid 仍为 true
+     */
+    public function testValidateDetectsUnknownKeys(): void
+    {
+        $result = GatewayManifest::validate('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '123',
+            'api_key' => 'key',
+            'appid' => 'typo', // 常见拼写错误
+        ]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['missing']);
+        $this->assertSame(['appid'], $result['unknown']);
+    }
+
+    /**
+     * validate 在配置齐全且无未知键时全部通过
+     */
+    public function testValidatePassesWhenComplete(): void
+    {
+        $result = GatewayManifest::validate('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '123',
+            'api_key' => 'key',
+        ]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['missing']);
+        $this->assertSame([], $result['unknown']);
+        $this->assertSame([], $result['errors']);
+    }
+
+    /**
+     * configSchema 包含每字段的元信息（类型/必填/默认值/说明），且由 Config 类反射得到
+     */
+    public function testConfigSchemaIncludesFieldMetadata(): void
+    {
+        $schema = GatewayManifest::configSchema('wechat');
+        $this->assertArrayHasKey('fields', $schema);
+
+        $appId = $schema['fields']['app_id'] ?? null;
+        $this->assertNotNull($appId);
+        $this->assertSame('string', $appId['type']);
+        $this->assertTrue($appId['required']);
+        $this->assertArrayHasKey('default', $appId);
+        $this->assertNotEmpty($appId['description']); // 来自 WechatConfig 构造函数 @param
+
+        // 可选字段：cert_path 非必填，默认值应为 null
+        $cert = $schema['fields']['cert_path'] ?? null;
+        $this->assertNotNull($cert);
+        $this->assertFalse($cert['required']);
+        $this->assertNull($cert['default']);
+    }
+
+    /**
+     * inspect 包含未知键检测，并在 config 中附带字段元信息
+     */
+    public function testInspectIncludesUnknownAndFields(): void
+    {
+        $info = GatewayManifest::inspect('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '123',
+            'api_key' => 'key',
+            'extra_field' => 'oops',
+        ]);
+
+        $this->assertTrue($info['valid']);
+        $this->assertSame(['extra_field'], $info['unknown']);
+        $this->assertArrayHasKey('fields', $info['config']);
+        $this->assertArrayHasKey('app_id', $info['config']['fields']);
+    }
+
+    /**
+     * Pay 门面 validate 与 GatewayManifest 一致
+     */
+    public function testPayFacadeValidateDelegates(): void
+    {
+        $result = \Kode\Pays\Facade\Pay::validate('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '123',
+            'api_key' => 'key',
+        ]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['missing']);
+    }
 }

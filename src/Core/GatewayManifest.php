@@ -603,8 +603,12 @@ class GatewayManifest
      * 登记的自定义平台会反射其 Config 类构造函数，按「无默认值的形参=必填 / 有默认值的形参=可选」
      * 自动推导，从而保证 {@see GatewayManifest::inspect()} 对扩展平台同样可用。
      *
+     * 返回结构在 required/optional 之外，额外包含 fields：以 snake_case 键名为索引，
+     * 每项含 ['type'=>类型, 'required'=>是否必填, 'default'=>默认值, 'description'=>说明]，
+     * 用于配置字段的自动文档生成与 IDE 提示（均由 Config 类反射得到，与 fromArray() 一致）。
+     *
      * @param string $name 平台标识
-     * @return array{required: string[], optional: string[]}
+     * @return array{required: string[], optional: string[], fields: array<string, array{type: string, required: bool, default: mixed, description: string}>}
      * @throws PayException
      */
     public static function configSchema(string $name): array
@@ -612,6 +616,59 @@ class GatewayManifest
         $entry = self::get($name);
 
         return self::resolveConfigSchema($name, $entry);
+    }
+
+    /**
+     * 校验平台配置是否完整、是否含未知键
+     *
+     * 在 {@see GatewayManifest::inspect()} 的缺失检测之上，进一步给出结构化的校验结果：
+     * - missing：缺失的必填项（使 valid=false）
+     * - unknown：不在契约内的配置键（多为拼写错误，如 appid 误写）
+     * - errors：面向开发者的可读错误信息数组
+     *
+     * 该方法为只读校验，不创建网关、不发起网络请求，可在应用启动时或配置加载后调用，
+     * 提前暴露配置问题。
+     *
+     * @param string $name 平台标识
+     * @param array<string, mixed> $config 待校验配置
+     * @return array{valid: bool, missing: string[], unknown: string[], errors: string[]}
+     * @throws PayException
+     */
+    public static function validate(string $name, array $config): array
+    {
+        $schema = self::configSchema($name);
+        $required = $schema['required'] ?? [];
+        $optional = $schema['optional'] ?? [];
+        $all = array_merge($required, $optional);
+
+        $missing = [];
+        foreach ($required as $key) {
+            if (!array_key_exists($key, $config) || $config[$key] === '' || $config[$key] === null) {
+                $missing[] = $key;
+            }
+        }
+
+        $unknown = [];
+        foreach (array_keys($config) as $key) {
+            if (!in_array($key, $all, true)) {
+                $unknown[] = $key;
+            }
+        }
+
+        $errors = [];
+        foreach ($missing as $key) {
+            $errors[] = "缺少必填配置项：{$key}";
+        }
+        foreach ($unknown as $key) {
+            $errors[] = "未知配置项（可能拼写错误）：{$key}";
+        }
+
+        return [
+            'valid' => $missing === [],
+            'missing' => $missing,
+            'unknown' => $unknown,
+            'errors' => $errors,
+        ];
     }
 
     /**
@@ -625,12 +682,13 @@ class GatewayManifest
      * - name / label / region / signature / gateway_class / config_class：平台元信息
      * - capabilities：能力常量 => 是否支持（bool）的完整映射
      * - operations：仅列出已开启能力对应的可调用方法（含中文标签）
-     * - config：required / optional 配置字段契约
-     * - missing：传入配置相对必填项的缺漏键（空数组表示配置完整）
+     * - config：required / optional 配置字段契约，fields 含每字段的类型/默认值/说明
+     * - missing：传入配置相对必填项的缺漏键（空数组表示必填项已满足）
+     * - unknown：传入配置中不在契约内的键（多为拼写错误，如 appid 误写）
      * - valid：必填项是否全部满足
      *
      * @param string $name 平台标识
-     * @param array<string, mixed> $config 当前已提供的配置（用于缺失校验，可省略）
+     * @param array<string, mixed> $config 当前已提供的配置（用于缺失/未知校验，可省略）
      * @return array<string, mixed>
      * @throws PayException
      */
@@ -658,11 +716,20 @@ class GatewayManifest
 
         $schema = self::configSchema($name);
         $required = $schema['required'] ?? [];
+        $optional = $schema['optional'] ?? [];
 
         $missing = [];
         foreach ($required as $key) {
             if (!array_key_exists($key, $config) || $config[$key] === '' || $config[$key] === null) {
                 $missing[] = $key;
+            }
+        }
+
+        $allKeys = array_merge($required, $optional);
+        $unknown = [];
+        foreach (array_keys($config) as $key) {
+            if (!in_array($key, $allKeys, true)) {
+                $unknown[] = $key;
             }
         }
 
@@ -677,9 +744,11 @@ class GatewayManifest
             'operations' => $operations,
             'config' => [
                 'required' => array_values($required),
-                'optional' => array_values($schema['optional'] ?? []),
+                'optional' => array_values($optional),
+                'fields' => $schema['fields'] ?? [],
             ],
             'missing' => $missing,
+            'unknown' => $unknown,
             'valid' => $missing === [],
         ];
     }
@@ -727,14 +796,23 @@ class GatewayManifest
      * - 有默认值的形参 => 可选
      * 形参名由驼峰转换为下划线风格键名（如 merchantNo => merchant_no）。
      *
+     * 无论哪种来源，fields（每字段的类型/默认值/说明）均通过反射 Config 类构造函数
+     * 自动提取，保证与 fromArray() 实际读取的键及类型一致。
+     *
      * @param string $name 平台标识
      * @param array<string, mixed> $manifest 原始清单（用于回退时读取 config_class）
-     * @return array{required: string[], optional: string[]}
+     * @return array{required: string[], optional: string[], fields: array<string, array{type: string, required: bool, default: mixed, description: string}>}
      */
     protected static function resolveConfigSchema(string $name, array $manifest): array
     {
+        $fields = self::resolveConfigFields($manifest['config_class'] ?? null);
+
         if (isset(self::CONFIG_SCHEMA[$name])) {
-            return self::CONFIG_SCHEMA[$name];
+            return [
+                'required' => self::CONFIG_SCHEMA[$name]['required'],
+                'optional' => self::CONFIG_SCHEMA[$name]['optional'],
+                'fields' => $fields,
+            ];
         }
 
         $configClass = $manifest['config_class'] ?? null;
@@ -753,11 +831,84 @@ class GatewayManifest
                     }
                 }
 
-                return ['required' => $required, 'optional' => $optional];
+                return ['required' => $required, 'optional' => $optional, 'fields' => $fields];
             }
         }
 
-        return ['required' => [], 'optional' => []];
+        return ['required' => [], 'optional' => [], 'fields' => []];
+    }
+
+    /**
+     * 通过反射 Config 类构造函数提取每个配置字段的元信息
+     *
+     * 反射构造函数形参，得到：类型（type）、是否必填（required）、默认值（default）、
+     * 以及构造函数 @param 文档中的说明（description）。形参名转为下划线风格键名。
+     * 用于 configSchema() / inspect() 的配置字段文档生成，避免手工维护与实现脱节。
+     *
+     * @param string|null $configClass Config 类全限定名
+     * @return array<string, array{type: string, required: bool, default: mixed, description: string}>
+     */
+    protected static function resolveConfigFields(?string $configClass): array
+    {
+        if (!is_string($configClass) || !class_exists($configClass)) {
+            return [];
+        }
+
+        $reflection = new \ReflectionClass($configClass);
+        $constructor = $reflection->getConstructor();
+        if ($constructor === null) {
+            return [];
+        }
+
+        $docs = self::extractParamDocs($constructor);
+        $fields = [];
+
+        foreach ($constructor->getParameters() as $param) {
+            $key = self::camelToSnake($param->getName());
+            $type = $param->getType();
+            $typeName = $type instanceof \ReflectionNamedType ? $type->getName() : (is_string($type) ? $type : 'mixed');
+
+            $default = null;
+            if ($param->isOptional() && !$param->isVariadic()) {
+                try {
+                    $default = $param->getDefaultValue();
+                } catch (\ReflectionException $e) {
+                    $default = null;
+                }
+            }
+
+            $fields[$key] = [
+                'type' => $typeName,
+                'required' => !$param->isOptional(),
+                'default' => $default,
+                'description' => $docs[$param->getName()] ?? '',
+            ];
+        }
+
+        return $fields;
+    }
+
+    /**
+     * 从方法文档注释中提取 @param 说明映射
+     *
+     * @param \ReflectionMethod $method 目标方法（通常为 Config 类构造函数）
+     * @return array<string, string> 形参名 => 说明文本
+     */
+    protected static function extractParamDocs(\ReflectionMethod $method): array
+    {
+        $doc = $method->getDocComment();
+        if ($doc === false) {
+            return [];
+        }
+
+        $result = [];
+        if (preg_match_all('/@param\s+[^\s]+\s+\$([a-zA-Z_][a-zA-Z0-9_]*)\s*(.*)/', $doc, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $result[$match[1]] = trim($match[2]);
+            }
+        }
+
+        return $result;
     }
 
     /**

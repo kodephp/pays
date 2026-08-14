@@ -308,6 +308,34 @@ class Pay
     }
 
     /**
+     * 校验平台配置是否完整、是否含未知键（配置字段契约校验）
+     *
+     * 在 {@see Pay::inspect()} 的缺失检测之上，进一步给出结构化校验结果：
+     * - valid：必填项是否全部满足
+     * - missing：缺失的必填项
+     * - unknown：不在契约内的配置键（多为拼写错误）
+     * - errors：面向开发者的可读错误信息
+     *
+     * 可在应用启动时或配置加载后调用，提前暴露配置问题。
+     *
+     * ```php
+     * $result = Pay::validate('wechat', $config);
+     * if (!$result['valid']) {
+     *     throw new \RuntimeException(implode('; ', $result['errors']));
+     * }
+     * ```
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $config 待校验配置
+     * @return array{valid: bool, missing: string[], unknown: string[], errors: string[]}
+     * @throws PayException
+     */
+    public static function validate(string $gateway, array $config): array
+    {
+        return GatewayManifest::validate($gateway, $config);
+    }
+
+    /**
      * 解析并返回强类型网关实例
      *
      * 优先使用预注册配置（{@see registerConfig}），其次使用传入配置；实例按标识缓存。

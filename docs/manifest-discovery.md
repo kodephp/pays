@@ -65,6 +65,43 @@ $info['valid'];   // true
 
 > 空字符串 `''` 与 `null` 均视为缺失，纳入 `missing` 校验，避免「字段存在但为空」被误判为已配置。
 
+`inspect` 还会列出不在契约内的配置键（`unknown`，多为拼写错误，如 `appid` 误写），以及在
+`config.fields` 中给出每个字段的类型、默认值与说明（由 Config 类反射得到，与 `fromArray()` 一致）：
+
+```php
+$info = Pay::inspect('wechat', [
+    'app_id' => 'wx123',
+    'mch_id' => '123',
+    'api_key' => 'key',
+    'appid' => 'typo', // 拼写错误，会被归入 unknown
+]);
+$info['unknown'];  // ['appid']
+$info['config']['fields']['app_id'];
+// ['type' => 'string', 'required' => true, 'default' => null, 'description' => '微信公众号/小程序/APP 的 APPID']
+```
+
+## 配置校验（validate）
+
+若只需校验配置是否完整、有无拼写错误，可直接调用 `Pay::validate()` / `GatewayManifest::validate()`，
+它返回结构化的校验结果，适合在应用启动或配置加载后一次性断言：
+
+```php
+use Kode\Pays\Facade\Pay;
+
+$result = Pay::validate('wechat', $config);
+// $result['valid']   必填项是否全部满足
+// $result['missing'] 缺失的必填项
+// $result['unknown'] 不在契约内的配置键（多为拼写错误）
+// $result['errors']  面向开发者的可读错误信息
+
+if (!$result['valid']) {
+    throw new \RuntimeException(implode('; ', $result['errors']));
+}
+```
+
+> `unknown` 仅作提示（不影响 `valid`），用于捕获 `app_id` 误写为 `appid` 这类常见笔误；
+> 只有 `missing`（必填缺失）会使 `valid` 为 `false`。
+
 ## 细粒度查询
 
 若只需其中某一部分，可直接调用 `GatewayManifest` 的静态方法：
