@@ -124,6 +124,28 @@ GatewayManifest::configSchema('wechat');
 // ['required' => ['app_id','mch_id','api_key'], 'optional' => ['api_v3_key', ...]]
 ```
 
+## 一键生成配置模板
+
+已知「要传哪些字段」后，可直接生成一份可拷贝的初始配置，免去对照文档手写：
+
+```php
+use Kode\Pays\Facade\Pay;
+
+$config = Pay::configExample('wechat');
+// 必填字段给出类型占位（如 '<your_app_id>'），可选字段填入默认值（如 sandbox => false）
+// 开发者替换占位后，配合 Pay::validate() 即可校验是否遗漏：
+$result = Pay::validate('wechat', $config);
+if (!$result['valid']) {
+    throw new \RuntimeException(implode('; ', $result['errors']));
+}
+```
+
+`configExample()` 的占位规则：
+- **必填字段**：按类型给占位（`string ⇒ '<your_键名>'`、`bool ⇒ false`、`int/float ⇒ 0`、`array ⇒ []`）。
+- **可选字段**：有默认值则填入默认值，否则给类型占位。
+
+> 占位值（如 `<your_app_id>`）仅为提示，请替换为真实凭据；`false`/`0` 等默认值可直接保留。
+
 ## 扩展平台自动推导
 
 `CONFIG_SCHEMA` 仅覆盖内置平台。通过 `Pay::extend()` / `GatewayManifest::register()` 登记的

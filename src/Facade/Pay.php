@@ -336,6 +336,26 @@ class Pay
     }
 
     /**
+     * 生成平台的可拷贝配置模板
+     *
+     * 基于配置字段契约产出「按图索骥」的初始配置：必填字段给类型占位、可选字段给默认值。
+     * 开发者复制后替换占位即可，配合 {@see Pay::validate()} 校验是否遗漏。
+     *
+     * ```php
+     * $config = Pay::configExample('wechat');
+     * // => ['app_id' => '<your_app_id>', 'mch_id' => '<your_mch_id>', 'api_key' => '<your_api_key>', ...]
+     * ```
+     *
+     * @param string $gateway 网关标识
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function configExample(string $gateway): array
+    {
+        return GatewayManifest::configExample($gateway);
+    }
+
+    /**
      * 解析并返回强类型网关实例
      *
      * 优先使用预注册配置（{@see registerConfig}），其次使用传入配置；实例按标识缓存。

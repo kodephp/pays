@@ -377,4 +377,68 @@ class GatewayManifestTest extends TestCase
         $this->assertTrue($result['valid']);
         $this->assertSame([], $result['missing']);
     }
+
+    /**
+     * configExample 生成可拷贝模板：必填给占位、可选有默认值则用默认值
+     */
+    public function testConfigExampleGeneratesTemplate(): void
+    {
+        $example = GatewayManifest::configExample('wechat');
+
+        // 必填字段给出类型占位（非真实值）
+        $this->assertSame('<your_app_id>', $example['app_id']);
+        $this->assertSame('<your_mch_id>', $example['mch_id']);
+        $this->assertSame('<your_api_key>', $example['api_key']);
+        $this->assertContains('api_key', array_keys($example));
+
+        // 可选字段 sandbox 有默认值 false，应直接填入默认值
+        if (array_key_exists('sandbox', $example)) {
+            $this->assertFalse($example['sandbox']);
+        }
+
+        // 占位值均不应为空字符串（避免开发者误以为已填）
+        foreach (['app_id', 'mch_id', 'api_key'] as $requiredKey) {
+            $this->assertNotEmpty($example[$requiredKey]);
+        }
+    }
+
+    /**
+     * configExample 在无字段元信息的平台（聚合支付）回退为通用占位
+     */
+    public function testConfigExampleFallsBackForSchemaOnlyPlatform(): void
+    {
+        $example = GatewayManifest::configExample('aggregate');
+
+        $this->assertArrayHasKey('channels', $example);
+        $this->assertSame('<your_channels>', $example['channels']);
+    }
+
+    /**
+     * 用 configExample 生成的模板补齐真实值后，validate 应全部通过
+     */
+    public function testConfigExampleThenValidateRoundTrip(): void
+    {
+        $example = GatewayManifest::configExample('wechat');
+        $filled = [
+            'app_id' => 'wx_real',
+            'mch_id' => 'mch_real',
+            'api_key' => 'key_real',
+        ];
+        $config = array_merge($example, $filled);
+
+        $result = GatewayManifest::validate('wechat', $config);
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['missing']);
+    }
+
+    /**
+     * Pay 门面 configExample 与 GatewayManifest 一致
+     */
+    public function testPayFacadeConfigExampleDelegates(): void
+    {
+        $example = \Kode\Pays\Facade\Pay::configExample('alipay');
+
+        $this->assertSame('<your_app_id>', $example['app_id']);
+        $this->assertSame('<your_private_key>', $example['private_key']);
+    }
 }

@@ -754,6 +754,77 @@ class GatewayManifest
     }
 
     /**
+     * 生成平台的可拷贝配置模板
+     *
+     * 基于 {@see GatewayManifest::configSchema()} 的字段契约，产出一份「按图索骥」的初始配置：
+     * - 必填字段：给出与类型匹配的占位提示（如 string => &lt;your_app_id&gt;，bool => false，int => 0）
+     * - 可选字段：有默认值则填入默认值，否则给出占位提示
+     * 开发者复制后仅需替换占位即可，配合 {@see GatewayManifest::validate()} 校验是否遗漏。
+     *
+     * 优先使用字段元信息（fields，来自 Config 类反射）；对无元信息的平台（如仅声明于
+     * {@see GatewayManifest::CONFIG_SCHEMA} 的聚合支付）回退为通用占位字符串。
+     *
+     * @param string $name 平台标识
+     * @return array<string, mixed> 可直接拷贝填充的配置模板
+     * @throws PayException
+     */
+    public static function configExample(string $name): array
+    {
+        $schema = self::configSchema($name);
+        $fields = $schema['fields'] ?? [];
+        $required = $schema['required'] ?? [];
+        $optional = $schema['optional'] ?? [];
+
+        $example = [];
+
+        // 必填在前、可选在后，便于开发者按顺序填充
+        foreach (array_merge($required, $optional) as $key) {
+            if (isset($fields[$key])) {
+                $field = $fields[$key];
+
+                if (!$field['required'] && array_key_exists('default', $field) && $field['default'] !== null) {
+                    $example[$key] = $field['default'];
+                    continue;
+                }
+
+                $example[$key] = self::placeholderFor($field['type'], $key);
+                continue;
+            }
+
+            // 无字段元信息（如聚合支付）时的回退占位
+            $example[$key] = self::placeholderFor('string', $key);
+        }
+
+        return $example;
+    }
+
+    /**
+     * 根据字段类型生成配置占位提示
+     *
+     * @param string $type PHP 类型名（来自反射），如 string / int / bool / array
+     * @param string $key 配置键名（用于生成可读占位）
+     * @return mixed
+     */
+    protected static function placeholderFor(string $type, string $key)
+    {
+        switch ($type) {
+            case 'bool':
+            case 'false':
+            case 'true':
+                return false;
+            case 'int':
+            case 'float':
+                return 0;
+            case 'array':
+                return [];
+            case 'string':
+                return '<your_' . $key . '>';
+            default:
+                return '<value>';
+        }
+    }
+
+    /**
      * 规范化清单数据，补齐默认值
      *
      * @param string $name 平台标识
