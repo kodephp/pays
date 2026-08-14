@@ -681,9 +681,10 @@ class AlipayGateway extends AbstractGateway implements
      * 再次调用本方法轮询，直到 `status=SUCCESS` 并完成下载解压。
      *
      * @param array<string, mixed> $params 参数：
-     *   - type: 申请类型（默认 `FUND_DETAIL`，即转入转出收支证明/资金业务回单）；可选 `BALANCE` 等
-     *   - key: 申请参数值（依 type 而定，如 `FUND_DETAIL` 传转账 `pay_fund_order_id`）
-     *   - bill_date: `key` 的别名（向后兼容）
+     *   - type: 申请类型（默认 `BALANCE`，即余额收支证明/资金账单，按账务日期申请；
+     *     与全 SDK `downloadFundFlow` 的 `bill_date` 约定对齐）。可选 `FUND_DETAIL`（单笔资金业务回单，key 传转账 `pay_fund_order_id`）等
+     *   - key: 申请参数值（依 type 而定；默认 `BALANCE` 传账务日期如 `20260814`，`FUND_DETAIL` 传转账 `pay_fund_order_id`）
+     *   - bill_date: `key` 的别名（向后兼容，默认 BALANCE 场景下即账务日期）
      *   - file_id: 已持有的 file_id（轮询场景，传入后跳过申请步骤）
      * @return array<string, mixed> 含 file_id / status / download_url / file_content（PDF 二进制）/ raw_data
      * @throws PayException
@@ -694,7 +695,7 @@ class AlipayGateway extends AbstractGateway implements
             return $this->queryAlipayEreceipt((string) $params['file_id']);
         }
 
-        $type = $params['type'] ?? 'FUND_DETAIL';
+        $type = $params['type'] ?? 'BALANCE';
         $key = $params['key'] ?? $params['bill_date'] ?? '';
         if ($key === '') {
             throw PayException::paramError('支付宝资金账单电子回单需提供 key（或 bill_date）');

@@ -24,7 +24,7 @@
 | 平台 | `downloadBill` | `downloadFundFlow` | `parseBill` | 说明 |
 |------|----------------|--------------------|-------------|------|
 | 微信支付 | ✅ `pay/downloadbill` | ✅ `pay/downloadfundflow` | ✅ CSV | 金额单位为分；当前沿用既有构造，投产前请接入 `Signer::md5` 与 `arrayToXml` |
-| 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` + `query` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；`downloadBill` 申请下载地址后自动下载文件、ZIP 包取首个明细 CSV 解压解析为记录（需 PHP ZipArchive 扩展）；`downloadFundFlow`（电子回单）为异步两步流程：先 `apply` 拿 `file_id`，再 `query` 轮询，`status=SUCCESS` 后下载 `download_url`（ZIP 内含 PDF）自动解压返回 `file_content`，未就绪返回元数据（file_content=null）便于持 `file_id` 轮询 |
+| 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` + `query` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；`downloadBill` 申请下载地址后自动下载文件、ZIP 包取首个明细 CSV 解压解析为记录（需 PHP ZipArchive 扩展）；`downloadFundFlow`（电子回单）为异步两步流程：先 `apply` 拿 `file_id`，再 `query` 轮询，`status=SUCCESS` 后下载 `download_url`（ZIP 内含 PDF）自动解压返回 `file_content`，未就绪返回元数据（file_content=null）便于持 `file_id` 轮询。`downloadFundFlow` 默认 `type=BALANCE`（余额收支证明/资金账单，key 为账务日期，与全 SDK `bill_date` 约定对齐），可传 `type=FUND_DETAIL` 取单笔资金业务回单（key 为转账 `pay_fund_order_id`） |
 | Stripe | ✅ `v1/balance_transactions` | ❌ 报「无此方法」 | ✅ JSON | Balance Transaction 列表（`created` 时间区间）；资金账单能力暂未提供 |
 | 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV。**交易账单**下载内容若以 GZIP 魔数开头会自动解压；**资金账单**为「AES-256-ECB 加密 + GZIP 压缩」，网关自动解密（需 32 字节 `api_v3_key`）并校验 `hash_value`，解密后直接得到 CSV 记录 |
 | 美团支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`app_secret`) 签名，账单内容置于 `bill_content` |

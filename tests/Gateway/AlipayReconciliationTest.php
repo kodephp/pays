@@ -253,6 +253,33 @@ class AlipayReconciliationTest extends TestCase
     }
 
     /**
+     * 未显式传 type 时，apply 请求默认使用 BALANCE（余额收支证明/资金账单，与全 SDK bill_date 约定对齐）
+     */
+    public function testDownloadFundFlowDefaultsToBalance(): void
+    {
+        $gateway = $this->createGateway([
+            'gateway.do' => $this->okJson('alipay.data.bill.ereceipt.apply', [
+                'file_id' => 'F999',
+                'status' => 'SUCCESS',
+                'download_url' => 'https://download.example.com/ereceipt.zip',
+            ]),
+            'download.example.com' => $this->buildZipWithPdf('%PDF-1.4 ALIPAY BALANCE'),
+        ]);
+
+        // 仅传 key（账务日期），不传 type
+        $result = $gateway->downloadFundFlow(['key' => '20260814']);
+
+        $this->assertSame('F999', $result['file_id']);
+        $this->assertSame('SUCCESS', $result['status']);
+        $this->assertStringContainsString('ALIPAY BALANCE', $result['file_content']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $applyBiz = json_decode((string) $history[0]['data']['biz_content'], true);
+        $this->assertSame('BALANCE', $applyBiz['type']);
+        $this->assertSame('20260814', $applyBiz['key']);
+    }
+
+    /**
      * 首次查询尚未生成：返回元数据且 file_content=null，不发起下载
      */
     public function testDownloadFundFlowNotReady(): void
