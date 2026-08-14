@@ -75,14 +75,18 @@ class WechatPayGateway extends AbstractGateway implements
 
         $tradeType = strtoupper((string) ($params['trade_type'] ?? ''));
 
-        // JSAPI 支付必须提供支付用户的 openid（公众号 / 关联小程序场景）
+        // JSAPI 支付必须提供支付用户的 openid（公众号 / 关联小程序场景，通常由 kode/miniapp 等授权后获得）
         if ($tradeType === 'JSAPI' && empty($params['openid'])) {
-            throw PayException::paramError('JSAPI 支付必须提供 openid');
+            throw PayException::paramError('JSAPI 支付必须提供 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）');
         }
 
         // 服务商模式字段（sub_appid / sub_mch_id）由配置驱动，
         // 经 signedV2Post 自动并入请求（见 applyServiceProviderFields）。
-        $params['appid'] = $this->getConfig('app_id');
+        // appid 允许随请求覆盖：同一商户绑定多个 appid（公众号 / 小程序 / App）时，
+        // JSAPI 必须使用与 openid 来源一致的 appid，故支持按请求指定绑定 appid。
+        $appId = $params['app_id'] ?? $params['appid'] ?? $this->getConfig('app_id');
+        unset($params['app_id'], $params['appid']);
+        $params['appid'] = $appId;
         $params['mch_id'] = $this->getConfig('mch_id');
         $params['nonce_str'] = $this->generateNonceStr();
 
@@ -99,10 +103,12 @@ class WechatPayGateway extends AbstractGateway implements
      * @return array<string, string> 含 appId / timeStamp / nonceStr / package / signType / paySign
      * @throws PayException
      */
-    public function buildJsApiConfig(string $prepayId): array
+    public function buildJsApiConfig(string $prepayId, ?string $appId = null): array
     {
+        $effectiveAppId = $appId ?? $this->getEffectiveAppId();
+
         $params = [
-            'appId' => $this->getEffectiveAppId(),
+            'appId' => $effectiveAppId,
             'timeStamp' => (string) time(),
             'nonceStr' => $this->generateNonceStr(),
             'package' => 'prepay_id=' . $prepayId,

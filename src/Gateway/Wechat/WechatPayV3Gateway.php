@@ -79,7 +79,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
         $this->validateRequired($params, ['out_trade_no', 'description', 'amount', 'notify_url']);
 
         $requestData = [
-            'appid' => $this->getConfig('app_id'),
+            'appid' => $params['app_id'] ?? $params['appid'] ?? $this->getConfig('app_id'),
             'mchid' => $this->getConfig('mch_id'),
             'out_trade_no' => $params['out_trade_no'],
             'description' => $params['description'],
@@ -100,9 +100,9 @@ class WechatPayV3Gateway extends AbstractGateway implements
 
         $tradeType = $params['trade_type'] ?? 'native';
 
-        // JSAPI / 小程序支付必须提供支付用户的 openid
+        // JSAPI / 小程序支付必须提供支付用户的 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）
         if (in_array($tradeType, ['jsapi', 'miniprogram'], true) && empty($params['openid'])) {
-            throw PayException::paramError('JSAPI / 小程序支付必须提供 openid');
+            throw PayException::paramError('JSAPI / 小程序支付必须提供 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）');
         }
 
         // 服务商模式：透传服务商 / 子商户标识（sp_*/sub_*）。
@@ -139,19 +139,20 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, string> 含 appId / timeStamp / nonceStr / package / signType / paySign
      * @throws PayException
      */
-    public function buildJsApiConfig(string $prepayId): array
+    public function buildJsApiConfig(string $prepayId, ?string $appId = null): array
     {
         $timeStamp = (string) time();
         $nonceStr = $this->generateNonceStr();
         $package = 'prepay_id=' . $prepayId;
+        $effectiveAppId = $appId ?? $this->getEffectiveAppId();
 
         // APIv3 JSAPI 签名串：appId\n timeStamp\n nonceStr\n package\n（末尾换行）
-        // appId 须使用有效 appId（服务商模式下为子商户 sub_appid），与返回给前端的 appId 一致
-        $message = $this->getEffectiveAppId() . "\n" . $timeStamp . "\n" . $nonceStr . "\n" . $package . "\n";
+        // appId 须使用有效 appId（服务商模式下为子商户 sub_appid，或按请求指定的绑定 appid），与返回给前端的 appId 一致
+        $message = $effectiveAppId . "\n" . $timeStamp . "\n" . $nonceStr . "\n" . $package . "\n";
         $paySign = Encryptor::rsaSign($message, (string) $this->getConfig('private_key'), 'sha256');
 
         return [
-            'appId' => $this->getEffectiveAppId(),
+            'appId' => $effectiveAppId,
             'timeStamp' => $timeStamp,
             'nonceStr' => $nonceStr,
             'package' => $package,

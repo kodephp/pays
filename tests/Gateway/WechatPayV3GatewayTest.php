@@ -235,6 +235,33 @@ class WechatPayV3GatewayTest extends TestCase
     }
 
     /**
+     * 同一商户绑定多个 appid 时，JSAPI 可按请求指定绑定 appid，使其与 openid 来源一致
+     */
+    public function testCreateOrderJsapiAcceptsBoundAppIdOverride(): void
+    {
+        $gateway = $this->createGateway([
+            'pay/transactions/jsapi' => json_encode(['prepay_id' => 'wx123']),
+        ]);
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试商品',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+            'trade_type' => 'jsapi',
+            'openid' => 'oMiniProgram',
+            'app_id' => 'wxMiniProgram',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $decoded = json_decode($last['data']['body'], true);
+
+        $this->assertSame('wxMiniProgram', $decoded['appid']);
+        $this->assertNotSame('wx123', $decoded['appid']);
+        $this->assertSame('oMiniProgram', $decoded['payer']['openid']);
+    }
+
+    /**
      * 配置驱动的服务商模式：退款 / 关单全链路自动透传 sub_ 字段
      */
     public function testServiceProviderFieldsFromConfig(): void
@@ -309,6 +336,25 @@ class WechatPayV3GatewayTest extends TestCase
         $message = $config['appId'] . "\n" . $config['timeStamp'] . "\n"
             . $config['nonceStr'] . "\n" . $config['package'] . "\n";
 
+        $this->assertSame(1, openssl_verify($message, base64_decode($config['paySign']), $publicKey, OPENSSL_ALGO_SHA256));
+    }
+
+    /**
+     * buildJsApiConfig 支持显式传入 appId（与 createOrder 指定的绑定 appid 一致），
+     * 用于多 appid 商户的 JSAPI 二次签名
+     */
+    public function testBuildJsApiConfigUsesExplicitAppId(): void
+    {
+        $gateway = $this->createGateway();
+
+        $config = $gateway->buildJsApiConfig('wx1234567890', 'wxMiniProgram');
+
+        $this->assertSame('wxMiniProgram', $config['appId']);
+
+        $privateKey = openssl_pkey_get_private(self::$privateKey);
+        $publicKey = openssl_pkey_get_details($privateKey)['key'];
+        $message = $config['appId'] . "\n" . $config['timeStamp'] . "\n"
+            . $config['nonceStr'] . "\n" . $config['package'] . "\n";
         $this->assertSame(1, openssl_verify($message, base64_decode($config['paySign']), $publicKey, OPENSSL_ALGO_SHA256));
     }
 

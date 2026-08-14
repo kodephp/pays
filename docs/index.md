@@ -14,6 +14,7 @@
 - [统一入口与平台清单](unified-entry.md) - 一个方法调用任意平台、域名/能力收敛、安全校验、一次扩展新平台
 - [能力与配置发现](manifest-discovery.md) - inspect() 统一响应：能力开关、可调用操作、配置字段契约与缺失校验
 - [配置参考（各平台字段清单）](configuration-reference.md) - 各平台必填/可选配置字段一览，configExample() 直接生成可拷贝模板
+- [微信支付与 kode/miniapp 集成](wechat-integrate-miniapp.md) - openid 注入与多 appid 场景：appid 须与 openid 同源
 
 ## 支付网关
 

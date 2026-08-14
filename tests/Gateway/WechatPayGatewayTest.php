@@ -181,6 +181,36 @@ class WechatPayGatewayTest extends TestCase
     }
 
     /**
+     * 同一商户绑定多个 appid（公众号 / 小程序 / App）时，JSAPI 可按请求指定绑定 appid，
+     * 使其与 openid 来源一致（避免 appid/openid 不匹配）
+     */
+    public function testJsapiCreateOrderAcceptsBoundAppIdOverride(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code>'
+            . '<prepay_id><![CDATA[wx123]]></prepay_id></xml>';
+
+        $gateway = $this->createGateway(['pay/unifiedorder' => $xml]);
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'JSAPI',
+            'openid' => 'oMiniProgram',
+            'app_id' => 'wxMiniProgram', // 该 openid 来自小程序，故指定小程序绑定 appid
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        // 下单 appid 应为指定的小程序绑定 appid，而非配置里的 wx123
+        $this->assertStringContainsString('<appid><![CDATA[wxMiniProgram]]></appid>', $body);
+        $this->assertStringNotContainsString('<appid><![CDATA[wx123]]></appid>', $body);
+        // 覆盖用的 app_id 键不应作为多余字段进入请求体
+        $this->assertStringNotContainsString('<app_id>', $body);
+        $this->assertStringContainsString('<openid><![CDATA[oMiniProgram]]></openid>', $body);
+    }
+
+    /**
      * 配置驱动的服务商模式：退款请求自动透传 sub_mch_id / sub_appid
      */
     public function testServiceProviderFieldsFromConfig(): void
@@ -241,6 +271,26 @@ class WechatPayGatewayTest extends TestCase
         // 复算签名，确认以 sub_appid 参与签名
         $expected = strtoupper(md5(
             'appId=wxSubAppid&nonceStr=' . $config['nonceStr']
+            . '&package=prepay_id=wx1234567890&signType=MD5&timeStamp=' . $config['timeStamp']
+            . '&key=testkey',
+        ));
+        $this->assertSame($expected, $config['paySign']);
+    }
+
+    /**
+     * buildJsApiConfig 支持显式传入 appId（与 createOrder 指定的绑定 appid 一致），
+     * 用于多 appid 商户的 JSAPI 二次签名
+     */
+    public function testBuildJsApiConfigUsesExplicitAppId(): void
+    {
+        $gateway = $this->createGateway();
+
+        $config = $gateway->buildJsApiConfig('wx1234567890', 'wxMiniProgram');
+
+        $this->assertSame('wxMiniProgram', $config['appId']);
+
+        $expected = strtoupper(md5(
+            'appId=wxMiniProgram&nonceStr=' . $config['nonceStr']
             . '&package=prepay_id=wx1234567890&signType=MD5&timeStamp=' . $config['timeStamp']
             . '&key=testkey',
         ));
