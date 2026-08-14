@@ -24,7 +24,7 @@
 | 平台 | `downloadBill` | `downloadFundFlow` | `parseBill` | 说明 |
 |------|----------------|--------------------|-------------|------|
 | 微信支付 | ✅ `pay/downloadbill` | ✅ `pay/downloadfundflow` | ✅ CSV | 金额单位为分；当前沿用既有构造，投产前请接入 `Signer::md5` 与 `arrayToXml` |
-| 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；对账单下载接口返回账单下载地址 |
+| 支付宝 | ✅ `alipay.data.dataservice.bill.downloadurl.query` | ✅ `alipay.data.bill.ereceipt.apply` | ✅ CSV | 复用 `buildRequestParams` 标准 RSA2 签名；`downloadBill` 申请下载地址后自动下载文件、ZIP 包取首个明细 CSV 解压解析为记录（需 PHP ZipArchive 扩展），返回结构含 `records` |
 | Stripe | ✅ `v1/balance_transactions` | ❌ 报「无此方法」 | ✅ JSON | Balance Transaction 列表（`created` 时间区间）；资金账单能力暂未提供 |
 | 微信支付 V3 | ✅ `bill/tradebill` | ✅ `bill/fundflowbill` | ✅ CSV | 两步流程：先取含 `download_url` 的元数据，再下载并解析 CSV。**交易账单**下载内容若以 GZIP 魔数开头会自动解压；**资金账单**为「AES-256-ECB 加密 + GZIP 压缩」，网关自动解密（需 32 字节 `api_v3_key`）并校验 `hash_value`，解密后直接得到 CSV 记录 |
 | 美团支付 | ✅ `api/bill/download` | ✅ `api/bill/fundflow` | ✅ CSV | 金额单位为分；MD5(`app_secret`) 签名，账单内容置于 `bill_content` |

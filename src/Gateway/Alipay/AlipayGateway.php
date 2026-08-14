@@ -538,10 +538,14 @@ class AlipayGateway extends AbstractGateway implements
     }
 
     /**
-     * 下载支付宝交易对账单（获取对账单下载地址）
+     * 下载支付宝交易对账单（下载并解析）
+     *
+     * 流程：先申请对账单下载地址（alipay.data.dataservice.bill.downloadurl.query），
+     * 再下载文件并按需解压（ZIP 包取首个明细 CSV）后解析为交易记录列表。
+     * 下载文件无需签名，直接 GET；返回结构含 bill_download_url / file_content / records。
      *
      * @param array<string, mixed> $params 对账参数（bill_date 必填）
-     * @return array<string, mixed> 含对账单下载地址与原始响应
+     * @return array<string, mixed> 含下载地址、原始响应、记录列表
      * @throws PayException
      */
     public function downloadBill(array $params): array
@@ -556,12 +560,94 @@ class AlipayGateway extends AbstractGateway implements
         $requestParams = $this->buildRequestParams('alipay.data.dataservice.bill.downloadurl.query', $bizContent);
         $response = $this->post('', $requestParams);
 
-        return [
+        $downloadUrl = $response['bill_download_url'] ?? '';
+
+        $result = [
             'bill_date' => $params['bill_date'],
             'bill_type' => $params['bill_type'] ?? 'trade',
-            'bill_download_url' => $response['bill_download_url'] ?? '',
+            'bill_download_url' => $downloadUrl,
             'raw_data' => $response,
+            'records' => [],
         ];
+
+        if (!is_string($downloadUrl) || $downloadUrl === '') {
+            return $result;
+        }
+
+        $raw = $this->downloadBillFile($downloadUrl);
+        $csv = $this->extractAlipayBillCsv($raw);
+        $result['file_content'] = $csv;
+        $result['records'] = $this->parseBill($csv);
+
+        return $result;
+    }
+
+    /**
+     * 下载对账单文件（无签名，直接 GET）
+     *
+     * @throws PayException
+     */
+    protected function downloadBillFile(string $downloadUrl): string
+    {
+        try {
+            return $this->httpClient->get($downloadUrl);
+        } catch (\Throwable $e) {
+            throw PayException::networkError('支付宝对账单下载失败：' . $e->getMessage(), $e);
+        }
+    }
+
+    /**
+     * 从下载内容提取 CSV：ZIP 压缩包取首个明细 CSV，否则原样返回
+     *
+     * 支付宝对账单文件可能是单个 CSV，也可能是含多个 CSV 的 ZIP；ZIP 场景下
+     * 取第一个 .csv 条目（业务明细）进行解析。
+     *
+     * @throws PayException
+     */
+    protected function extractAlipayBillCsv(string $raw): string
+    {
+        if (substr($raw, 0, 2) === "PK") {
+            if (!class_exists('ZipArchive')) {
+                throw PayException::configError('支付宝对账单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展才能解析');
+            }
+
+            $tmp = tempnam(sys_get_temp_dir(), 'alipay_bill_');
+            if ($tmp === false) {
+                throw PayException::gatewayError('无法创建临时文件用于解析对账单 ZIP');
+            }
+
+            try {
+                file_put_contents($tmp, $raw);
+                $zip = new \ZipArchive();
+                $opened = $zip->open($tmp);
+                if ($opened !== true) {
+                    throw PayException::gatewayError('支付宝对账单 ZIP 打开失败');
+                }
+
+                try {
+                    $csv = '';
+                    for ($i = 0; $i < $zip->numFiles; $i++) {
+                        $name = $zip->getNameIndex($i);
+                        if ($name !== false && strtolower(substr($name, -4)) === '.csv') {
+                            $csv = (string) $zip->getFromIndex($i);
+                            break;
+                        }
+                    }
+                } finally {
+                    $zip->close();
+                }
+
+                if ($csv === '') {
+                    throw PayException::gatewayError('支付宝对账单 ZIP 内未找到 CSV 文件');
+                }
+
+                return $csv;
+            } finally {
+                @unlink($tmp);
+            }
+        }
+
+        return $raw;
     }
 
     /**

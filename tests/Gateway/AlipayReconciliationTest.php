@@ -93,6 +93,7 @@ class AlipayReconciliationTest extends TestCase
             'gateway.do' => $this->okJson('alipay.data.dataservice.bill.downloadurl.query', [
                 'bill_download_url' => 'https://example.com/bill.zip',
             ]),
+            'bill.zip' => $this->sampleBillCsv(),
         ]);
 
         $result = $gateway->downloadBill(['bill_date' => '20240425', 'bill_type' => 'trade']);
@@ -100,16 +101,95 @@ class AlipayReconciliationTest extends TestCase
         $this->assertSame('20240425', $result['bill_date']);
         $this->assertSame('trade', $result['bill_type']);
         $this->assertSame('https://example.com/bill.zip', $result['bill_download_url']);
+        $this->assertCount(1, $result['records']);
+        $this->assertSame('MER1', $result['records'][0]['merchant_order_no']);
 
-        $last = $this->getMockClient($gateway)->getLastRequest();
-        $this->assertNotNull($last);
-        $this->assertStringContainsString('gateway.do', $last['url']);
-        $this->assertSame('alipay.data.dataservice.bill.downloadurl.query', $last['data']['method']);
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(2, $history);
+        $apply = $history[0];
+        $this->assertStringContainsString('gateway.do', $apply['url']);
+        $this->assertSame('alipay.data.dataservice.bill.downloadurl.query', $apply['data']['method']);
 
-        $biz = $this->decodeBizContent($this->getMockClient($gateway));
+        $biz = json_decode((string) $apply['data']['biz_content'], true);
         $this->assertSame('trade', $biz['bill_type']);
         $this->assertSame('20240425', $biz['bill_date']);
     }
+
+    /**
+     * ZIP 压缩包对账单：取首个明细 CSV 解析
+     */
+    public function testDownloadBillExtractsZip(): void
+    {
+        $gateway = $this->createGateway([
+            'gateway.do' => $this->okJson('alipay.data.dataservice.bill.downloadurl.query', [
+                'bill_download_url' => 'https://example.com/bill.zip',
+            ]),
+            'bill.zip' => $this->buildZipWithCsv($this->sampleBillCsv()),
+        ]);
+
+        $result = $gateway->downloadBill(['bill_date' => '20240425']);
+
+        $this->assertCount(1, $result['records']);
+        $this->assertSame('MER1', $result['records'][0]['merchant_order_no']);
+    }
+
+    /**
+     * 响应无下载地址时返回空记录，不发起下载
+     */
+    public function testDownloadBillWithoutUrlReturnsEmptyRecords(): void
+    {
+        $gateway = $this->createGateway([
+            'gateway.do' => $this->okJson('alipay.data.dataservice.bill.downloadurl.query', []),
+        ]);
+
+        $result = $gateway->downloadBill(['bill_date' => '20240425']);
+
+        $this->assertSame('', $result['bill_download_url']);
+        $this->assertSame([], $result['records']);
+        $this->assertCount(1, $this->getMockClient($gateway)->getHistory());
+    }
+
+    /**
+     * 构造一份与 parseBill 兼容的支付宝对账单 CSV 样本
+     */
+    private function sampleBillCsv(): string
+    {
+        $header = implode(',', array_fill(0, 23, 'col'));
+        $row = implode(',', [
+            'ALI1', 'MER1', 'PAY', 'subject', '2024-04-25 10:00:00', '2024-04-25 10:05:00',
+            'store1', 'store name', 'op', 'term1', 'seller1', '10.00', '10.00', '0', '0',
+            '0', '0', '1', '0', 'ref1', '0', 'remark', 'SUCCESS',
+        ]);
+
+        return $header . "\n" . $row . "\n合计,1\n";
+    }
+
+    /**
+     * 在内存中构造含单个 CSV 的 ZIP 包字节
+     */
+    private function buildZipWithCsv(string $csv): string
+    {
+        if (!class_exists('ZipArchive')) {
+            $this->markTestSkipped('当前环境缺少 ZipArchive 扩展');
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'alipay_zip_');
+        if ($tmp === false) {
+            $this->markTestSkipped('无法创建临时文件');
+        }
+
+        $zip = new \ZipArchive();
+        @unlink($tmp);
+        $zip->open($tmp, \ZipArchive::CREATE);
+        $zip->addFromString('业务明细.csv', $csv);
+        $zip->close();
+
+        $bytes = (string) file_get_contents($tmp);
+        @unlink($tmp);
+
+        return $bytes;
+    }
+
 
     public function testDownloadBillMissingRequired(): void
     {
