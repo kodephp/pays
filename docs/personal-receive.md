@@ -3,7 +3,7 @@
 > 本文档说明 kode/pays 的个人收款能力设计：收款逻辑如何下沉到各网关原生方法、插件与统一入口
 > 如何复用、以及不支持的能力如何优雅报「无此方法」。
 >
-> 收款到账后的「真伪校验 / 轮询确认 / 幂等防护」由 [`PersonalReceiveVerifier`](personal_receive.md)
+> 收款到账后的「真伪校验 / 轮询确认 / 幂等防护」由 [`PersonalReceiveVerifier`](personal-receive-verifier.md)
 > 负责（见同名文档），二者配合：插件负责生成收款码、查询记录、提现，验证器负责一致性校验。
 
 ## 设计原则

@@ -1051,7 +1051,7 @@ $daemon->register($entry['router_id'], 'wechat', [
 $pid = $daemon->runInBackground();
 ```
 
-详见 [docs/unified_qr.md](docs/unified_qr.md) 与 [docs/personal_receive.md](docs/personal_receive.md)。
+详见 [docs/unified-qr-entry.md](docs/unified-qr-entry.md) 与 [docs/personal-receive-verifier.md](docs/personal-receive-verifier.md)。
 
 ## 自动结算插件
 
@@ -1294,9 +1294,9 @@ Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
 | [docs/wechat.md](docs/wechat.md) | 微信支付接入文档 |
 | [docs/alipay.md](docs/alipay.md) | 支付宝接入文档 |
 | [docs/aggregate.md](docs/aggregate.md) | 聚合支付接入文档 |
-| [docs/personal_receive.md](docs/personal_receive.md) | 个人收款验证器（进程内/后台进程抓取） |
+| [docs/personal-receive-verifier.md](docs/personal-receive-verifier.md) | 个人收款验证器（进程内/后台进程抓取） |
 | [docs/performance.md](docs/performance.md) | 性能与压测数据（热路径基准、运行方式、优化要点） |
-| [docs/unified_qr.md](docs/unified_qr.md) | 统一收款码路由器（一码聚合多通道 + 后台监控） |
+| [docs/unified-qr-entry.md](docs/unified-qr-entry.md) | 统一收款码路由器（一码聚合多通道 + 后台监控） |
 
 各网关接入文档完整列表见 [docs/index.md](docs/index.md)。
 

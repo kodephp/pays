@@ -328,4 +328,4 @@ vendor/bin/phpunit tests/Core/UnifiedQrRouterTest.php tests/Core/OrderMonitorDae
 - `UnifiedQrRouter` + `OrderMonitorDaemon`：聚合入口码方案（推荐）
 - `PersonalReceiveVerifier`：单通道订单验证（独立使用）
 
-详见 [personal_receive.md](personal_receive.md) 了解个人收款验证器细节。
+详见 [personal-receive-verifier.md](personal-receive-verifier.md) 了解个人收款验证器细节。

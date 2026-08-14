@@ -90,7 +90,7 @@
 - [对账插件](plugins.md#对账插件-reconciliationplugin) - 对账单下载与差异比对（网关原生方法 + 插件校验转发）
 - [对账能力设计](reconciliation.md) - 对账能力下沉到网关原生方法的接口与派发设计
 - [个人收款插件](plugins.md#个人收款插件-personalreceiveplugin) - 个人收款码/提现
-- [个人收款验证器](personal_receive.md) - 进程内/后台进程抓取收款数据并验证订单匹配
+- [个人收款验证器](personal-receive-verifier.md) - 进程内/后台进程抓取收款数据并验证订单匹配
 - [统一收款码路由器](unified-qr.md) - 一码聚合多支付通道、`QrEntry` 值对象、状态机与后台守护进程抓取收款状态
 - [性能与压测数据](performance.md) - 热路径基准、运行方式（`composer bench`）与优化要点
 - [自动结算插件](plugins.md#自动结算插件-autosettlementplugin) - 支付后自动提现
@@ -112,7 +112,7 @@
 
 - [枚举与金额值对象](enums-money.md) - `Currency` / `TradeStatus` / `TradeType` 与不可变 `Money`
 - [响应层类型化访问器](enums-money.md#响应层类型化访问器) - `PayResponse` 的枚举/`Money` 访问器（`getAmountMoney` 等）
-- [统一收款码 QrEntry](unified-qr.md) - 聚合收款入口不可变值对象与状态机
+- [统一收款码 QrEntry](unified-qr-entry.md) - 聚合收款入口不可变值对象与状态机
 - [熔断器中间件](circuit-breaker.md) - `CircuitBreakerMiddleware` 三态故障隔离
 
 ## 生态集成
