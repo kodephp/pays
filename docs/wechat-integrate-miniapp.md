@@ -26,6 +26,34 @@ JSAPI 调起支付时，下单请求里的 `appid` 与 `openid` **必须来自�
 - `app_id`（或 `appid`）随请求传入即覆盖配置里的 `app_id`，用于匹配 openid 来源；未传则回落到配置值。
 - 服务商模式下，`sub_appid` / `sp_appid` 仍按既有契约从配置或参数注入，与多 appid 覆盖互不冲突。
 
+### 用 `jsapi_app_id` 固化 JSAPI 默认绑定 appid（推荐）
+
+若一个商户**固定**用某一个绑定 appid（例如只做小程序支付），可把它配成一级配置项 `jsapi_app_id`：
+JSAPI / 小程序下单与 `buildJsApiConfig` 的二次签名会**默认**使用该 appid，无需每次在请求里传 `app_id`。
+
+- 优先级：`请求级 app_id` > `配置 jsapi_app_id`（仅 JSAPI 场景） > `基础 app_id`。
+- `NATIVE` / `APP` / `H5` 等非 JSAPI 场景仍使用基础 `app_id`，不受 `jsapi_app_id` 影响。
+- 既可通过 `Pay::configExample('wechat')` 生成含 `jsapi_app_id` 的模板，也可在 `inspect()` 的 `notes` 里看到该约束提示。
+
+```php
+// config 中声明（WechatConfig / WechatV3Config 均支持）
+$config = [
+    'app_id'       => 'wxMainAppid',        // 商户主 appid（NATIVE/APP/H5 等场景用）
+    'mch_id'       => '1900000109',
+    'api_key'      => '...',
+    'jsapi_app_id' => 'wxMiniProgramAppid', // JSAPI 默认用「小程序绑定 appid」
+];
+
+// 下单与二次签名自动用 jsapi_app_id，与 openid 同源
+$order = Pay::make('wechat', $config)->createOrder([
+    'trade_type' => 'JSAPI', 'openid' => $openid, /* ... */
+]);
+$jsConfig = Pay::make('wechat', $config)->buildJsApiConfig($order['prepay_id']);
+// $jsConfig['appId'] === 'wxMiniProgramAppid'
+```
+
+
+
 ## 典型调用流程
 
 ```php

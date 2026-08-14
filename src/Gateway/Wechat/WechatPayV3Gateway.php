@@ -78,8 +78,21 @@ class WechatPayV3Gateway extends AbstractGateway implements
     {
         $this->validateRequired($params, ['out_trade_no', 'description', 'amount', 'notify_url']);
 
+        $tradeType = $params['trade_type'] ?? 'native';
+
+        // appid 解析优先级：请求显式 app_id/appid > 配置 jsapi_app_id（仅 JSAPI/小程序场景）> 配置 app_id。
+        // 同一商户可绑定多个 appid（公众号 / 小程序 / App），JSAPI/小程序下单的 appid
+        // 必须与 openid 来源一致，jsapi_app_id 即该场景默认绑定 appid（仍可被请求级覆盖）。
+        $appId = $params['app_id'] ?? $params['appid'] ?? null;
+        unset($params['app_id'], $params['appid']);
+        if ($appId === null) {
+            $appId = ($tradeType === 'jsapi' || $tradeType === 'miniprogram')
+                ? ($this->getConfig('jsapi_app_id') ?: $this->getConfig('app_id'))
+                : $this->getConfig('app_id');
+        }
+
         $requestData = [
-            'appid' => $params['app_id'] ?? $params['appid'] ?? $this->getConfig('app_id'),
+            'appid' => $appId,
             'mchid' => $this->getConfig('mch_id'),
             'out_trade_no' => $params['out_trade_no'],
             'description' => $params['description'],
@@ -97,8 +110,6 @@ class WechatPayV3Gateway extends AbstractGateway implements
         if (isset($params['attach'])) {
             $requestData['attach'] = $params['attach'];
         }
-
-        $tradeType = $params['trade_type'] ?? 'native';
 
         // JSAPI / 小程序支付必须提供支付用户的 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）
         if (in_array($tradeType, ['jsapi', 'miniprogram'], true) && empty($params['openid'])) {
@@ -165,13 +176,22 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * 取 JSAPI / 小程序调起支付所用的有效 appId
      *
      * 服务商模式下，前端调起支付应使用子商户的 sub_appid（交易归属的小程序 / 公众号），
-     * 而非服务商顶层的 app_id；未配置 sub_appid 时回落到 app_id。
+     * 而非服务商顶层的 app_id；其次使用配置中声明的 jsapi_app_id（与 openid 同源的绑定 appid），
+     * 均未配置时回落到 app_id。
      */
     private function getEffectiveAppId(): string
     {
         $subAppId = $this->getConfig('sub_appid');
+        if (is_string($subAppId) && $subAppId !== '') {
+            return $subAppId;
+        }
 
-        return is_string($subAppId) && $subAppId !== '' ? $subAppId : (string) $this->getConfig('app_id');
+        $jsapiAppId = $this->getConfig('jsapi_app_id');
+        if (is_string($jsapiAppId) && $jsapiAppId !== '') {
+            return $jsapiAppId;
+        }
+
+        return (string) $this->getConfig('app_id');
     }
 
     /**

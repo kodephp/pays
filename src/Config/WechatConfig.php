@@ -24,6 +24,9 @@ readonly class WechatConfig implements ConfigInterface
      * @param string|null $keyPath 商户证书私钥路径
      * @param string|null $platformCertPath 微信支付平台证书路径（v3 验签使用）
      * @param bool $sandbox 是否使用沙箱环境
+     * @param string|null $jsapiAppId JSAPI / 小程序支付场景的绑定 appid（可选）。
+     *        同一商户可同时绑定多个 appid（公众号 / 小程序 / App），而 JSAPI 下单的 appid
+     *        必须与 openid 来源一致。设置后作为 JSAPI 场景的默认 appid（仍可被请求级 app_id 覆盖）。
      */
     public function __construct(
         public string $appId,
@@ -34,6 +37,7 @@ readonly class WechatConfig implements ConfigInterface
         public ?string $keyPath = null,
         public ?string $platformCertPath = null,
         public bool $sandbox = false,
+        public ?string $jsapiAppId = null,
     ) {
     }
 
@@ -54,6 +58,7 @@ readonly class WechatConfig implements ConfigInterface
             keyPath: $config['key_path'] ?? null,
             platformCertPath: $config['platform_cert_path'] ?? null,
             sandbox: $config['sandbox'] ?? false,
+            jsapiAppId: $config['jsapi_app_id'] ?? null,
         );
     }
 

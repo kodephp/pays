@@ -841,4 +841,101 @@ class WechatPayGatewayTest extends TestCase
 
         $gateway->settleToPayout(['out_biz_no' => 'S', 'amount' => 1, 'account' => 'a']);
     }
+
+    /**
+     * JSAPI 场景下，createOrder 默认使用配置中的 jsapi_app_id 作为下单 appid
+     */
+    public function testJsapiUsesConfiguredJsapiAppId(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(
+            ['pay/unifiedorder' => $xml],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'JSAPI',
+            'openid' => 'oABC',
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        $this->assertStringContainsString('<appid><![CDATA[wxJsapiBound]]></appid>', $body);
+        // 默认基础 app_id（wx123）不应作为下单 appid 上送
+        $this->assertStringNotContainsString('<appid><![CDATA[wx123]]></appid>', $body);
+    }
+
+    /**
+     * 请求级 app_id 优先于配置 jsapi_app_id（仍可被显式覆盖）
+     */
+    public function testRequestAppIdOverridesJsapiAppId(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(
+            ['pay/unifiedorder' => $xml],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'JSAPI',
+            'openid' => 'oABC',
+            'app_id' => 'wxOverride',
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        $this->assertStringContainsString('<appid><![CDATA[wxOverride]]></appid>', $body);
+    }
+
+    /**
+     * 非 JSAPI 场景（NATIVE）使用基础 app_id，而非 jsapi_app_id
+     */
+    public function testNonJsapiIgnoresJsapiAppId(): void
+    {
+        $xml = '<xml><return_code><![CDATA[SUCCESS]]></return_code>'
+            . '<result_code><![CDATA[SUCCESS]]></result_code></xml>';
+
+        $gateway = $this->createGateway(
+            ['pay/unifiedorder' => $xml],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'O1',
+            'total_fee' => 100,
+            'body' => 'test',
+            'trade_type' => 'NATIVE',
+        ]);
+
+        $body = $this->getMockClient($gateway)->getLastRequest()['data']['body'] ?? '';
+        $this->assertStringContainsString('<appid><![CDATA[wx123]]></appid>', $body);
+        $this->assertStringNotContainsString('<appid><![CDATA[wxJsapiBound]]></appid>', $body);
+    }
+
+    /**
+     * buildJsApiConfig 默认使用配置的 jsapi_app_id（与 openid 同源），而非基础 app_id
+     */
+    public function testBuildJsApiConfigDefaultsToJsapiAppId(): void
+    {
+        $gateway = $this->createGateway([], ['jsapi_app_id' => 'wxJsapiBound']);
+        $config = $gateway->buildJsApiConfig('prepay_xyz');
+
+        $this->assertSame('wxJsapiBound', $config['appId']);
+
+        // 二次签名复算一致
+        $expected = strtoupper(md5(
+            'appId=wxJsapiBound&nonceStr=' . $config['nonceStr']
+            . '&package=prepay_id=prepay_xyz&signType=MD5&timeStamp=' . $config['timeStamp']
+            . '&key=testkey',
+        ));
+        $this->assertSame($expected, $config['paySign']);
+    }
 }

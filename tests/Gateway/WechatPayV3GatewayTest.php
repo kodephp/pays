@@ -1005,4 +1005,97 @@ class WechatPayV3GatewayTest extends TestCase
         $this->expectException(PayException::class);
         $gateway->decryptResource(['nonce' => base64_encode('n')]);
     }
+
+    /**
+     * JSAPI 场景下，createOrder 默认使用配置中的 jsapi_app_id 作为下单 appid
+     */
+    public function testJsapiUsesConfiguredJsapiAppId(): void
+    {
+        $gateway = $this->createGateway(
+            ['pay/transactions/jsapi' => json_encode(['prepay_id' => 'p_xyz'])],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+            'trade_type' => 'jsapi',
+            'openid' => 'oABC',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $decoded = json_decode((string) ($last['data']['body'] ?? ''), true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('wxJsapiBound', $decoded['appid']);
+        $this->assertSame('oABC', $decoded['payer']['openid']);
+    }
+
+    /**
+     * 请求级 app_id 优先于配置 jsapi_app_id（仍可被显式覆盖）
+     */
+    public function testRequestAppIdOverridesJsapiAppId(): void
+    {
+        $gateway = $this->createGateway(
+            ['pay/transactions/jsapi' => json_encode(['prepay_id' => 'p_xyz'])],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+            'trade_type' => 'jsapi',
+            'openid' => 'oABC',
+            'app_id' => 'wxOverride',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $decoded = json_decode((string) ($last['data']['body'] ?? ''), true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('wxOverride', $decoded['appid']);
+    }
+
+    /**
+     * 非 JSAPI 场景（native）使用基础 app_id，而非 jsapi_app_id
+     */
+    public function testNonJsapiIgnoresJsapiAppId(): void
+    {
+        $gateway = $this->createGateway(
+            ['pay/transactions/native' => json_encode(['code_url' => 'x'])],
+            ['jsapi_app_id' => 'wxJsapiBound'],
+        );
+
+        $gateway->createOrder([
+            'out_trade_no' => 'ORDER1',
+            'description' => '测试',
+            'amount' => 100,
+            'notify_url' => 'https://example.com/notify',
+        ]);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $decoded = json_decode((string) ($last['data']['body'] ?? ''), true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('wx123', $decoded['appid']);
+    }
+
+    /**
+     * buildJsApiConfig 默认使用配置的 jsapi_app_id（与 openid 同源），而非基础 app_id
+     */
+    public function testBuildJsApiConfigDefaultsToJsapiAppId(): void
+    {
+        $gateway = $this->createGateway([], ['jsapi_app_id' => 'wxJsapiBound']);
+        $config = $gateway->buildJsApiConfig('prepay_xyz');
+
+        $this->assertSame('wxJsapiBound', $config['appId']);
+
+        $message = 'wxJsapiBound' . "\n" . $config['timeStamp'] . "\n" . $config['nonceStr']
+            . "\n" . 'prepay_id=prepay_xyz' . "\n";
+        $this->assertSame(1, openssl_verify($message, base64_decode($config['paySign']), (string) self::$publicKey, OPENSSL_ALGO_SHA256));
+    }
 }

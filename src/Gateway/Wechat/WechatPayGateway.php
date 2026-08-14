@@ -82,10 +82,16 @@ class WechatPayGateway extends AbstractGateway implements
 
         // 服务商模式字段（sub_appid / sub_mch_id）由配置驱动，
         // 经 signedV2Post 自动并入请求（见 applyServiceProviderFields）。
-        // appid 允许随请求覆盖：同一商户绑定多个 appid（公众号 / 小程序 / App）时，
-        // JSAPI 必须使用与 openid 来源一致的 appid，故支持按请求指定绑定 appid。
-        $appId = $params['app_id'] ?? $params['appid'] ?? $this->getConfig('app_id');
+        // appid 解析优先级：请求显式 app_id/appid > 配置 jsapi_app_id（仅 JSAPI 场景）> 配置 app_id。
+        // 同一商户可绑定多个 appid（公众号 / 小程序 / App），JSAPI 必须使用与 openid 来源一致的 appid，
+        // 故 jsapi_app_id 作为 JSAPI 场景的默认绑定 appid（仍可被请求级 app_id 覆盖）。
+        $appId = $params['app_id'] ?? $params['appid'] ?? null;
         unset($params['app_id'], $params['appid']);
+        if ($appId === null) {
+            $appId = $tradeType === 'JSAPI'
+                ? ($this->getConfig('jsapi_app_id') ?: $this->getConfig('app_id'))
+                : $this->getConfig('app_id');
+        }
         $params['appid'] = $appId;
         $params['mch_id'] = $this->getConfig('mch_id');
         $params['nonce_str'] = $this->generateNonceStr();
@@ -788,8 +794,17 @@ class WechatPayGateway extends AbstractGateway implements
     private function getEffectiveAppId(): string
     {
         $subAppId = $this->getConfig('sub_appid');
+        if (is_string($subAppId) && $subAppId !== '') {
+            return $subAppId;
+        }
 
-        return is_string($subAppId) && $subAppId !== '' ? $subAppId : (string) $this->getConfig('app_id');
+        // JSAPI 场景优先使用配置中声明的绑定 appid（与 openid 同源）
+        $jsapiAppId = $this->getConfig('jsapi_app_id');
+        if (is_string($jsapiAppId) && $jsapiAppId !== '') {
+            return $jsapiAppId;
+        }
+
+        return (string) $this->getConfig('app_id');
     }
 
     /**

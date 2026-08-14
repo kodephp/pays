@@ -441,4 +441,32 @@ class GatewayManifestTest extends TestCase
         $this->assertSame('<your_app_id>', $example['app_id']);
         $this->assertSame('<your_private_key>', $example['private_key']);
     }
+
+    /**
+     * inspect 统一响应包含平台级 notes（微信标注 JSAPI 需 openid、多 appid 绑定等）
+     */
+    public function testInspectIncludesPlatformNotes(): void
+    {
+        $info = GatewayManifest::inspect('wechat');
+
+        $this->assertArrayHasKey('notes', $info);
+        $this->assertIsArray($info['notes']);
+        $this->assertNotEmpty($info['notes']);
+
+        // 至少应提示 JSAPI 需 openid 及与授权包的衔接
+        $merged = implode("\n", $info['notes']);
+        $this->assertStringContainsString('openid', $merged);
+        $this->assertStringContainsString('jsapi_app_id', $merged);
+    }
+
+    /**
+     * 无 notes 的平台 inspect 返回空数组（不缺失该键）
+     */
+    public function testInspectNotesAbsentForPlainGateway(): void
+    {
+        $info = GatewayManifest::inspect('alipay');
+
+        $this->assertArrayHasKey('notes', $info);
+        $this->assertSame([], $info['notes']);
+    }
 }

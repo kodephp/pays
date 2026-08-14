@@ -80,6 +80,21 @@ $info['config']['fields']['app_id'];
 // ['type' => 'string', 'required' => true, 'default' => null, 'description' => '微信公众号/小程序/APP 的 APPID']
 ```
 
+此外，`inspect()` 的 `notes` 字段给出该平台的接入须知（如微信支付会提示「JSAPI 需 openid、多 appid 绑定约束、与授权包的衔接」等），帮助开发者在上手前理解隐藏约束：
+
+```php
+$info = Pay::inspect('wechat');
+$info['notes'];
+// [
+//   'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权（如 kode/miniapp ...）',
+//   '同一微信商户可同时绑定多个 appid ... JSAPI 下单的 appid 必须与 openid 来源一致 ...',
+//   '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid ...',
+//   '商户需在微信支付后台完成 appid 与 mch_id 的绑定 ...',
+// ]
+```
+
+
+
 ## 配置校验（validate）
 
 若只需校验配置是否完整、有无拼写错误，可直接调用 `Pay::validate()` / `GatewayManifest::validate()`，

@@ -282,11 +282,11 @@ class GatewayManifest
     public const CONFIG_SCHEMA = [
         'wechat' => [
             'required' => ['app_id', 'mch_id', 'api_key'],
-            'optional' => ['api_v3_key', 'cert_path', 'key_path', 'platform_cert_path', 'sandbox'],
+            'optional' => ['api_v3_key', 'cert_path', 'key_path', 'platform_cert_path', 'sandbox', 'jsapi_app_id'],
         ],
         'wechat_v3' => [
             'required' => ['mch_id', 'serial_no', 'private_key', 'api_key'],
-            'optional' => ['app_id', 'sandbox'],
+            'optional' => ['app_id', 'sandbox', 'jsapi_app_id'],
         ],
         'alipay' => [
             'required' => ['app_id', 'private_key', 'public_key'],
@@ -686,6 +686,7 @@ class GatewayManifest
      * - missing：传入配置相对必填项的缺漏键（空数组表示必填项已满足）
      * - unknown：传入配置中不在契约内的键（多为拼写错误，如 appid 误写）
      * - valid：必填项是否全部满足
+     * - notes：平台接入须知（如 JSAPI 需 openid、多 appid 绑定约束、与授权包的衔接等）
      *
      * @param string $name 平台标识
      * @param array<string, mixed> $config 当前已提供的配置（用于缺失/未知校验，可省略）
@@ -750,6 +751,7 @@ class GatewayManifest
             'missing' => $missing,
             'unknown' => $unknown,
             'valid' => $missing === [],
+            'notes' => $entry['notes'] ?? [],
         ];
     }
 
@@ -853,6 +855,7 @@ class GatewayManifest
             'signature' => $manifest['signature'] ?? self::SIGN_NONE,
             'capabilities' => array_merge(self::defaultCapabilities(), $manifest['capabilities'] ?? []),
             'config_schema' => self::resolveConfigSchema($name, $manifest),
+            'notes' => $manifest['notes'] ?? [],
             'gateway_class' => $gatewayClass,
             'config_class' => $configClass,
         ];
@@ -1087,6 +1090,7 @@ class GatewayManifest
                 'gateway_class' => GatewayFactory::getGatewayClass($name),
                 'config_class' => GatewayFactory::getConfigClass($name),
                 'capabilities' => $meta['capabilities'] ?? [],
+                'notes' => $meta['notes'] ?? [],
             ]);
         }
     }
@@ -1117,6 +1121,12 @@ class GatewayManifest
                     self::CAP_SETTLEMENT => true,
                     self::CAP_SUBSCRIPTION => true,
                 ]),
+                'notes' => [
+                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
+                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
+                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
+                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，本包仅消费该绑定关系，不会代为绑定。',
+                ],
             ],
             'alipay' => [
                 'label' => '支付宝',
@@ -1149,6 +1159,12 @@ class GatewayManifest
                     self::CAP_SETTLEMENT => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_WEBHOOK => true,
+                ],
+                'notes' => [
+                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
+                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
+                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
+                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，本包仅消费该绑定关系，不会代为绑定。',
                 ],
             ],
             'unionpay' => [
