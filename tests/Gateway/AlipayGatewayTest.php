@@ -75,6 +75,29 @@ class AlipayGatewayTest extends TestCase
         return $client;
     }
 
+    private function buildZipWithPdf(string $pdf): string
+    {
+        if (!class_exists('ZipArchive')) {
+            $this->markTestSkipped('当前环境缺少 ZipArchive 扩展');
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'alipay_pdf_');
+        if ($tmp === false) {
+            $this->markTestSkipped('无法创建临时文件');
+        }
+
+        $zip = new \ZipArchive();
+        @unlink($tmp);
+        $zip->open($tmp, \ZipArchive::CREATE);
+        $zip->addFromString('电子回单.pdf', $pdf);
+        $zip->close();
+
+        $bytes = (string) file_get_contents($tmp);
+        @unlink($tmp);
+
+        return $bytes;
+    }
+
     /**
      * 测试单笔转账：验证方法名、biz_content 与签名
      */
@@ -179,6 +202,54 @@ class AlipayGatewayTest extends TestCase
         $last = $client->getLastRequest();
         $this->assertNotNull($last);
         $this->assertSame('alipay.fund.trans.invoice.query', $last['data']['method'] ?? '');
+    }
+
+    /**
+     * 转账回单含可下载地址时下载并返回 file_content
+     */
+    public function testTransferReceiptDownloadsFile(): void
+    {
+        $resp = json_encode(['alipay_fund_trans_invoice_query_response' => [
+            'code' => '10000',
+            'out_biz_no' => 'T1',
+            'invoice_url' => 'https://download.example.com/invoice.zip',
+        ]]);
+
+        $gateway = $this->createGateway([
+            'gateway.do' => $resp,
+            'download.example.com' => $this->buildZipWithPdf('%PDF-1.4 ALIPAY INVOICE'),
+        ]);
+
+        $result = $gateway->transferReceipt('T1');
+
+        $this->assertSame('T1', $result['out_biz_no']);
+        $this->assertStringContainsString('ALIPAY INVOICE', $result['file_content']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(2, $history);
+        $this->assertStringContainsString('download.example.com', $history[1]['url']);
+    }
+
+    /**
+     * 转账回单未就绪（无下载地址）返回元数据且 file_content=null
+     */
+    public function testTransferReceiptNoUrlReturnsMeta(): void
+    {
+        $resp = json_encode(['alipay_fund_trans_invoice_query_response' => [
+            'code' => '10000',
+            'out_biz_no' => 'T2',
+            'invoice_status' => 'WAIT_APPLY',
+        ]]);
+
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $result = $gateway->transferReceipt('T2');
+
+        $this->assertSame('T2', $result['out_biz_no']);
+        $this->assertNull($result['file_content']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(1, $history);
     }
 
     /**

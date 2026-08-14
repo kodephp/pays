@@ -285,15 +285,32 @@ class AlipayGateway extends AbstractGateway implements
     /**
      * 查询转账电子回单
      *
-     * @return array<string, mixed>
+     * 调用 `alipay.fund.trans.invoice.query` 查询回单状态；若响应含可下载文件地址
+     * （如 `invoice_url` / `file_url` / `download_url`），则下载并解压返回 `file_content`，
+     * 否则仅返回查询元数据（file_content=null，调用方应稍后轮询）。
+     *
+     * @param string $outBizNo 商户转账单号
+     * @return array<string, mixed> 含回单查询元数据与（就绪时的）file_content
+     * @throws PayException
      */
     public function transferReceipt(string $outBizNo): array
     {
         $bizContent = ['out_biz_no' => $outBizNo];
 
         $requestParams = $this->buildRequestParams('alipay.fund.trans.invoice.query', $bizContent);
+        $response = $this->post('', $requestParams);
 
-        return $this->post('', $requestParams);
+        $result = $response + ['file_content' => null];
+
+        foreach (['invoice_url', 'file_url', 'download_url'] as $urlKey) {
+            if (isset($response[$urlKey]) && is_string($response[$urlKey]) && $response[$urlKey] !== '') {
+                $raw = $this->downloadBillFile($response[$urlKey]);
+                $result['file_content'] = $this->extractAlipayEreceiptFile($raw);
+                break;
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -651,29 +668,145 @@ class AlipayGateway extends AbstractGateway implements
     }
 
     /**
-     * 下载支付宝资金账单（电子回单申请）
+     * 下载支付宝资金账单电子回单
      *
-     * @param array<string, mixed> $params 资金账单参数（bill_date 必填）
-     * @return array<string, mixed> 含账单文件地址与原始响应
+     * 支付宝电子回单为异步生成，标准两步流程：
+     *   1) `alipay.data.bill.ereceipt.apply` 申请，拿到 `file_id`；
+     *   2) `alipay.data.bill.ereceipt.query` 轮询，`status=SUCCESS` 后返回 `download_url`（ZIP，内含 PDF）。
+     *
+     * 本方法在一次调用内完成「申请 + 首次查询」；若首次查询尚未生成（`status≠SUCCESS`），
+     * 返回元数据（含 `file_id`、`status`，`file_content=null`），调用方可持 `file_id`
+     * 再次调用本方法轮询，直到 `status=SUCCESS` 并完成下载解压。
+     *
+     * @param array<string, mixed> $params 参数：
+     *   - type: 申请类型（默认 `FUND_DETAIL`，即转入转出收支证明/资金业务回单）；可选 `BALANCE` 等
+     *   - key: 申请参数值（依 type 而定，如 `FUND_DETAIL` 传转账 `pay_fund_order_id`）
+     *   - bill_date: `key` 的别名（向后兼容）
+     *   - file_id: 已持有的 file_id（轮询场景，传入后跳过申请步骤）
+     * @return array<string, mixed> 含 file_id / status / download_url / file_content（PDF 二进制）/ raw_data
      * @throws PayException
      */
     public function downloadFundFlow(array $params): array
     {
-        $this->validateRequired($params, ['bill_date']);
+        if (isset($params['file_id']) && $params['file_id'] !== '') {
+            return $this->queryAlipayEreceipt((string) $params['file_id']);
+        }
 
-        $bizContent = [
-            'type' => 'FUND',
-            'key' => $params['bill_date'],
+        $type = $params['type'] ?? 'FUND_DETAIL';
+        $key = $params['key'] ?? $params['bill_date'] ?? '';
+        if ($key === '') {
+            throw PayException::paramError('支付宝资金账单电子回单需提供 key（或 bill_date）');
+        }
+
+        $applyParams = $this->buildRequestParams('alipay.data.bill.ereceipt.apply', [
+            'type' => $type,
+            'key' => (string) $key,
+        ]);
+        $apply = $this->post('', $applyParams);
+
+        $fileId = $apply['file_id'] ?? '';
+        if ($fileId === '') {
+            throw PayException::gatewayError('支付宝电子回单申请未返回 file_id');
+        }
+
+        return $this->queryAlipayEreceipt($fileId);
+    }
+
+    /**
+     * 查询电子回单状态，就绪（status=SUCCESS）时下载并解压
+     *
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    protected function queryAlipayEreceipt(string $fileId): array
+    {
+        $queryParams = $this->buildRequestParams('alipay.data.bill.ereceipt.query', [
+            'file_id' => $fileId,
+        ]);
+        $query = $this->post('', $queryParams);
+
+        $status = $query['status'] ?? '';
+        $downloadUrl = $query['download_url'] ?? '';
+
+        $result = [
+            'file_id' => $fileId,
+            'status' => $status,
+            'download_url' => $downloadUrl,
+            'file_content' => null,
+            'raw_data' => $query,
         ];
 
-        $requestParams = $this->buildRequestParams('alipay.data.bill.ereceipt.apply', $bizContent);
-        $response = $this->post('', $requestParams);
+        if ($status === 'SUCCESS' && $downloadUrl !== '') {
+            $raw = $this->downloadBillFile($downloadUrl);
+            $result['file_content'] = $this->extractAlipayEreceiptFile($raw);
+        }
 
-        return [
-            'bill_date' => $params['bill_date'],
-            'bill_file_url' => $response['bill_file_url'] ?? '',
-            'raw_data' => $response,
-        ];
+        return $result;
+    }
+
+    /**
+     * 从电子回单下载内容提取文件
+     *
+     * 支付宝电子回单 `download_url` 返回 ZIP（含带电子签章的 PDF），需解压后取首个 PDF/CSV 条目；
+     * 若下载内容本身为文件（非 ZIP）则原样返回。
+     *
+     * @throws PayException
+     */
+    protected function extractAlipayEreceiptFile(string $raw): string
+    {
+        if (substr($raw, 0, 2) === "PK") {
+            if (!class_exists('ZipArchive')) {
+                throw PayException::configError('支付宝电子回单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展');
+            }
+
+            $tmp = tempnam(sys_get_temp_dir(), 'alipay_ereceipt_');
+            if ($tmp === false) {
+                throw PayException::gatewayError('无法创建临时文件用于解压电子回单');
+            }
+
+            try {
+                file_put_contents($tmp, $raw);
+                $zip = new \ZipArchive();
+                if ($zip->open($tmp) !== true) {
+                    throw PayException::gatewayError('支付宝电子回单 ZIP 打开失败');
+                }
+
+                try {
+                    $content = '';
+                    for ($i = 0; $i < $zip->numFiles; $i++) {
+                        $name = $zip->getNameIndex($i);
+                        if ($name !== false && $this->isReceiptEntry((string) $name)) {
+                            $content = (string) $zip->getFromIndex($i);
+                            break;
+                        }
+                    }
+
+                    if ($content === '' && $zip->numFiles > 0) {
+                        $content = (string) $zip->getFromIndex(0);
+                    }
+                } finally {
+                    $zip->close();
+                }
+
+                if ($content === '') {
+                    throw PayException::gatewayError('支付宝电子回单 ZIP 内未找到可提取文件');
+                }
+
+                return $content;
+            } finally {
+                @unlink($tmp);
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * 判断 ZIP 条目是否为电子回单文件（PDF / CSV）
+     */
+    private function isReceiptEntry(string $name): bool
+    {
+        return in_array(strtolower(substr($name, -4)), ['.pdf', '.csv'], true);
     }
 
     /**

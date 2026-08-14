@@ -190,6 +190,29 @@ class AlipayReconciliationTest extends TestCase
         return $bytes;
     }
 
+    private function buildZipWithPdf(string $pdf): string
+    {
+        if (!class_exists('ZipArchive')) {
+            $this->markTestSkipped('当前环境缺少 ZipArchive 扩展');
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'alipay_pdf_');
+        if ($tmp === false) {
+            $this->markTestSkipped('无法创建临时文件');
+        }
+
+        $zip = new \ZipArchive();
+        @unlink($tmp);
+        $zip->open($tmp, \ZipArchive::CREATE);
+        $zip->addFromString('电子回单.pdf', $pdf);
+        $zip->close();
+
+        $bytes = (string) file_get_contents($tmp);
+        @unlink($tmp);
+
+        return $bytes;
+    }
+
 
     public function testDownloadBillMissingRequired(): void
     {
@@ -201,26 +224,92 @@ class AlipayReconciliationTest extends TestCase
         $gateway->downloadBill(['bill_type' => 'trade']);
     }
 
-    public function testDownloadFundFlow(): void
+    /**
+     * 两步流程：apply 拿 file_id → query 返回 SUCCESS + download_url → 下载解压取 PDF
+     */
+    public function testDownloadFundFlowFullFlow(): void
     {
         $gateway = $this->createGateway([
             'gateway.do' => $this->okJson('alipay.data.bill.ereceipt.apply', [
-                'bill_file_url' => 'https://example.com/fund.zip',
+                'file_id' => 'F123',
+                'status' => 'SUCCESS',
+                'download_url' => 'https://download.example.com/ereceipt.zip',
+            ]),
+            'download.example.com' => $this->buildZipWithPdf('%PDF-1.4 ALIPAY ERECEIPT FAKE'),
+        ]);
+
+        $result = $gateway->downloadFundFlow(['type' => 'FUND_DETAIL', 'key' => 'PO20240425001']);
+
+        $this->assertSame('F123', $result['file_id']);
+        $this->assertSame('SUCCESS', $result['status']);
+        $this->assertSame('https://download.example.com/ereceipt.zip', $result['download_url']);
+        $this->assertStringContainsString('ALIPAY ERECEIPT FAKE', $result['file_content']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(3, $history);
+        $this->assertSame('alipay.data.bill.ereceipt.apply', $history[0]['data']['method']);
+        $this->assertSame('alipay.data.bill.ereceipt.query', $history[1]['data']['method']);
+        $this->assertStringContainsString('download.example.com', $history[2]['url']);
+    }
+
+    /**
+     * 首次查询尚未生成：返回元数据且 file_content=null，不发起下载
+     */
+    public function testDownloadFundFlowNotReady(): void
+    {
+        $gateway = $this->createGateway([
+            'gateway.do' => $this->okJson('alipay.data.bill.ereceipt.apply', [
+                'file_id' => 'F456',
+                'status' => 'INIT',
             ]),
         ]);
 
-        $result = $gateway->downloadFundFlow(['bill_date' => '20240425']);
+        $result = $gateway->downloadFundFlow(['key' => 'PO20240425002']);
 
-        $this->assertSame('20240425', $result['bill_date']);
-        $this->assertSame('https://example.com/fund.zip', $result['bill_file_url']);
+        $this->assertSame('F456', $result['file_id']);
+        $this->assertSame('INIT', $result['status']);
+        $this->assertNull($result['file_content']);
 
-        $last = $this->getMockClient($gateway)->getLastRequest();
-        $this->assertNotNull($last);
-        $this->assertSame('alipay.data.bill.ereceipt.apply', $last['data']['method']);
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(2, $history);
+        $this->assertSame('alipay.data.bill.ereceipt.query', $history[1]['data']['method']);
+    }
 
-        $biz = $this->decodeBizContent($this->getMockClient($gateway));
-        $this->assertSame('FUND', $biz['type']);
-        $this->assertSame('20240425', $biz['key']);
+    /**
+     * 轮询：传入已持有的 file_id 跳过申请步骤
+     */
+    public function testDownloadFundFlowWithFileIdSkipsApply(): void
+    {
+        $gateway = $this->createGateway([
+            'gateway.do' => $this->okJson('alipay.data.bill.ereceipt.query', [
+                'file_id' => 'F789',
+                'status' => 'SUCCESS',
+                'download_url' => 'https://download.example.com/ereceipt2.zip',
+            ]),
+            'download.example.com' => $this->buildZipWithPdf('%PDF-1.4 ROUND2'),
+        ]);
+
+        $result = $gateway->downloadFundFlow(['file_id' => 'F789']);
+
+        $this->assertSame('F789', $result['file_id']);
+        $this->assertStringContainsString('ROUND2', $result['file_content']);
+
+        $history = $this->getMockClient($gateway)->getHistory();
+        $this->assertCount(2, $history);
+        $this->assertSame('alipay.data.bill.ereceipt.query', $history[0]['data']['method']);
+    }
+
+    /**
+     * 缺少 key / bill_date 抛参数错误
+     */
+    public function testDownloadFundFlowRequiresKey(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/key/');
+
+        $gateway->downloadFundFlow([]);
     }
 
     public function testParseBill(): void
