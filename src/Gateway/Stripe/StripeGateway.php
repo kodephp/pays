@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Stripe;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
@@ -21,7 +22,15 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  * 支持 Stripe Checkout、PaymentIntent、订阅等支付场景。
  * 覆盖全球 40+ 个国家/地区，支持 135+ 种货币。
  */
-class StripeGateway extends AbstractGateway implements TransferCapableInterface, SubscriptionCapableInterface, PersonalReceiveCapableInterface, ReconciliationCapableInterface, RefundCapableInterface, ProfitSharingCapableInterface, SettlementCapableInterface
+class StripeGateway extends AbstractGateway implements
+    TransferCapableInterface,
+    SubscriptionCapableInterface,
+    PersonalReceiveCapableInterface,
+    ReconciliationCapableInterface,
+    RefundCapableInterface,
+    ProfitSharingCapableInterface,
+    SettlementCapableInterface,
+    BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -692,6 +701,49 @@ class StripeGateway extends AbstractGateway implements TransferCapableInterface,
                 'source' => $item['source'] ?? '',
             ];
         }, $data['data']);
+    }
+
+    /**
+     * 查询账户实时余额
+     *
+     * 调用 Stripe `GET /v1/balance` 查询平台账户余额。Stripe 余额以各币种最小货币单位返回
+     * （如 CNY 为分、USD 为美分），与 {@see BalanceCapableInterface}「分」约定一致；
+     * 多币种时取首个可用/待结算条目。
+     *
+     * @param array<string, mixed> $params 可选参数（Stripe 余额接口无额外业务参数）
+     * @return array<string, mixed> 含 available_amount / pending_amount / currency / raw
+     * @throws PayException
+     */
+    public function queryBalance(array $params = []): array
+    {
+        $response = $this->get('v1/balance', [], [
+            'Authorization' => 'Bearer ' . $this->getConfig('secret_key'),
+        ]);
+
+        $available = $response['available'][0] ?? [];
+        $pending = $response['pending'][0] ?? [];
+
+        return [
+            'available_amount' => (int) ($available['amount'] ?? 0),
+            'pending_amount' => (int) ($pending['amount'] ?? 0),
+            'currency' => $available['currency'] ?? $pending['currency'] ?? 'cny',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Stripe 未提供按日期的「日终余额」接口，`/v1/balance` 仅返回实时余额，故本方法不支持；
+     * 如需历史资金快照请结合 `downloadBill`（Balance Transaction 导出）对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('stripe', 'queryDayEndBalance');
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Alipay;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
@@ -30,7 +31,8 @@ class AlipayGateway extends AbstractGateway implements
     RefundCapableInterface,
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
-    SubscriptionCapableInterface
+    SubscriptionCapableInterface,
+    BalanceCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -880,6 +882,73 @@ class AlipayGateway extends AbstractGateway implements
         }
 
         return $records;
+    }
+
+    /**
+     * 查询账户实时余额
+     *
+     * 调用 `alipay.fund.account.query` 查询商户自身支付宝账户资产。
+     * 支付宝返回金额单位为「元」，本方法统一换算为「分」返回，与 {@see BalanceCapableInterface} 约定一致。
+     *
+     * @param array<string, mixed> $params 可选参数：
+     *        - account_type：账户类型，默认 ACCTRANS_ACCOUNT（余额户）；可传 CASH_SITE 等
+     *        - account_scene：账户场景，如 CASH（余额户场景）
+     *        - alipay_user_id：蚂蚁会员 ID（应等于调用方 PID）；省略时由 account_type 决定查询自身账户
+     * @return array<string, mixed> 含 available_amount（可用余额，分）/ freeze_amount（冻结，分）/
+     *                              total_amount（总余额，分）/ currency / raw
+     * @throws PayException
+     */
+    public function queryBalance(array $params = []): array
+    {
+        $bizContent = ['account_type' => $params['account_type'] ?? 'ACCTRANS_ACCOUNT'];
+
+        if (isset($params['account_scene']) && $params['account_scene'] !== '') {
+            $bizContent['account_scene'] = $params['account_scene'];
+        }
+        if (isset($params['alipay_user_id']) && $params['alipay_user_id'] !== '') {
+            $bizContent['alipay_user_id'] = $params['alipay_user_id'];
+        }
+
+        $requestParams = $this->buildRequestParams('alipay.fund.account.query', $bizContent);
+        $response = $this->post('', $requestParams);
+
+        return [
+            'account_type' => $bizContent['account_type'],
+            'available_amount' => $this->yuanToFen((string) ($response['available_amount'] ?? '0')),
+            'freeze_amount' => $this->yuanToFen((string) ($response['freeze_amount'] ?? '0')),
+            'total_amount' => $this->yuanToFen((string) ($response['total_amount'] ?? '0')),
+            'currency' => 'CNY',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * 支付宝未提供按日期查询「日终余额」的接口，`alipay.fund.account.query` 仅返回实时资产，
+     * 故本方法不支持；如需历史资金快照请结合 `downloadFundFlow`（电子回单）对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('alipay', 'queryDayEndBalance');
+    }
+
+    /**
+     * 元转分
+     *
+     * 支付宝金额字段以「元」为单位（字符串，保留两位），统一换算为「分」（整数）。
+     */
+    private function yuanToFen(string $yuan): int
+    {
+        if ($yuan === '') {
+            return 0;
+        }
+
+        return (int) round(((float) $yuan) * 100);
     }
 
     /**

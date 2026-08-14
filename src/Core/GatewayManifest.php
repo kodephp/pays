@@ -553,6 +553,7 @@ class GatewayManifest
                     self::CAP_PERSONAL_RECEIVE => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_SUBSCRIPTION => true,
+                    self::CAP_BALANCE => true,
                 ]),
             ],
             'wechat_v3' => [
@@ -651,6 +652,7 @@ class GatewayManifest
                     self::CAP_PROFIT_SHARING => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_RECONCILIATION => true,
+                    self::CAP_BALANCE => true,
                 ],
             ],
             'square' => [

@@ -101,6 +101,9 @@ class GatewayManifestTest extends TestCase
         // 微信 V3 支持余额查询，微信 V2 不支持
         $this->assertTrue(GatewayManifest::supports('wechat_v3', GatewayManifest::CAP_BALANCE));
         $this->assertFalse(GatewayManifest::supports('wechat', GatewayManifest::CAP_BALANCE));
+        // 支付宝、Stripe 亦支持实时余额查询
+        $this->assertTrue(GatewayManifest::supports('alipay', GatewayManifest::CAP_BALANCE));
+        $this->assertTrue(GatewayManifest::supports('stripe', GatewayManifest::CAP_BALANCE));
 
         $caps = GatewayManifest::capabilities('wechat');
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $caps);

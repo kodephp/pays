@@ -253,6 +253,46 @@ class AlipayGatewayTest extends TestCase
     }
 
     /**
+     * 余额查询：元转分 + 字段映射
+     */
+    public function testQueryBalance(): void
+    {
+        $resp = json_encode(['alipay_fund_account_query_response' => [
+            'code' => '10000',
+            'available_amount' => '26.45',
+            'freeze_amount' => '11.11',
+            'total_amount' => '100.00',
+        ]]);
+
+        $gateway = $this->createGateway(['gateway.do' => $resp]);
+
+        $result = $gateway->queryBalance(['account_type' => 'ACCTRANS_ACCOUNT']);
+
+        $this->assertSame('ACCTRANS_ACCOUNT', $result['account_type']);
+        $this->assertSame(2645, $result['available_amount']);
+        $this->assertSame(1111, $result['freeze_amount']);
+        $this->assertSame(10000, $result['total_amount']);
+        $this->assertSame('CNY', $result['currency']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertSame('alipay.fund.account.query', $last['data']['method']);
+    }
+
+    /**
+     * 日终余额：支付宝无按日期接口，抛「无此方法」
+     */
+    public function testQueryDayEndBalanceNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/无此方法|not supported|queryDayEndBalance/i');
+
+        $gateway->queryDayEndBalance('2024-04-25');
+    }
+
+    /**
      * 测试获取网关标识
      */
     public function testGetName(): void

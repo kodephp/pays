@@ -81,6 +81,45 @@ class StripeGatewayTest extends TestCase
     }
 
     /**
+     * 余额查询：取首个可用/待结算条目
+     */
+    public function testQueryBalance(): void
+    {
+        $resp = json_encode([
+            'object' => 'balance',
+            'available' => [['amount' => 12345, 'currency' => 'cny']],
+            'pending' => [['amount' => 678, 'currency' => 'cny']],
+            'livemode' => false,
+        ]);
+
+        $gateway = $this->createGateway(['v1/balance' => $resp]);
+
+        $result = $gateway->queryBalance();
+
+        $this->assertSame(12345, $result['available_amount']);
+        $this->assertSame(678, $result['pending_amount']);
+        $this->assertSame('cny', $result['currency']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('v1/balance', $last['url']);
+        $this->assertSame('Bearer sk_test_123', $last['headers']['Authorization'] ?? '');
+    }
+
+    /**
+     * 日终余额：Stripe 无按日期接口，抛「无此方法」
+     */
+    public function testQueryDayEndBalanceNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/无此方法|not supported|queryDayEndBalance/i');
+
+        $gateway->queryDayEndBalance('2024-04-25');
+    }
+
+    /**
      * 测试单笔转账必填校验：缺 recipient 抛 PayException
      */
     public function testSingleTransferMissingRecipient(): void

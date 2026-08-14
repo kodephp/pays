@@ -42,14 +42,20 @@
 | 平台 | `queryBalance` | `queryDayEndBalance` | 说明 |
 |------|----------------|----------------------|------|
 | 微信支付 V3 | ✅ `GET /v3/merchant/fund/balance` | ✅ `GET /v3/merchant/fund/dayendbalance/{date}` | 实时余额 / 日终余额；服务商模式自动注入 `sub_mchid` |
+| 支付宝 | ✅ `alipay.fund.account.query` | ❌ 报「无此方法」 | 实时余额（元→分换算）；`account_type` 默认 `ACCTRANS_ACCOUNT`，可传 `account_scene`/`alipay_user_id` |
+| Stripe | ✅ `GET /v1/balance` | ❌ 报「无此方法」 | 实时余额（各币种最小单位，如 CNY 为分）；多币种取首个可用/待结算条目 |
 
-> 能力开关：微信支付 V3 在 `GatewayManifest` 中声明 `CAP_BALANCE => true`，
-> 可用 `GatewayManifest::supports('wechat_v3', GatewayManifest::CAP_BALANCE)` 判断。
-> `account_type` 仅接受 `BASIC` / `OPERATION` / `FEES`；`queryDayEndBalance` 的 `date` 必须为 `YYYY-MM-DD`。
+> 能力开关：微信支付 V3 / 支付宝 / Stripe 在 `GatewayManifest` 中均声明 `CAP_BALANCE => true`，
+> 可用 `GatewayManifest::supports($gateway, GatewayManifest::CAP_BALANCE)` 判断。
+> 微信 V3 的 `account_type` 仅接受 `BASIC` / `OPERATION` / `FEES`；`queryDayEndBalance` 的 `date` 必须为 `YYYY-MM-DD`。
+> 支付宝、Stripe 无按日期的日终余额接口（余额接口均为实时），`queryDayEndBalance` 调用会抛「无此方法」，
+> 历史资金快照请结合 `downloadFundFlow`（电子回单）/ `downloadBill`（对账单）对账。
 
 ```php
 $balance = Pay::call('wechat_v3', 'queryBalance', [['account_type' => 'BASIC']]);
 $dayEnd  = Pay::call('wechat_v3', 'queryDayEndBalance', ['2026-08-01', ['account_type' => 'OPERATION']]);
+$alipay = Pay::call('alipay', 'queryBalance', [['account_type' => 'ACCTRANS_ACCOUNT']]); // 返回分
+$stripe = Pay::call('stripe', 'queryBalance', []); // 返回各币种最小单位
 ```
 
 ## 统一入口
