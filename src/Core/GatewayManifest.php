@@ -30,6 +30,12 @@ use Kode\Pays\Contract\TransferCapableInterface;
  *
  * 能力开关（capability）为各平台对外能力的标准化描述，便于调用方在不实际创建
  * 网关实例的情况下判断「某平台是否支持某项功能」（如分账、订阅、转账、二维码等）。
+ *
+ * 此外本清单还提供「能力发现」与「配置发现」：
+ * - {@see GatewayManifest::inspect()} 返回统一的接入响应（元信息 + 能力 + 可调用操作 + 配置字段 + 缺失校验），
+ *   让开发者一次调用即得某平台接入所需的全部契约信息；
+ * - {@see GatewayManifest::configSchema()} / {@see GatewayManifest::CONFIG_SCHEMA} 暴露每个平台所需的
+ *   配置字段（必填/可选），开发者可据此快速准备配置并校验缺漏。
  */
 class GatewayManifest
 {
@@ -197,6 +203,190 @@ class GatewayManifest
         self::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
         self::CAP_SETTLEMENT => SettlementCapableInterface::class,
         self::CAP_CRYPTO => CryptoCapableInterface::class,
+    ];
+
+    /**
+     * 能力标签（中文可读名）
+     *
+     * 用于 inspect() 等统一响应中，把能力常量映射为开发者可读的中文描述。
+     *
+     * @var array<string, string>
+     */
+    public const CAPABILITY_LABELS = [
+        self::CAP_CREATE_ORDER => '创建订单',
+        self::CAP_QUERY_ORDER => '查询订单',
+        self::CAP_REFUND => '申请退款',
+        self::CAP_QUERY_REFUND => '查询退款',
+        self::CAP_CLOSE_ORDER => '关闭订单',
+        self::CAP_VERIFY_NOTIFY => '异步通知验签',
+        self::CAP_TRANSFER => '企业付款/转账',
+        self::CAP_PROFIT_SHARING => '分账',
+        self::CAP_SUBSCRIPTION => '订阅/周期扣款',
+        self::CAP_RECONCILIATION => '对账',
+        self::CAP_BALANCE => '余额查询',
+        self::CAP_QR => '二维码支付',
+        self::CAP_RED_PACKET => '现金红包',
+        self::CAP_PERSONAL_RECEIVE => '个人收款',
+        self::CAP_SETTLEMENT => '自动结算',
+        self::CAP_WEBHOOK => 'Webhook 事件订阅',
+        self::CAP_CRYPTO => '加密货币支付',
+    ];
+
+    /**
+     * 能力 → 可调用操作（接口方法名）映射
+     *
+     * 声明「某能力为 true」后，调用方可据此得知网关上实际可用的接口方法名，
+     * 便于在不实例化网关的前提下做能力发现与文档生成。
+     *
+     * @var array<string, string[]>
+     */
+    public const CAPABILITY_OPERATIONS = [
+        self::CAP_CREATE_ORDER => ['createOrder'],
+        self::CAP_QUERY_ORDER => ['queryOrder'],
+        self::CAP_REFUND => ['refund', 'applyRefund'],
+        self::CAP_QUERY_REFUND => ['queryRefund'],
+        self::CAP_CLOSE_ORDER => ['closeOrder'],
+        self::CAP_VERIFY_NOTIFY => ['verifyNotify', 'verify'],
+        self::CAP_TRANSFER => ['singleTransfer', 'batchTransfer', 'queryTransfer', 'transferReceipt'],
+        self::CAP_PROFIT_SHARING => [
+            'createProfitSharing', 'queryProfitSharing', 'returnProfitSharing',
+            'queryProfitSharingReturn', 'unfreezeProfitSharing',
+        ],
+        self::CAP_SUBSCRIPTION => [
+            'createPlan', 'createSubscription', 'cancelSubscription',
+            'pauseSubscription', 'resumeSubscription', 'getSubscription',
+        ],
+        self::CAP_RECONCILIATION => ['downloadBill', 'downloadFundFlow', 'parseBill'],
+        self::CAP_BALANCE => ['queryBalance', 'queryDayEndBalance'],
+        self::CAP_QR => ['createQrCode'],
+        self::CAP_RED_PACKET => ['sendRedPacket', 'groupRedPacket', 'queryRedPacket'],
+        self::CAP_PERSONAL_RECEIVE => ['createQrCode', 'queryRecords', 'withdraw', 'queryWithdraw'],
+        self::CAP_SETTLEMENT => ['settleToWallet', 'settleToBankCard', 'settleToPayout', 'querySettlement'],
+        self::CAP_WEBHOOK => [],
+        self::CAP_CRYPTO => ['createCryptoOrder', 'getExchangeRate', 'getPaymentAddresses', 'getConfirmations'],
+    ];
+
+    /**
+     * 配置字段契约（配置发现）
+     *
+     * 每个内置平台声明其 Config DTO 所需的配置键：
+     * - required：必填项，缺失将无法通过配置校验
+     * - optional：可选项，缺省时使用网关内部默认值
+     *
+     * 作为「配置字段契约」的单一事实源，开发者可据此快速得知需要准备哪些配置；
+     * 内置平台之外的自定义平台会通过 {@see GatewayManifest::configSchema()} 反射其
+     * Config 类构造函数自动推导，无需在此手工登记。
+     *
+     * @var array<string, array{required: string[], optional: string[]}>
+     */
+    public const CONFIG_SCHEMA = [
+        'wechat' => [
+            'required' => ['app_id', 'mch_id', 'api_key'],
+            'optional' => ['api_v3_key', 'cert_path', 'key_path', 'platform_cert_path', 'sandbox'],
+        ],
+        'wechat_v3' => [
+            'required' => ['mch_id', 'serial_no', 'private_key', 'api_key'],
+            'optional' => ['app_id', 'sandbox'],
+        ],
+        'alipay' => [
+            'required' => ['app_id', 'private_key', 'public_key'],
+            'optional' => ['app_auth_token', 'sandbox'],
+        ],
+        'unionpay' => [
+            'required' => ['mer_id', 'cert_path', 'cert_pwd'],
+            'optional' => ['sandbox'],
+        ],
+        'douyin' => [
+            'required' => ['app_id', 'merchant_id', 'salt'],
+            'optional' => ['sandbox'],
+        ],
+        'meituan' => [
+            'required' => ['app_id', 'app_secret', 'merchant_id'],
+            'optional' => ['sandbox'],
+        ],
+        'jd' => [
+            'required' => ['merchant_no', 'des_key', 'md5_key', 'rsa_private_key', 'rsa_public_key'],
+            'optional' => ['sandbox'],
+        ],
+        'kuaishou' => [
+            'required' => ['app_id', 'app_secret', 'merchant_id'],
+            'optional' => ['sandbox'],
+        ],
+        'qq' => [
+            'required' => ['app_id', 'mch_id', 'api_key'],
+            'optional' => ['notify_url', 'sandbox'],
+        ],
+        'paypal' => [
+            'required' => ['client_id', 'client_secret'],
+            'optional' => ['sandbox'],
+        ],
+        'stripe' => [
+            'required' => ['secret_key'],
+            'optional' => ['publishable_key', 'webhook_secret', 'api_version', 'sandbox'],
+        ],
+        'square' => [
+            'required' => ['application_id', 'access_token'],
+            'optional' => ['environment', 'api_version'],
+        ],
+        'adyen' => [
+            'required' => ['api_key', 'merchant_account'],
+            'optional' => ['client_key', 'environment'],
+        ],
+        'amazon' => [
+            'required' => ['merchant_id', 'access_key', 'secret_key', 'client_id'],
+            'optional' => ['region', 'sandbox'],
+        ],
+        'klarna' => [
+            'required' => ['username', 'password'],
+            'optional' => ['region', 'sandbox'],
+        ],
+        'afterpay' => [
+            'required' => ['merchant_id', 'secret_key'],
+            'optional' => ['region', 'sandbox'],
+        ],
+        'alipay_global' => [
+            'required' => ['app_id', 'private_key', 'public_key'],
+            'optional' => ['gateway_url', 'sign_type', 'sandbox'],
+        ],
+        'wise' => [
+            'required' => ['api_key', 'profile_id'],
+            'optional' => ['sandbox'],
+        ],
+        'payoneer' => [
+            'required' => ['api_key', 'api_secret', 'program_id'],
+            'optional' => ['sandbox'],
+        ],
+        'revolut' => [
+            'required' => ['api_key', 'merchant_id'],
+            'optional' => ['sandbox'],
+        ],
+        'apple' => [
+            'required' => [
+                'merchant_identifier', 'merchant_certificate',
+                'merchant_certificate_key', 'apple_pay_merchant_id', 'domain_name',
+            ],
+            'optional' => ['sandbox'],
+        ],
+        'google' => [
+            'required' => ['merchant_id', 'merchant_name', 'gateway_merchant_id'],
+            'optional' => ['environment', 'sandbox'],
+        ],
+        'coinbase' => [
+            'required' => ['api_key', 'webhook_secret'],
+            'optional' => ['sandbox'],
+        ],
+        'hitpay' => [
+            'required' => ['api_key', 'webhook_secret'],
+            'optional' => ['sandbox'],
+        ],
+        'xendit' => [
+            'required' => ['secret_key', 'public_key', 'callback_token'],
+            'optional' => ['sandbox'],
+        ],
+        'aggregate' => [
+            'required' => ['channels'],
+            'optional' => [],
+        ],
     ];
 
     /**
@@ -386,6 +576,115 @@ class GatewayManifest
     }
 
     /**
+     * 获取能力的中文标签
+     *
+     * @param string $capability 能力常量，如 self::CAP_TRANSFER
+     */
+    public static function capabilityLabel(string $capability): string
+    {
+        return self::CAPABILITY_LABELS[$capability] ?? $capability;
+    }
+
+    /**
+     * 获取能力对应的可调用操作（接口方法名）列表
+     *
+     * @param string $capability 能力常量，如 self::CAP_TRANSFER
+     * @return string[]
+     */
+    public static function capabilityOperations(string $capability): array
+    {
+        return self::CAPABILITY_OPERATIONS[$capability] ?? [];
+    }
+
+    /**
+     * 获取平台的配置字段契约
+     *
+     * 内置平台直接返回 {@see GatewayManifest::CONFIG_SCHEMA} 中的声明；未在清单中
+     * 登记的自定义平台会反射其 Config 类构造函数，按「无默认值的形参=必填 / 有默认值的形参=可选」
+     * 自动推导，从而保证 {@see GatewayManifest::inspect()} 对扩展平台同样可用。
+     *
+     * @param string $name 平台标识
+     * @return array{required: string[], optional: string[]}
+     * @throws PayException
+     */
+    public static function configSchema(string $name): array
+    {
+        $entry = self::get($name);
+
+        return self::resolveConfigSchema($name, $entry);
+    }
+
+    /**
+     * 平台能力 & 配置发现（统一响应）
+     *
+     * 一处调用即可获得开发者接入某平台所需的全部契约信息：平台元信息、能力开关、
+     * 可调用操作（方法名）、配置字段契约（必填/可选）以及当前配置缺失项校验。
+     * 适用于能力发现、文档生成、配置校验等场景，开发者无需逐个翻阅各网关实现。
+     *
+     * 返回的数组结构：
+     * - name / label / region / signature / gateway_class / config_class：平台元信息
+     * - capabilities：能力常量 => 是否支持（bool）的完整映射
+     * - operations：仅列出已开启能力对应的可调用方法（含中文标签）
+     * - config：required / optional 配置字段契约
+     * - missing：传入配置相对必填项的缺漏键（空数组表示配置完整）
+     * - valid：必填项是否全部满足
+     *
+     * @param string $name 平台标识
+     * @param array<string, mixed> $config 当前已提供的配置（用于缺失校验，可省略）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function inspect(string $name, array $config = []): array
+    {
+        $entry = self::get($name);
+        $capabilities = $entry['capabilities'] ?? [];
+
+        $operations = [];
+        foreach ($capabilities as $capability => $enabled) {
+            if (!$enabled) {
+                continue;
+            }
+
+            $methods = self::CAPABILITY_OPERATIONS[$capability] ?? [];
+            if ($methods === []) {
+                continue;
+            }
+
+            $operations[$capability] = [
+                'label' => self::CAPABILITY_LABELS[$capability] ?? $capability,
+                'methods' => array_values($methods),
+            ];
+        }
+
+        $schema = self::configSchema($name);
+        $required = $schema['required'] ?? [];
+
+        $missing = [];
+        foreach ($required as $key) {
+            if (!array_key_exists($key, $config) || $config[$key] === '' || $config[$key] === null) {
+                $missing[] = $key;
+            }
+        }
+
+        return [
+            'name' => $name,
+            'label' => $entry['label'] ?? $name,
+            'region' => $entry['region'] ?? self::REGION_INTERNATIONAL,
+            'signature' => $entry['signature'] ?? self::SIGN_NONE,
+            'gateway_class' => $entry['gateway_class'] ?? null,
+            'config_class' => $entry['config_class'] ?? null,
+            'capabilities' => $capabilities,
+            'operations' => $operations,
+            'config' => [
+                'required' => array_values($required),
+                'optional' => array_values($schema['optional'] ?? []),
+            ],
+            'missing' => $missing,
+            'valid' => $missing === [],
+        ];
+    }
+
+    /**
      * 规范化清单数据，补齐默认值
      *
      * @param string $name 平台标识
@@ -413,9 +712,64 @@ class GatewayManifest
             'sandbox_url' => $manifest['sandbox_url'] ?? '',
             'signature' => $manifest['signature'] ?? self::SIGN_NONE,
             'capabilities' => array_merge(self::defaultCapabilities(), $manifest['capabilities'] ?? []),
+            'config_schema' => self::resolveConfigSchema($name, $manifest),
             'gateway_class' => $gatewayClass,
             'config_class' => $configClass,
         ];
+    }
+
+    /**
+     * 解析平台的配置字段契约
+     *
+     * 优先使用 {@see GatewayManifest::CONFIG_SCHEMA} 的显式声明；对未登记的内置平台
+     * 之外（自定义扩展）的平台，回退到反射其 Config 类构造函数：
+     * - 无默认值的形参 => 必填
+     * - 有默认值的形参 => 可选
+     * 形参名由驼峰转换为下划线风格键名（如 merchantNo => merchant_no）。
+     *
+     * @param string $name 平台标识
+     * @param array<string, mixed> $manifest 原始清单（用于回退时读取 config_class）
+     * @return array{required: string[], optional: string[]}
+     */
+    protected static function resolveConfigSchema(string $name, array $manifest): array
+    {
+        if (isset(self::CONFIG_SCHEMA[$name])) {
+            return self::CONFIG_SCHEMA[$name];
+        }
+
+        $configClass = $manifest['config_class'] ?? null;
+        if (is_string($configClass) && class_exists($configClass)) {
+            $reflection = new \ReflectionClass($configClass);
+            $constructor = $reflection->getConstructor();
+            if ($constructor !== null) {
+                $required = [];
+                $optional = [];
+                foreach ($constructor->getParameters() as $param) {
+                    $key = self::camelToSnake($param->getName());
+                    if ($param->isOptional()) {
+                        $optional[] = $key;
+                    } else {
+                        $required[] = $key;
+                    }
+                }
+
+                return ['required' => $required, 'optional' => $optional];
+            }
+        }
+
+        return ['required' => [], 'optional' => []];
+    }
+
+    /**
+     * 驼峰命名转下划线命名
+     *
+     * @param string $name 驼峰风格属性名
+     */
+    protected static function camelToSnake(string $name): string
+    {
+        $snake = preg_replace('/(?<=\\w)(?=[A-Z])/u', '_', $name);
+
+        return is_string($snake) ? strtolower($snake) : $name;
     }
 
     /**

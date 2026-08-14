@@ -131,4 +131,147 @@ class GatewayManifestTest extends TestCase
 
         GatewayManifest::get('no-such-gateway');
     }
+
+    /**
+     * configSchema 返回每个内置平台的必填/可选配置字段契约
+     */
+    public function testConfigSchemaExposesRequiredAndOptional(): void
+    {
+        $wechat = GatewayManifest::configSchema('wechat');
+        $this->assertSame(['app_id', 'mch_id', 'api_key'], $wechat['required']);
+        $this->assertContains('cert_path', $wechat['optional']);
+        $this->assertContains('sandbox', $wechat['optional']);
+
+        $alipay = GatewayManifest::configSchema('alipay');
+        $this->assertSame(['app_id', 'private_key', 'public_key'], $alipay['required']);
+        $this->assertContains('app_auth_token', $alipay['optional']);
+
+        // 聚合支付：channels 为必填
+        $aggregate = GatewayManifest::configSchema('aggregate');
+        $this->assertSame(['channels'], $aggregate['required']);
+        $this->assertSame([], $aggregate['optional']);
+    }
+
+    /**
+     * configSchema 对未登记平台通过反射 Config 构造函数自动推导
+     */
+    public function testConfigSchemaFallsBackToReflection(): void
+    {
+        // 自定义平台：手动登记一个仅声明 config_class 的清单
+        GatewayManifest::register('__custom_test', [
+            'label' => '自定义测试',
+            'gateway_class' => \Kode\Pays\Gateway\Wechat\WechatPayGateway::class,
+            'config_class' => \Kode\Pays\Config\WechatConfig::class,
+        ]);
+
+        $schema = GatewayManifest::configSchema('__custom_test');
+        // WechatConfig 构造函数：appId/mchId/apiKey 无默认值 => 必填；其余有默认值 => 可选
+        $this->assertSame(['app_id', 'mch_id', 'api_key'], $schema['required']);
+        $this->assertContains('cert_path', $schema['optional']);
+        $this->assertContains('sandbox', $schema['optional']);
+
+        GatewayManifest::unregister('__custom_test');
+    }
+
+    /**
+     * inspect 返回统一的接入响应结构（元信息 + 能力 + 操作 + 配置 + 缺失校验）
+     */
+    public function testInspectReturnsUnifiedResponse(): void
+    {
+        $info = GatewayManifest::inspect('wechat');
+
+        // 元信息
+        $this->assertSame('wechat', $info['name']);
+        $this->assertSame('微信支付', $info['label']);
+        $this->assertSame(GatewayManifest::REGION_DOMESTIC, $info['region']);
+        $this->assertSame(GatewayManifest::SIGN_MD5, $info['signature']);
+
+        // 能力开关（完整 bool 映射）
+        $this->assertArrayHasKey(GatewayManifest::CAP_CREATE_ORDER, $info['capabilities']);
+        $this->assertTrue($info['capabilities'][GatewayManifest::CAP_TRANSFER]);
+
+        // 可调用操作：仅已开启能力，且含中文标签与方法名
+        $this->assertArrayHasKey(GatewayManifest::CAP_TRANSFER, $info['operations']);
+        $this->assertSame('企业付款/转账', $info['operations'][GatewayManifest::CAP_TRANSFER]['label']);
+        $this->assertContains('singleTransfer', $info['operations'][GatewayManifest::CAP_TRANSFER]['methods']);
+
+        // 配置字段契约
+        $this->assertSame(['app_id', 'mch_id', 'api_key'], $info['config']['required']);
+
+        // 缺失校验：未传配置时应报告缺漏且 valid=false
+        $this->assertSame(['app_id', 'mch_id', 'api_key'], $info['missing']);
+        $this->assertFalse($info['valid']);
+    }
+
+    /**
+     * inspect 在配置齐全时 valid=true 且 missing 为空
+     */
+    public function testInspectValidWhenConfigProvided(): void
+    {
+        $info = GatewayManifest::inspect('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '123',
+            'api_key' => 'key',
+        ]);
+
+        $this->assertSame([], $info['missing']);
+        $this->assertTrue($info['valid']);
+    }
+
+    /**
+     * 空字符串视为缺失，仍纳入 missing 校验
+     */
+    public function testInspectTreatsEmptyStringAsMissing(): void
+    {
+        $info = GatewayManifest::inspect('wechat', [
+            'app_id' => 'wx123',
+            'mch_id' => '',
+            'api_key' => 'key',
+        ]);
+
+        $this->assertSame(['mch_id'], $info['missing']);
+        $this->assertFalse($info['valid']);
+    }
+
+    /**
+     * capabilityLabel / capabilityOperations 映射正确
+     */
+    public function testCapabilityLabelAndOperations(): void
+    {
+        $this->assertSame('分账', GatewayManifest::capabilityLabel(GatewayManifest::CAP_PROFIT_SHARING));
+        $this->assertContains(
+            'createProfitSharing',
+            GatewayManifest::capabilityOperations(GatewayManifest::CAP_PROFIT_SHARING)
+        );
+
+        // 未知能力返回原值 / 空数组，不抛异常
+        $this->assertSame('__unknown__', GatewayManifest::capabilityLabel('__unknown__'));
+        $this->assertSame([], GatewayManifest::capabilityOperations('__unknown__'));
+    }
+
+    /**
+     * normalize 后清单数据携带 config_schema，且 get() 可读取
+     */
+    public function testEntryCarriesConfigSchema(): void
+    {
+        $entry = GatewayManifest::get('alipay');
+
+        $this->assertArrayHasKey('config_schema', $entry);
+        $this->assertSame(['app_id', 'private_key', 'public_key'], $entry['config_schema']['required']);
+    }
+
+    /**
+     * Pay 门面 inspect 与 GatewayManifest 一致
+     */
+    public function testPayFacadeInspectDelegates(): void
+    {
+        $info = \Kode\Pays\Facade\Pay::inspect('alipay', [
+            'app_id' => 'a',
+            'private_key' => 'b',
+            'public_key' => 'c',
+        ]);
+
+        $this->assertTrue($info['valid']);
+        $this->assertArrayHasKey(GatewayManifest::CAP_QR, $info['capabilities']);
+    }
 }

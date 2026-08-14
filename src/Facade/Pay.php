@@ -282,6 +282,32 @@ class Pay
     }
 
     /**
+     * 平台能力 & 配置发现（统一响应）
+     *
+     * 一处调用即得某平台接入所需的全部契约信息：平台元信息、能力开关、可调用操作
+     * （方法名）、配置字段契约（必填/可选）以及当前配置缺失项校验。开发者无需逐个
+     * 翻阅各网关实现，即可知道「该平台支持什么、要传哪些配置、还缺哪些」。
+     *
+     * ```php
+     * $info = Pay::inspect('wechat');
+     * // $info['capabilities'] 能力开关
+     * // $info['operations']   已开启能力对应的可调用方法
+     * // $info['config']       必填/可选配置字段
+     * // $info['missing']      传入配置相对必填项的缺漏键
+     * // $info['valid']        必填项是否全部满足
+     * ```
+     *
+     * @param string $gateway 网关标识
+     * @param array<string, mixed> $config 当前已提供的配置（用于缺失校验，可省略）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public static function inspect(string $gateway, array $config = []): array
+    {
+        return GatewayManifest::inspect($gateway, $config);
+    }
+
+    /**
      * 解析并返回强类型网关实例
      *
      * 优先使用预注册配置（{@see registerConfig}），其次使用传入配置；实例按标识缓存。
