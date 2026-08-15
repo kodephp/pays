@@ -9,6 +9,7 @@ use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -22,7 +23,8 @@ class PaypalGateway extends AbstractGateway implements
     SubscriptionCapableInterface,
     RefundCapableInterface,
     SettlementCapableInterface,
-    PersonalReceiveCapableInterface
+    PersonalReceiveCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 沙箱环境基础 URL
@@ -113,17 +115,139 @@ class PaypalGateway extends AbstractGateway implements
     }
 
     /**
-     * 验证异步通知签名（Webhook）
+     * 验证异步通知签名（Webhook，运行时耦合版）
+     *
+     * PayPal 的签名校验依赖原始请求体、传输头与证书链，无法仅凭「已解析数组」完成，
+     * 故此处诚实地返回 false（不可验证），真正的校验请走与运行时解耦的
+     * {@see verifyWebhook()}（接收原始请求体 + 请求头 + webhook_id 配置）。
      *
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
     public function verifyNotify(array $data): bool
     {
-        // PayPal Webhook 验证需要使用传输的证书链验证签名
-        // 实际实现需根据 PayPal Webhook 验证规范处理
-        // 此处为简化示例，建议配合官方 SDK 或证书验证逻辑
-        return true;
+        // 历史遗留占位在 v2.7.0 移除：已解析数组缺请求头/证书链，无法做真实验签，
+        // 返回 true 属「伪造通过」；统一改由 verifyWebhook 完成真实证书链校验。
+        unset($data);
+
+        return false;
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（证书链校验，与运行时解耦）
+     *
+     * 对齐 PayPal 官方 Webhook 验签规范（证书方案，当前默认）：
+     * - 取请求头 PAYPAL-AUTH-ALGO / PAYPAL-CERT-URL / PAYPAL-TRANSMISSION-ID /
+     *   PAYPAL-TRANSMISSION-SIG / PAYPAL-TRANSMISSION-TIME；
+     * - 签名原文 = transmissionId + "\n" + transmissionTime + "\n" + webhookId + "\n"
+     *   （webhookId 来自配置 webhook_id，即你在 PayPal 后台创建 Webhook 时分配的 ID）；
+     * - 用 PAYPAL-CERT-URL 指向的公钥证书（按 URL 内存缓存）以 RSA-SHA256 验签。
+     * 另含 5 分钟防重放窗口。任何头缺失 / webhook_id 未配置 / 证书不可达均返回 false，
+     * 不做「伪造通过」。
+     *
+     * @param string $payload 原始请求体（JSON 字符串，此处仅用于完整性透传，验签用头信息）
+     * @param array<string, string> $headers 请求头（键名大小写不敏感）
+     * @return bool 验签是否通过
+     */
+    #[\Override]
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $authAlgo = $this->webhookHeader($headers, 'PAYPAL-AUTH-ALGO');
+        $certUrl = $this->webhookHeader($headers, 'PAYPAL-CERT-URL');
+        $transmissionId = $this->webhookHeader($headers, 'PAYPAL-TRANSMISSION-ID');
+        $transmissionSig = $this->webhookHeader($headers, 'PAYPAL-TRANSMISSION-SIG');
+        $transmissionTime = $this->webhookHeader($headers, 'PAYPAL-TRANSMISSION-TIME');
+
+        if (
+            $authAlgo === '' || $certUrl === '' || $transmissionId === ''
+            || $transmissionSig === '' || $transmissionTime === ''
+        ) {
+            return false;
+        }
+
+        $webhookId = $this->getConfig('webhook_id', '');
+        if ($webhookId === '') {
+            return false;
+        }
+
+        // 防重放：签名时间距今超过 5 分钟则拒绝
+        $ts = strtotime($transmissionTime);
+        if ($ts !== false && abs(time() - $ts) > 300) {
+            return false;
+        }
+
+        // 签名原文（PayPal 规范：三段以 \n 连接，尾部含 \n）
+        $expected = $transmissionId . "\n" . $transmissionTime . "\n" . $webhookId . "\n";
+
+        $pubKey = $this->loadPayPalCertificate($certUrl);
+        if ($pubKey === false) {
+            return false;
+        }
+
+        $signature = base64_decode($transmissionSig, true);
+        if ($signature === false) {
+            return false;
+        }
+
+        $ok = openssl_verify($expected, $signature, $pubKey, OPENSSL_ALGO_SHA256);
+
+        return $ok === 1;
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON 字符串）
+     * @return array<string, mixed> 统一事件结构
+     * @throws PayException 报文非合法 JSON 时
+     */
+    #[\Override]
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        return [
+            'gateway' => 'paypal',
+            'event_id' => $data['id'] ?? null,
+            'event_type' => $data['event_type'] ?? null,
+            'data' => $data,
+            'raw' => $payload,
+        ];
+    }
+
+    /**
+     * 按证书 URL 加载 PayPal 公钥证书（内存缓存，避免每次验签重复拉取）
+     *
+     * PayPal 通过 PAYPAL-CERT-URL 提供 x509 公钥证书（PEM），
+     * 用 openssl_pkey_get_public 加载后即可参与 RSA-SHA256 验签。
+     *
+     * @param string $certUrl 证书地址（来自 PAYPAL-CERT-URL 头）
+     * @return \OpenSSLAsymmetricKey|false 加载成功返回公钥资源，否则 false
+     */
+    protected function loadPayPalCertificate(string $certUrl): \OpenSSLAsymmetricKey|false
+    {
+        static $cache = [];
+
+        if (isset($cache[$certUrl])) {
+            return $cache[$certUrl];
+        }
+
+        try {
+            $pem = $this->httpClient->get($certUrl);
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        if (!is_string($pem) || $pem === '') {
+            return false;
+        }
+
+        $key = openssl_pkey_get_public($pem);
+        if ($key !== false) {
+            $cache[$certUrl] = $key;
+        }
+
+        return $key;
     }
 
     /**

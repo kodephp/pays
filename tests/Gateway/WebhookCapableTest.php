@@ -17,7 +17,9 @@ use Kode\Pays\Gateway\Xendit\XenditGateway;
 use Kode\Pays\Gateway\Payoneer\PayoneerGateway;
 use Kode\Pays\Gateway\Revolut\RevolutGateway;
 use Kode\Pays\Gateway\Adyen\AdyenGateway;
+use Kode\Pays\Gateway\Paypal\PaypalGateway;
 use Kode\Pays\Support\Signer;
+use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
 
 /**
@@ -139,6 +141,17 @@ class WebhookCapableTest extends TestCase
         ], $config));
     }
 
+    private function paypal(array $config = [], ?MockHttpClient $http = null): PaypalGateway
+    {
+        $gateway = new PaypalGateway(array_merge([
+            'client_id' => 'pp_client',
+            'client_secret' => 'pp_secret',
+            'webhook_id' => 'WH-PAYPAL-WEBHOOK-ID',
+        ], $config), $http);
+
+        return $gateway;
+    }
+
     private function buildWechatXml(array $data): string
     {
         $xml = '<xml>';
@@ -162,6 +175,7 @@ class WebhookCapableTest extends TestCase
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->wise());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->payoneer());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->revolut());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->paypal());
     }
 
     public function testStripeVerifyAndParse(): void
@@ -375,5 +389,59 @@ class WebhookCapableTest extends TestCase
         $this->expectException(PayException::class);
 
         $this->stripe()->parseWebhook('not-json');
+    }
+
+    public function testPaypalVerifyAndParse(): void
+    {
+        // 生成密钥对：私钥用于签名、公钥证书（PEM）用于验签
+        $res = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'digest_alg' => 'sha256', 'bits' => 2048]);
+        $this->assertNotFalse($res, '环境不支持 openssl_pkey_new');
+        openssl_pkey_export($res, $privPem);
+        $pubPem = (string) (openssl_pkey_get_details($res)['key'] ?? '');
+        $this->assertNotEmpty($pubPem);
+
+        // 用 MockHttpClient 把 PAYPAL-CERT-URL 子串映射到上述公钥 PEM
+        $http = new MockHttpClient();
+        $http->addResponse('notifications/certs', $pubPem);
+
+        $gateway = $this->paypal([], $http);
+
+        $payload = (string) json_encode(['id' => 'evt_pp', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED']);
+        $transmissionId = 'trans_id_1';
+        $transmissionTime = gmdate('Y-m-d\TH:i:s\Z');
+        $webhookId = 'WH-PAYPAL-WEBHOOK-ID';
+
+        // 签名原文：transmissionId \n transmissionTime \n webhookId \n（PayPal 规范）
+        $expected = $transmissionId . "\n" . $transmissionTime . "\n" . $webhookId . "\n";
+        openssl_sign($expected, $sig, $res, OPENSSL_ALGO_SHA256);
+        $transmissionSig = base64_encode($sig);
+
+        $headers = [
+            'PAYPAL-AUTH-ALGO' => 'SHA256withRSA',
+            'PAYPAL-CERT-URL' => 'https://api.paypal.com/v1/notifications/certs/CERT123',
+            'PAYPAL-TRANSMISSION-ID' => $transmissionId,
+            'PAYPAL-TRANSMISSION-SIG' => $transmissionSig,
+            'PAYPAL-TRANSMISSION-TIME' => $transmissionTime,
+        ];
+
+        $this->assertTrue($gateway->verifyWebhook($payload, $headers));
+
+        // 篡改签名应校验失败
+        $badHeaders = $headers;
+        $badHeaders['PAYPAL-TRANSMISSION-SIG'] = base64_encode('forged');
+        $this->assertFalse($gateway->verifyWebhook($payload, $badHeaders));
+
+        // 缺头应校验失败
+        $this->assertFalse($gateway->verifyWebhook($payload, []));
+
+        // 未配置 webhook_id 应校验失败（诚实拒绝，而非伪造通过）
+        $this->assertFalse($this->paypal(['webhook_id' => ''], $http)->verifyWebhook($payload, $headers));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('paypal', $event['gateway']);
+        $this->assertSame('evt_pp', $event['event_id']);
+        $this->assertSame('PAYMENT.CAPTURE.COMPLETED', $event['event_type']);
+        $this->assertSame($payload, $event['raw']);
+        $this->assertSame('evt_pp', $event['data']['id']);
     }
 }

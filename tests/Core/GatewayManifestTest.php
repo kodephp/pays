@@ -126,7 +126,8 @@ class GatewayManifestTest extends TestCase
      * - CAP_WEBHOOK 渐进落地期间暂不登记进 CAPABILITY_CONTRACTS（与 CAP_VERIFY_NOTIFY 同理，
      *   所有声明网关仍经 verifyNotify 兜底），避免审计漂移；
      * - CAPABILITY_OPERATIONS 已列出 verifyWebhook / parseWebhook（此前为空，inspect 无法列出 Webhook 方法）；
-     * - Stripe / Coinbase / HitPay / Xendit 四个种子网关已落地 WebhookCapableInterface。
+     * - Stripe / Coinbase / HitPay / Xendit 四个种子网关，以及微信 / 支付宝 / 银联 / Adyen / Wise / Payoneer /
+     *   Revolut / PayPal 已落地 WebhookCapableInterface（v2.4.0~v2.7.0 渐进）。
      */
     public function testWebhookContract(): void
     {
@@ -144,8 +145,14 @@ class GatewayManifestTest extends TestCase
         );
         $this->assertNotEmpty(GatewayManifest::capabilityOperations(GatewayManifest::CAP_WEBHOOK));
 
-        // 种子网关：声明支持且已实现接口
-        foreach (['stripe', 'coinbase', 'hitpay', 'xendit'] as $name) {
+        // 已落地网关：声明支持（CAP_WEBHOOK=true）且已实现接口
+        // 注：wise / payoneer / revolut 虽已实现 WebhookCapableInterface，但其 manifest 能力块
+        // 仅声明 CAP_BALANCE（未声明 CAP_WEBHOOK），故不计入本「声明+实现」一致性断言，
+        // 留待后续把 CAP_WEBHOOK 正式登记进契约映射时一并收敛。
+        $webhookGateways = [
+            'stripe', 'coinbase', 'hitpay', 'xendit', 'wechat', 'alipay', 'unionpay', 'adyen', 'paypal',
+        ];
+        foreach ($webhookGateways as $name) {
             $this->assertTrue(GatewayManifest::supports($name, GatewayManifest::CAP_WEBHOOK));
             $gatewayClass = GatewayManifest::get($name)['gateway_class'];
             $this->assertTrue(

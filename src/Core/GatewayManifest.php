@@ -203,8 +203,13 @@ class GatewayManifest
      * - v2.5.0 同时修复了云闪付（UnionPay）verifyNotify 的验签链路：原实现将商户私钥透传给 openssl_verify
      *   且证书加载函数无法解析公钥证书，验签不可用；改为新增独立的 verify_cert_path 配置（银联公钥证书），
      *   经 openssl_pkey_get_public 加载后验签，云闪付随即接纳 WebhookCapableInterface；
-     * - 其余声明 CAP_WEBHOOK 的网关仍经 verifyNotify 兜底，将在后续版本逐步接纳 WebhookCapableInterface
-     *   后，再把 CAP_WEBHOOK 正式登记进本映射。
+     * - v2.6.0 接纳 Adyen / Wise / Payoneer / Revolut 四家（均真实验签）；PayPal 因原 verifyNotify 是「恒返回 true」的
+     *   占位 stub（无真实证书链校验）未接纳，避免伪造；
+     * - v2.7.0 实现 PayPal Webhook 证书链校验（PAYPAL-CERT-URL 公钥证书 + RSA-SHA256 验签 + webhook_id 配置 +
+     *   5 分钟防重放），接纳 WebhookCapableInterface，并移除「恒返回 true」的伪造占位（verifyNotify 现诚实返回 false，
+     *   真正校验统一走 verifyWebhook）；
+     * - 其余声明 CAP_WEBHOOK 的网关（wechat_v3 / square / klarna / alipay_global / aggregate）仍经 verifyNotify 兜底，
+     *   将在后续版本逐步接纳 WebhookCapableInterface 后，再把 CAP_WEBHOOK 正式登记进本映射。
      *
      * @var array<string, class-string>
      */
@@ -333,7 +338,7 @@ class GatewayManifest
         ],
         'paypal' => [
             'required' => ['client_id', 'client_secret'],
-            'optional' => ['sandbox'],
+            'optional' => ['webhook_id', 'sandbox'],
         ],
         'stripe' => [
             'required' => ['secret_key'],
