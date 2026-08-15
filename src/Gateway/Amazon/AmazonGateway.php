@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Amazon;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -14,7 +15,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Amazon Pay 网页支付和应用内支付。
  * 覆盖北美、欧洲、日本等区域。
  */
-class AmazonGateway extends AbstractGateway
+class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
 {
     /**
      * 区域基础 URL 映射
@@ -179,6 +180,49 @@ class AmazonGateway extends AbstractGateway
         $expected = base64_encode(hash_hmac('sha256', $string, $this->getConfig('secret_key'), true));
 
         return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 HMAC-SHA256 验签逻辑（secret_key），但接收原始报文，
+     * 不再依赖全局 `$_SERVER` / `php://input`。
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @param array<string, string> $headers 请求头（Amazon IPN 签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $data = json_decode($payload, true);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        return $this->verifyNotify($data);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = json_decode($payload, true);
+
+        return [
+            'gateway' => 'amazon',
+            'event_id' => $data['SellerOrderId'] ?? $data['AmazonOrderReferenceId'] ?? null,
+            'event_type' => $data['NotificationType'] ?? 'unknown',
+            'data' => is_array($data) ? $data : [],
+            'raw' => $payload,
+        ];
     }
 
     /**

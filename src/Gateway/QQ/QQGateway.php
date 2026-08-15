@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\QQ;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -36,7 +37,7 @@ use Kode\Pays\Gateway\Wechat\WechatV3SigningTrait;
  * ]);
  * ```
  */
-class QQGateway extends AbstractGateway
+class QQGateway extends AbstractGateway implements WebhookCapableInterface
 {
     use WechatV3SigningTrait;
 
@@ -174,6 +175,12 @@ class QQGateway extends AbstractGateway
         ] + $response;
     }
 
+    /**
+     * 验证 QQ 支付异步通知签名
+     *
+     * @param array<int|string, mixed> $data 通知数据（form-urlencoded 解析结果）
+     * @return bool
+     */
     public function verifyNotify(array $data): bool
     {
         // 验证 QQ 支付异步通知签名
@@ -197,6 +204,46 @@ class QQGateway extends AbstractGateway
         $computed = strtoupper(md5($string));
 
         return hash_equals($computed, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * QQ 支付异步通知为 form-urlencoded，签名在报文体内；本方法解析原始报文后复用
+     * {@see verifyNotify()} 的 MD5 验签逻辑（api_key 后缀），不再依赖全局 `$_SERVER`。
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @param array<string, string> $headers 请求头（QQ 通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        parse_str($payload, $data);
+
+        return $this->verifyNotify($data);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        parse_str($payload, $data);
+
+        return [
+            'gateway' => 'qq',
+            'event_id' => $data['out_trade_no'] ?? null,
+            'event_type' => $data['trade_state'] ?? $data['result_code'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     public static function getName(): string

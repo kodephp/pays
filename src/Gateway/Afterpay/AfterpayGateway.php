@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Afterpay;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -42,7 +43,7 @@ use Kode\Pays\Exception\GatewayException;
  * header('Location: ' . $result['checkout_url']);
  * ```
  */
-class AfterpayGateway extends AbstractGateway
+class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
 {
     protected function initialize(): void
     {
@@ -165,7 +166,7 @@ class AfterpayGateway extends AbstractGateway
 
     public function verifyNotify(array $data): bool
     {
-        // Afterpay 使用 Basic Auth 验证回调
+        // Afterpay 使用 Basic Auth 验证回调（与运行时耦合的旧实现，保留以兼容 GatewayInterface）
         $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 
         if ($auth === '') {
@@ -175,6 +176,52 @@ class AfterpayGateway extends AbstractGateway
         $expected = 'Basic ' . base64_encode($this->config['merchant_id'] . ':' . $this->config['secret_key']);
 
         return hash_equals($expected, $auth);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * Afterpay 异步回调以 Basic Auth 头（merchant_id:secret_key）做身份校验，验签实际落在
+     * Authorization 头而非报文体。本方法从 `$headers` 取 Authorization 头（大小写不敏感），
+     * 不再依赖全局 `$_SERVER`。
+     *
+     * @param string $payload 原始请求体（JSON，Afterpay 回调不对其签名）
+     * @param array<string, string> $headers 请求头（取 Authorization）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $auth = $this->webhookHeader($headers, 'Authorization');
+        if ($auth === '') {
+            return false;
+        }
+
+        $expected = 'Basic ' . base64_encode($this->config['merchant_id'] . ':' . $this->config['secret_key']);
+
+        return hash_equals($expected, $auth);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = json_decode($payload, true);
+
+        return [
+            'gateway' => 'afterpay',
+            'event_id' => $data['token'] ?? $data['merchantReference'] ?? null,
+            'event_type' => $data['status'] ?? 'unknown',
+            'data' => is_array($data) ? $data : [],
+            'raw' => $payload,
+        ];
     }
 
     public static function getName(): string

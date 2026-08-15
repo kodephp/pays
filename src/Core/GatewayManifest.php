@@ -209,8 +209,8 @@ class GatewayManifest
      * - v2.7.0 实现 PayPal Webhook 证书链校验（PAYPAL-CERT-URL 公钥证书 + RSA-SHA256 验签 + webhook_id 配置 +
      *   5 分钟防重放），接纳 WebhookCapableInterface，并移除「恒返回 true」的伪造占位（verifyNotify 现诚实返回 false，
      *   真正校验统一走 verifyWebhook）；
-     * - 其余声明 CAP_WEBHOOK 的网关（wechat_v3 / square / klarna / alipay_global / aggregate）仍经 verifyNotify 兜底，
-     *   将在后续版本逐步接纳 WebhookCapableInterface 后，再把 CAP_WEBHOOK 正式登记进本映射。
+     * - 其余声明 CAP_WEBHOOK 的网关（wechat_v3 / square / klarna / alipay_global / aggregate）已在 v2.8.0 接纳，
+     *   国内 MD5 系 / QQ / Amazon / Afterpay 在 v2.10.0 接纳，至此全部声明方均落地 WebhookCapableInterface。
      * - v2.8.0 接纳 wechat_v3（RSA-SHA256 + 平台证书）/ alipay_global（RSA2 兼容 RSA）/ aggregate（委派到子网关）
      *   三家 WebhookCapableInterface；其中 square 原 verifyNotify 是「恒返回 true」的伪造占位，现已替换为真实
      *   HMAC-SHA1 验签（X-Square-Signature 头 = base64(HMAC-SHA1(raw_body, webhook_signature_key))），并接纳接口；
@@ -220,6 +220,11 @@ class GatewayManifest
      *   属漏报），并正式把 CAP_WEBHOOK 登记进 {@see GatewayManifest::CAPABILITY_CONTRACTS}：自此「声明支持 Webhook
      *   ⟺ 实现 WebhookCapableInterface」由能力一致性审计（{@see \Kode\Pays\Core\CapabilityAuditor}）强制守护，
      *   Webhook 能力从「verifyNotify 兜底」彻底收敛为统一的富契约。
+     * - v2.10.0 接纳其余有真实验签逻辑的网关：国内 MD5 系（douyin / meituan / jd / kuaishou，verifyWebhook 复用各自
+     *   verifyNotify 的 MD5 验签）、QQ（MD5 + api_key，form-urlencoded 报文体内签名）、Amazon（HMAC-SHA256 over JSON
+     *   报文体内 Signature）、Afterpay（Basic Auth 头 merchant_id:secret_key，verifyWebhook 从 $headers 取 Authorization
+     *   替代 $_SERVER，与运行时解耦）。至此全部声明 CAP_WEBHOOK 的网关均已落地 WebhookCapableInterface。
+     *   仍正确排除的网关：apple / google 为结构化 token 校验（非签名 webhook）、klarna 异步通知不签名（v2.8.0 已诚实移除声明）。
      *
      * @var array<string, class-string>
      */
@@ -1213,7 +1218,7 @@ class GatewayManifest
                 'label' => '抖音支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true, self::CAP_PROFIT_SHARING => true],
+                'capabilities' => [self::CAP_QR => true, self::CAP_PROFIT_SHARING => true, self::CAP_WEBHOOK => true],
             ],
             'meituan' => [
                 'label' => '美团支付',
@@ -1225,6 +1230,7 @@ class GatewayManifest
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_WEBHOOK => true,
                 ],
             ],
             'jd' => [
@@ -1238,18 +1244,20 @@ class GatewayManifest
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
+                    self::CAP_WEBHOOK => true,
                 ],
             ],
             'kuaishou' => [
                 'label' => '快手支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'qq' => [
                 'label' => 'QQ 支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true],
+                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true],
             ],
             'paypal' => [
                 'label' => 'PayPal',
@@ -1306,6 +1314,7 @@ class GatewayManifest
                 'label' => 'Amazon Pay',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'klarna' => [
                 'label' => 'Klarna',
@@ -1317,6 +1326,7 @@ class GatewayManifest
                 'label' => 'Afterpay / Clearpay',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'alipay_global' => [
                 'label' => '支付宝国际版',

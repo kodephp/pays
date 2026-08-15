@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Kuaishou;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -13,7 +14,7 @@ use Kode\Pays\Core\SandboxManager;
  *
  * 支持快手小程序支付、快手 App 支付等场景。
  */
-class KuaishouGateway extends AbstractGateway
+class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -158,7 +159,7 @@ class KuaishouGateway extends AbstractGateway
     /**
      * 验证异步通知签名
      *
-     * @param array<string, mixed> $data 通知数据
+     * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
     public function verifyNotify(array $data): bool
@@ -171,6 +172,44 @@ class KuaishouGateway extends AbstractGateway
         unset($data['sign']);
 
         return hash_equals($this->sign($data), $sign);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 MD5 验签逻辑（app_secret 后缀），但接收原始报文，
+     * 不再依赖全局 `$_SERVER` / `php://input`。
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @param array<string, string> $headers 请求头（快手通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        return $this->verifyNotify($this->parseNotifyPayload($payload));
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->parseNotifyPayload($payload);
+
+        return [
+            'gateway' => 'kuaishou',
+            'event_id' => $data['out_trade_no'] ?? null,
+            'event_type' => $data['trade_status'] ?? $data['status'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

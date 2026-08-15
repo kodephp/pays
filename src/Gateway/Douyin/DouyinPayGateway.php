@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Douyin;
 
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -17,7 +18,7 @@ use Kode\Pays\Support\Signer;
  * （复用基类配置、MD5 签名与 HTTP 通道），并通过 {@see ProfitSharingCapableInterface} 暴露，
  * 可被统一入口 {@see \Kode\Pays\Facade\Pay::call()} 直接调用。
  */
-class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableInterface
+class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableInterface, WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -169,7 +170,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     /**
      * 验证异步通知签名
      *
-     * @param array<string, mixed> $data 通知数据
+     * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
     public function verifyNotify(array $data): bool
@@ -182,6 +183,44 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
         unset($data['sign']);
 
         return hash_equals($this->sign($data), $sign);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 MD5 验签逻辑（加盐 salt），但接收原始报文，
+     * 不再依赖全局 `$_SERVER` / `php://input`。
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @param array<string, string> $headers 请求头（抖音通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        return $this->verifyNotify($this->parseNotifyPayload($payload));
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->parseNotifyPayload($payload);
+
+        return [
+            'gateway' => 'douyin',
+            'event_id' => $data['order_id'] ?? $data['out_order_no'] ?? null,
+            'event_type' => $data['type'] ?? $data['msg_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

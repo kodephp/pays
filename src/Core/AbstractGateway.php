@@ -370,6 +370,34 @@ abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
     }
 
     /**
+     * 解析原始 Webhook 报文为关联数组
+     *
+     * 统一兼容 JSON 与 form-urlencoded 两种异步通知体；无法解析时返回空数组
+     * （交由上层验签/解析逻辑判定为无效通知），不抛异常。
+     *
+     * @param string $payload 原始请求体
+     * @return array<int|string, mixed>
+     */
+    protected function parseNotifyPayload(string $payload): array
+    {
+        $payload = trim($payload);
+
+        if ($payload === '') {
+            return [];
+        }
+
+        if ($payload[0] === '{' || $payload[0] === '[') {
+            $decoded = json_decode($payload, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        parse_str($payload, $data);
+
+        return $data;
+    }
+
+    /**
      * 验证必填参数
      *
      * @param array<string, mixed> $params 待校验参数

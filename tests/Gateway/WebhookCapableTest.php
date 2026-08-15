@@ -7,8 +7,15 @@ namespace Kode\Pays\Tests\Gateway;
 use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Alipay\AlipayGateway;
+use Kode\Pays\Gateway\Afterpay\AfterpayGateway;
+use Kode\Pays\Gateway\Amazon\AmazonGateway;
 use Kode\Pays\Gateway\Coinbase\CoinbaseGateway;
+use Kode\Pays\Gateway\Douyin\DouyinPayGateway;
 use Kode\Pays\Gateway\HitPay\HitPayGateway;
+use Kode\Pays\Gateway\Jd\JdGateway;
+use Kode\Pays\Gateway\Kuaishou\KuaishouGateway;
+use Kode\Pays\Gateway\Meituan\MeituanGateway;
+use Kode\Pays\Gateway\Qq\QqGateway;
 use Kode\Pays\Gateway\Stripe\StripeGateway;
 use Kode\Pays\Gateway\UnionPay\UnionPayGateway;
 use Kode\Pays\Gateway\Wechat\WechatPayGateway;
@@ -228,6 +235,92 @@ class WebhookCapableTest extends TestCase
         ], $config));
     }
 
+    private function douyin(array $config = []): DouyinPayGateway
+    {
+        return new DouyinPayGateway(array_merge([
+            'app_id' => 'dy_app',
+            'merchant_id' => 'dy_merchant',
+            'salt' => 'dy_salt',
+        ], $config));
+    }
+
+    private function meituan(array $config = []): MeituanGateway
+    {
+        return new MeituanGateway(array_merge([
+            'app_id' => 'mt_app',
+            'app_secret' => 'mt_secret',
+            'merchant_id' => 'mt_merchant',
+        ], $config));
+    }
+
+    private function jd(array $config = []): JdGateway
+    {
+        return new JdGateway(array_merge([
+            'merchant_no' => 'jd_merchant',
+            'des_key' => 'jd_des',
+            'md5_key' => 'jd_md5',
+        ], $config));
+    }
+
+    private function kuaishou(array $config = []): KuaishouGateway
+    {
+        return new KuaishouGateway(array_merge([
+            'app_id' => 'ks_app',
+            'app_secret' => 'ks_secret',
+            'merchant_id' => 'ks_merchant',
+        ], $config));
+    }
+
+    private function qq(array $config = []): QqGateway
+    {
+        return new QqGateway(array_merge([
+            'app_id' => 'qq_app',
+            'mch_id' => 'qq_mch',
+            'api_key' => 'qq_api_key',
+            'serial_no' => 'qq_serial',
+            'private_key' => 'qq_priv',
+        ], $config));
+    }
+
+    private function amazon(array $config = []): AmazonGateway
+    {
+        return new AmazonGateway(array_merge([
+            'merchant_id' => 'am_merchant',
+            'access_key' => 'am_access',
+            'secret_key' => 'am_secret',
+            'client_id' => 'am_client',
+        ], $config));
+    }
+
+    private function afterpay(array $config = []): AfterpayGateway
+    {
+        return new AfterpayGateway(array_merge([
+            'merchant_id' => 'ap_merchant',
+            'secret_key' => 'ap_secret',
+        ], $config));
+    }
+
+    /**
+     * 复现国内 MD5 系网关（meituan / jd / kuaishou）的通知签名：
+     * ksort 后 key=value&... 拼接，末尾 &key=<secret>，strtoupper(md5)。
+     */
+    private function md5Sign(array $data, string $secret): string
+    {
+        $data = $data;
+        ksort($data);
+
+        $string = '';
+        foreach ($data as $key => $value) {
+            if ($value === '' || $value === null) {
+                continue;
+            }
+            $string .= $key . '=' . $value . '&';
+        }
+        $string .= 'key=' . $secret;
+
+        return strtoupper(md5($string));
+    }
+
     private function buildWechatXml(array $data): string
     {
         $xml = '<xml>';
@@ -256,6 +349,14 @@ class WebhookCapableTest extends TestCase
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->alipayGlobal()[0]);
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->square());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->aggregate());
+        // v2.10.0 接纳：国内 MD5 系 / QQ / Amazon / Afterpay
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->douyin());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->meituan());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->jd());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->kuaishou());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->qq());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->amazon());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->afterpay());
         // klarna 不签名 webhook，不应实现 WebhookCapableInterface
         $this->assertNotInstanceOf(WebhookCapableInterface::class, $this->klarna());
     }
@@ -651,5 +752,183 @@ class WebhookCapableTest extends TestCase
     {
         // Klarna 异步通知不携带签名，verifyNotify 诚实返回 false，不伪造通过
         $this->assertFalse($this->klarna()->verifyNotify(['event_type' => 'x', 'order_id' => 'y']));
+    }
+
+    public function testDouyinVerifyAndParse(): void
+    {
+        $gateway = $this->douyin(['salt' => 'dy_salt']);
+        $data = [
+            'app_id' => 'dy_app',
+            'merchant_id' => 'dy_merchant',
+            'out_order_no' => 'dy_o1',
+            'order_id' => 'dy_txn1',
+            'type' => 'payment',
+        ];
+        $data['sign'] = md5(Signer::buildQueryString($data) . '&salt=' . 'dy_salt');
+        $payload = (string) http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        // 错误签名应失败
+        $bad = $data;
+        $bad['sign'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('douyin', $event['gateway']);
+        $this->assertSame('dy_txn1', $event['event_id']);
+        $this->assertSame('payment', $event['event_type']);
+    }
+
+    public function testMeituanVerifyAndParse(): void
+    {
+        $gateway = $this->meituan(['app_secret' => 'mt_secret']);
+        $data = [
+            'app_id' => 'mt_app',
+            'merchant_id' => 'mt_merchant',
+            'out_trade_no' => 'mt_o1',
+            'status' => 'SUCCESS',
+            'total_fee' => '100',
+        ];
+        $data['sign'] = $this->md5Sign($data, 'mt_secret');
+        $payload = (string) http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        $bad = $data;
+        $bad['sign'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('meituan', $event['gateway']);
+        $this->assertSame('mt_o1', $event['event_id']);
+        $this->assertSame('SUCCESS', $event['event_type']);
+    }
+
+    public function testJdVerifyAndParse(): void
+    {
+        $gateway = $this->jd(['md5_key' => 'jd_md5']);
+        $data = [
+            'merchantNo' => 'jd_merchant',
+            'outTradeNo' => 'jd_o1',
+            'resultCode' => '000000',
+            'totalAmount' => '100',
+        ];
+        $data['sign'] = $this->md5Sign($data, 'jd_md5');
+        $payload = (string) http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        $bad = $data;
+        $bad['sign'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('jd', $event['gateway']);
+        $this->assertSame('jd_o1', $event['event_id']);
+        $this->assertSame('000000', $event['event_type']);
+    }
+
+    public function testKuaishouVerifyAndParse(): void
+    {
+        $gateway = $this->kuaishou(['app_secret' => 'ks_secret']);
+        $data = [
+            'app_id' => 'ks_app',
+            'merchant_id' => 'ks_merchant',
+            'out_trade_no' => 'ks_o1',
+            'trade_status' => 'SUCCESS',
+            'total_amount' => '100',
+        ];
+        $data['sign'] = $this->md5Sign($data, 'ks_secret');
+        $payload = (string) http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        $bad = $data;
+        $bad['sign'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('kuaishou', $event['gateway']);
+        $this->assertSame('ks_o1', $event['event_id']);
+        $this->assertSame('SUCCESS', $event['event_type']);
+    }
+
+    public function testQqVerifyAndParse(): void
+    {
+        $gateway = $this->qq(['api_key' => 'qq_api_key']);
+        $data = [
+            'appid' => 'qq_app',
+            'mchid' => 'qq_mch',
+            'out_trade_no' => 'qq_o1',
+            'trade_state' => 'SUCCESS',
+            'total_fee' => '100',
+        ];
+        // 复现 verifyNotify 的真实逻辑：ksort 后用 http_build_query(RFC3986) 拼接 &key=api_key
+        $signData = $data;
+        ksort($signData);
+        $string = http_build_query($signData, '', '&', PHP_QUERY_RFC3986) . '&key=' . 'qq_api_key';
+        $data['sign'] = strtoupper(md5($string));
+        $payload = (string) http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        $bad = $data;
+        $bad['sign'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('qq', $event['gateway']);
+        $this->assertSame('qq_o1', $event['event_id']);
+        $this->assertSame('SUCCESS', $event['event_type']);
+    }
+
+    public function testAmazonVerifyAndParse(): void
+    {
+        $gateway = $this->amazon(['secret_key' => 'am_secret']);
+        $data = [
+            'NotificationType' => 'PaymentAuthorize',
+            'SellerOrderId' => 'am_o1',
+            'AmazonOrderReferenceId' => 'am_ref1',
+        ];
+        // 复现 verifyNotify 的真实逻辑：HMAC 以「剔除 Signature 后的 json_encode 原文」为输入
+        $dataWithoutSig = $data;
+        $dataWithoutSig['Signature'] = base64_encode(hash_hmac('sha256', (string) json_encode($dataWithoutSig), 'am_secret', true));
+        $payload = (string) json_encode($dataWithoutSig);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        $bad = $dataWithoutSig;
+        $bad['Signature'] = 'invalid';
+        $this->assertFalse($gateway->verifyWebhook((string) json_encode($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('amazon', $event['gateway']);
+        $this->assertSame('am_o1', $event['event_id']);
+        $this->assertSame('PaymentAuthorize', $event['event_type']);
+    }
+
+    public function testAfterpayVerifyAndParse(): void
+    {
+        $gateway = $this->afterpay(['merchant_id' => 'ap_merchant', 'secret_key' => 'ap_secret']);
+        $payload = (string) json_encode([
+            'token' => 'ap_tok1',
+            'merchantReference' => 'ap_o1',
+            'status' => 'APPROVED',
+        ]);
+        $auth = 'Basic ' . base64_encode('ap_merchant:ap_secret');
+        $headers = ['Authorization' => $auth];
+
+        $this->assertTrue($gateway->verifyWebhook($payload, $headers));
+
+        // 错误凭证应失败
+        $this->assertFalse($gateway->verifyWebhook($payload, ['Authorization' => 'Basic ' . base64_encode('x:y')]));
+        // 缺头应失败
+        $this->assertFalse($gateway->verifyWebhook($payload, []));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('afterpay', $event['gateway']);
+        $this->assertSame('ap_tok1', $event['event_id']);
+        $this->assertSame('APPROVED', $event['event_type']);
     }
 }
