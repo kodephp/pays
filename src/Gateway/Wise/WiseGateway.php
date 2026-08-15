@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Wise;
 
 use Kode\Pays\Contract\BalanceCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -15,7 +16,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Wise（原 TransferWise）跨境汇款、多币种转账。
  * 覆盖全球 80+ 国家，支持 50+ 种货币。
  */
-class WiseGateway extends AbstractGateway implements BalanceCapableInterface
+class WiseGateway extends AbstractGateway implements BalanceCapableInterface, WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -216,6 +217,52 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
 
         return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * Wise 以 `X-Signature-SHA256` 请求头传递对「原始请求体」的 HMAC-SHA256 签名，
+     * 故需对原始报文（而非重新编码的数组）做 HMAC 校验，比 {@see verifyNotify()} 的
+     * 重编码方式更贴近真实规范。
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @param array<string, string> $headers 请求头（含 X-Signature-SHA256）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $signature = $this->webhookHeader($headers, 'X-Signature-SHA256');
+        if ($signature === '') {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
+
+        return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = json_decode($payload, true) ?: [];
+
+        return [
+            'gateway' => 'wise',
+            'event_id' => $data['id'] ?? null,
+            'event_type' => $data['event_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

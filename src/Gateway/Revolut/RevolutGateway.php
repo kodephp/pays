@@ -10,6 +10,7 @@ use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -26,7 +27,8 @@ class RevolutGateway extends AbstractGateway implements
     RefundCapableInterface,
     SettlementCapableInterface,
     PersonalReceiveCapableInterface,
-    BalanceCapableInterface
+    BalanceCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -232,6 +234,52 @@ class RevolutGateway extends AbstractGateway implements
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
 
         return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * Revolut 以 `X-Signature` 请求头传递对「原始请求体」的 HMAC-SHA256 签名，
+     * 故需对原始报文（而非重新编码的数组）做 HMAC 校验，比 {@see verifyNotify()} 的
+     * 重编码方式更贴近真实规范。
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @param array<string, string> $headers 请求头（含 X-Signature）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $signature = $this->webhookHeader($headers, 'X-Signature');
+        if ($signature === '') {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', $payload, $this->getConfig('api_key'));
+
+        return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = json_decode($payload, true) ?: [];
+
+        return [
+            'gateway' => 'revolut',
+            'event_id' => $data['event_id'] ?? $data['id'] ?? null,
+            'event_type' => $data['event'] ?? $data['event_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /* ==================== 转账能力（TransferCapableInterface） ==================== */

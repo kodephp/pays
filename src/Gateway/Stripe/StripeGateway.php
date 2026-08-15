@@ -963,20 +963,18 @@ class StripeGateway extends AbstractGateway implements
     /**
      * 解冻 Stripe 未分账的剩余资金
      *
-     * Stripe 无冻结概念，Transfer 即时到账。
+     * Stripe 无资金冻结概念，Transfer 即时到账，无独立「解冻」接口可调，
+     * 故此处明确声明该网关无此方法，而非伪成功返回。
      *
      * @param string $transactionId 原支付订单号
      * @param string|null $outOrderNo 商户解冻单号（可选，忽略）
      * @return array<string, mixed>
+     * @throws PayException
      */
     #[\Override]
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
-        return [
-            'payment_intent' => $transactionId,
-            'status' => 'SUCCESS',
-            'message' => 'Stripe 无资金冻结机制，Transfer 即时到账',
-        ];
+        throw PayException::methodNotSupported('stripe', 'unfreezeProfitSharing');
     }
 
     /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */

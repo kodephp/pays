@@ -246,10 +246,10 @@ class StripeGatewayTest extends TestCase
     {
         $gateway = $this->createGateway();
 
-        $result = $gateway->unfreezeProfitSharing('pi_1');
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('不支持方法：unfreezeProfitSharing');
 
-        $this->assertSame('SUCCESS', $result['status']);
-        $this->assertSame('pi_1', $result['payment_intent']);
+        $gateway->unfreezeProfitSharing('pi_1');
     }
 
     /* ==================== 自动结算能力 ==================== */

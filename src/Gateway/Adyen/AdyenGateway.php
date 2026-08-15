@@ -10,6 +10,7 @@ use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -25,7 +26,8 @@ class AdyenGateway extends AbstractGateway implements
     ReconciliationCapableInterface,
     RefundCapableInterface,
     SettlementCapableInterface,
-    SubscriptionCapableInterface
+    SubscriptionCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -228,6 +230,65 @@ class AdyenGateway extends AbstractGateway implements
         $expected = hash_hmac('sha256', $payload, $keyBytes);
 
         return hash_equals($expected, strtolower($sig));
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 HMAC-SHA256 逻辑，但接收原始 form-urlencoded 报文与请求头，
+     * 不再依赖全局 `$_SERVER` / `php://input`。Adyen 通知为 form 编码，含 `payload`（base64 JSON）
+     * 与 `hmacSignature` 两个字段，签名作用于 `payload` 原文。
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @param array<string, string> $headers 请求头（Adyen 签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        parse_str($payload, $data);
+        $hmacKey = $this->getConfig('hmac_key', '');
+        $rawSig = $data['hmacSignature'] ?? '';
+        $rawBody = $data['payload'] ?? '';
+        $sig = is_array($rawSig) ? '' : (string) $rawSig;
+        $body = is_array($rawBody) ? '' : (string) $rawBody;
+        if ($hmacKey === '' || $sig === '' || $body === '') {
+            return false;
+        }
+
+        $keyBytes = pack('H*', $hmacKey);
+        $expected = hash_hmac('sha256', $body, $keyBytes);
+
+        return hash_equals($expected, strtolower($sig));
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * Adyen 通知 `payload` 为 base64 编码的 JSON，内含 notificationItems[0]。
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        parse_str($payload, $data);
+        $rawBody = $data['payload'] ?? '';
+        $body = is_array($rawBody) ? '' : (string) $rawBody;
+        $decoded = $body !== '' ? json_decode((string) base64_decode($body), true) : null;
+        $decoded = is_array($decoded) ? $decoded : [];
+        $item = $decoded['notificationItems'][0] ?? $decoded;
+
+        return [
+            'gateway' => 'adyen',
+            'event_id' => $decoded['pspReference'] ?? null,
+            'event_type' => ($item['eventCode'] ?? 'unknown'),
+            'data' => $decoded,
+            'raw' => $payload,
+        ];
     }
 
     /**

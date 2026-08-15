@@ -353,10 +353,10 @@ class AlipayGatewayTest extends TestCase
     {
         $gateway = $this->createGateway();
 
-        $result = $gateway->unfreezeProfitSharing('T100');
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('不支持方法：unfreezeProfitSharing');
 
-        $this->assertSame('SUCCESS', $result['status']);
-        $this->assertSame('T100', $result['trade_no']);
+        $gateway->unfreezeProfitSharing('T100');
     }
 
     /* ==================== 自动结算能力 ==================== */

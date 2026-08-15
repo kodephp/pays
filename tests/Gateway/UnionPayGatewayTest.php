@@ -22,29 +22,42 @@ use Kode\Pays\Tests\TestCase;
 class UnionPayGatewayTest extends TestCase
 {
     /**
-     * 临时证书文件路径
+     * 临时证书文件路径（商户签名私钥）
      */
     private string $certFile = '';
+
+    /**
+     * 临时银联公钥证书路径（验签用）
+     */
+    private string $verifyCertFile = '';
 
     protected function setUp(): void
     {
         parent::setUp();
 
+        $dn = ['commonName' => 'unionpay-test'];
         $key = openssl_pkey_new([
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
             'digest_alg' => 'sha256',
             'bits' => 2048,
         ]);
+        $csr = openssl_csr_new($dn, $key, ['digest_alg' => 'sha256']);
+        $cert = openssl_csr_sign($csr, null, $key, 365, ['digest_alg' => 'sha256']);
         openssl_pkey_export($key, $privateKey);
+        openssl_x509_export($cert, $certPem);
 
         $this->certFile = tempnam(sys_get_temp_dir(), 'up_cert_');
+        $this->verifyCertFile = tempnam(sys_get_temp_dir(), 'up_verify_');
         file_put_contents($this->certFile, (string) $privateKey);
+        file_put_contents($this->verifyCertFile, (string) $certPem);
     }
 
     protected function tearDown(): void
     {
-        if ($this->certFile !== '' && file_exists($this->certFile)) {
-            unlink($this->certFile);
+        foreach ([$this->certFile, $this->verifyCertFile] as $file) {
+            if ($file !== '' && file_exists($file)) {
+                unlink($file);
+            }
         }
 
         parent::tearDown();
@@ -61,6 +74,7 @@ class UnionPayGatewayTest extends TestCase
         $config = array_merge([
             'mer_id' => 'm1',
             'cert_path' => $this->certFile,
+            'verify_cert_path' => $this->verifyCertFile,
             'cert_pwd' => '123456',
         ], $config);
 
@@ -193,5 +207,80 @@ class UnionPayGatewayTest extends TestCase
     public function testGetName(): void
     {
         $this->assertSame('unionpay', UnionPayGateway::getName());
+    }
+
+    /**
+     * 用商户私钥对通知报文签名（复刻网关 sign 逻辑，便于构造可验签的真实报文）
+     */
+    private function signNotify(array $data): string
+    {
+        ksort($data);
+        $pairs = [];
+        foreach ($data as $key => $value) {
+            if ($value === '' || $value === null) {
+                continue;
+            }
+            $pairs[] = "{$key}={$value}";
+        }
+        $privateKey = openssl_pkey_get_private((string) file_get_contents($this->certFile), '');
+        $this->assertNotFalse($privateKey, '测试私钥加载失败');
+        openssl_sign(implode('&', $pairs), $signature, $privateKey, OPENSSL_ALGO_SHA256);
+
+        return base64_encode($signature);
+    }
+
+    /**
+     * 修复后验签链路：商户私钥签名、银联公钥证书验签，verifyWebhook 应通过
+     */
+    public function testVerifyWebhookWithPublicCert(): void
+    {
+        $gateway = $this->createGateway();
+        $data = [
+            'queryId' => 'q1',
+            'respCode' => '00',
+            'orderId' => 'o1',
+            'txnAmt' => '100',
+        ];
+        $data['signature'] = $this->signNotify($data);
+        $payload = http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        // 篡改金额后验签应失败
+        $bad = $data;
+        $bad['txnAmt'] = '999';
+        $bad['signature'] = $this->signNotify($bad);
+        // 重新用正确私钥签 bad 会得到新签名，但替换回原签名才会失败
+        $forged = $data;
+        $forged['txnAmt'] = '999';
+        $forged['signature'] = $data['signature'];
+        $this->assertFalse($gateway->verifyWebhook(http_build_query($forged)));
+    }
+
+    /**
+     * parseWebhook 解析为统一事件结构
+     */
+    public function testParseWebhookReturnsNormalizedEvent(): void
+    {
+        $gateway = $this->createGateway();
+        $data = ['queryId' => 'q1', 'respCode' => '00', 'orderId' => 'o1', 'txnAmt' => '100'];
+        $data['signature'] = $this->signNotify($data);
+        $payload = http_build_query($data);
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('unionpay', $event['gateway']);
+        $this->assertSame('q1', $event['event_id']);
+        $this->assertSame('00', $event['event_type']);
+        $this->assertSame('q1', $event['data']['queryId']);
+        $this->assertSame($payload, $event['raw']);
+    }
+
+    /**
+     * 空报文 verifyWebhook 直接返回 false
+     */
+    public function testVerifyWebhookEmptyPayload(): void
+    {
+        $gateway = $this->createGateway();
+        $this->assertFalse($gateway->verifyWebhook(''));
     }
 }

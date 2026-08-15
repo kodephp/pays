@@ -6,6 +6,7 @@ namespace Kode\Pays\Gateway\UnionPay;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -18,7 +19,10 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  * 与 {@see PersonalReceiveCapableInterface} 暴露，
  * 可被统一入口 {@see \Kode\Pays\Facade\Pay::call()} 直接调用。
  */
-class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInterface, PersonalReceiveCapableInterface
+class UnionPayGateway extends AbstractGateway implements
+    ProfitSharingCapableInterface,
+    PersonalReceiveCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -64,6 +68,14 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
      * 缓存的证书私钥对象（懒加载，避免每次签名/验签重复读盘与解析 PEM）
      */
     private ?\OpenSSLAsymmetricKey $certKey = null;
+
+    /**
+     * 缓存的验签公钥对象（银联公钥证书，懒加载）
+     *
+     * 银联异步通知由「银联平台」签名，商户须使用银联下发的公钥证书验签，
+     * 与商户自身签名证书（cert_path，含商户私钥）相互独立。
+     */
+    private ?\OpenSSLAsymmetricKey $verifyCertKey = null;
 
     /**
      * 初始化
@@ -189,7 +201,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     /**
      * 验证异步通知签名
      *
-     * @param array<string, mixed> $data 通知数据
+     * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
     public function verifyNotify(array $data): bool
@@ -202,6 +214,48 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
         unset($data['signature']);
 
         return $this->verify($data, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 SHA256 证书验签逻辑，但接收原始报文与请求头，
+     * 不再依赖全局 `$_SERVER` / `php://input`。银联通知签名在报文体内，
+     * 验签使用银联公钥证书（见 {@see loadVerifyCert()}）。
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @param array<string, string> $headers 请求头（银联通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        parse_str($payload, $data);
+
+        return $this->verifyNotify((array) $data);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（form-urlencoded）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        parse_str($payload, $data);
+        $data = (array) $data;
+
+        return [
+            'gateway' => 'unionpay',
+            'event_id' => $data['queryId'] ?? null,
+            'event_type' => $data['respCode'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**
@@ -667,7 +721,7 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
     /**
      * 验签
      *
-     * @param array<string, mixed> $params 待验证参数
+     * @param array<int|string, mixed> $params 待验证参数
      * @param string $signature 签名值
      * @return bool
      * @throws PayException
@@ -686,9 +740,39 @@ class UnionPayGateway extends AbstractGateway implements ProfitSharingCapableInt
 
         $string = implode('&', $pairs);
 
-        $publicKey = $this->loadCertKey();
+        $publicKey = $this->loadVerifyCert();
 
         return openssl_verify($string, base64_decode($signature), $publicKey, OPENSSL_ALGO_SHA256) === 1;
+    }
+
+    /**
+     * 加载并缓存验签公钥（银联公钥证书）对象
+     *
+     * 银联异步通知由「银联平台」私钥签名，商户须以银联下发的公钥证书（verify_cert_path）
+     * 验签，与商户自身签名证书（cert_path，含商户私钥）相互独立。
+     * 若未单独配置 verify_cert_path，则回退到 cert_path（兼容同一证书自签自验场景）。
+     *
+     * @return \OpenSSLAsymmetricKey
+     * @throws PayException
+     */
+    protected function loadVerifyCert(): \OpenSSLAsymmetricKey
+    {
+        if ($this->verifyCertKey !== null) {
+            return $this->verifyCertKey;
+        }
+
+        $certPath = $this->getConfig('verify_cert_path') ?? $this->getConfig('cert_path');
+        $cert = file_get_contents((string) $certPath);
+        if ($cert === false) {
+            throw PayException::configError('无法读取云闪付验签证书文件');
+        }
+
+        $key = openssl_pkey_get_public($cert);
+        if ($key === false) {
+            throw PayException::configError('云闪付验签证书加载失败，请检查 verify_cert_path（需为银联公钥证书）或 cert_path');
+        }
+
+        return $this->verifyCertKey = $key;
     }
 
     /**

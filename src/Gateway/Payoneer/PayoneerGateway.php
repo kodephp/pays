@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Payoneer;
 
 use Kode\Pays\Contract\BalanceCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -15,7 +16,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Payoneer 跨境支付、批量付款、收款等。
  * 覆盖全球 200+ 国家和地区。
  */
-class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
+class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface, WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -160,6 +161,52 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_secret'));
 
         return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * Payoneer 以 `X-Payoneer-Signature` 请求头传递对「原始请求体」的 HMAC-SHA256 签名，
+     * 故需对原始报文（而非重新编码的数组）做 HMAC 校验，比 {@see verifyNotify()} 的
+     * 重编码方式更贴近真实规范。
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @param array<string, string> $headers 请求头（含 X-Payoneer-Signature）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $signature = $this->webhookHeader($headers, 'X-Payoneer-Signature');
+        if ($signature === '') {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', $payload, $this->getConfig('api_secret'));
+
+        return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = json_decode($payload, true) ?: [];
+
+        return [
+            'gateway' => 'payoneer',
+            'event_id' => $data['event_id'] ?? $data['id'] ?? null,
+            'event_type' => $data['event_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */

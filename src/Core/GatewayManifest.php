@@ -200,8 +200,9 @@ class GatewayManifest
      * - v2.4.0 起 Stripe / Coinbase / HitPay / Xendit 四个已有真实验签逻辑的网关落地了该接口；
      * - v2.5.0 起微信支付（MD5）/ 支付宝（RSA2）两个原生 verifyNotify 已含真实验签的网关也接纳了该接口
      *   （verifyWebhook 复用各自 verifyNotify，parseWebhook 解析各自原生报文：微信 XML / 支付宝 form 或 JSON）；
-     * - 云闪付（UnionPay）的 verifyNotify 当前将商户私钥透传给 openssl_verify 作验签、且证书加载函数无法解析公钥证书，
-     *   验签链路本身不可用，故暂不接纳 WebhookCapableInterface，待其 verify 改走独立公钥证书后再纳入；
+     * - v2.5.0 同时修复了云闪付（UnionPay）verifyNotify 的验签链路：原实现将商户私钥透传给 openssl_verify
+     *   且证书加载函数无法解析公钥证书，验签不可用；改为新增独立的 verify_cert_path 配置（银联公钥证书），
+     *   经 openssl_pkey_get_public 加载后验签，云闪付随即接纳 WebhookCapableInterface；
      * - 其余声明 CAP_WEBHOOK 的网关仍经 verifyNotify 兜底，将在后续版本逐步接纳 WebhookCapableInterface
      *   后，再把 CAP_WEBHOOK 正式登记进本映射。
      *

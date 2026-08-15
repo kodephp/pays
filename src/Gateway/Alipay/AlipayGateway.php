@@ -1173,20 +1173,18 @@ class AlipayGateway extends AbstractGateway implements
     /**
      * 解冻支付宝未分账的剩余资金
      *
-     * 支付宝分账完成后自动解冻，无需额外操作。
+     * 支付宝分账完成后剩余资金由平台自动解冻，无独立「解冻」接口可调，
+     * 故此处不作伪成功返回，而是明确声明该网关无此方法。
      *
      * @param string $transactionId 原支付订单号
      * @param string|null $outOrderNo 商户解冻单号（可选，忽略）
      * @return array<string, mixed>
+     * @throws PayException
      */
     #[\Override]
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
-        return [
-            'trade_no' => $transactionId,
-            'status' => 'SUCCESS',
-            'message' => '支付宝分账完成后自动解冻剩余资金',
-        ];
+        throw PayException::methodNotSupported('alipay', 'unfreezeProfitSharing');
     }
 
     /**
