@@ -10,6 +10,7 @@ use Kode\Pays\Contract\CryptoCapableInterface;
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
@@ -226,6 +227,17 @@ class GatewayManifest
      *   替代 $_SERVER，与运行时解耦）。至此全部声明 CAP_WEBHOOK 的网关均已落地 WebhookCapableInterface。
      *   仍正确排除的网关：apple / google 为结构化 token 校验（非签名 webhook）、klarna 异步通知不签名（v2.8.0 已诚实移除声明）。
      *
+     * 二维码能力（CAP_QR）的契约化（v2.11.0）：
+     * - 早期 CAP_QR 仅登记于 {@see GatewayManifest::CAPABILITY_OPERATIONS}（方法名 createQrCode）并被 9 家网关声明，
+     *   但既无对应能力接口、也无审计守护，且 createQrCode 不在 {@see GatewayInterface} 基础方法内，
+     *   导致「声明支持 ⟺ 真实实现」出现双向漂移：revolut / wechat_v3 / paypal / square 已实现 createQrCode 却未声明 CAP_QR（漏报），
+     *   douyin / jd / qq / hitpay / aggregate 声明了 CAP_QR 却无 createQrCode 实现（虚报）。
+     * - v2.11.0 新增 {@see QrCapableInterface}（createQrCode）作为二维码能力的富契约，并登记进本映射：
+     *   自此 CAP_QR 与 Webhook 一样受 {@see \Kode\Pays\Core\CapabilityAuditor} 双向守护；
+     *   为 8 家真实实现 createQrCode 的网关（wechat / alipay / unionpay / stripe / revolut / wechat_v3 / paypal / square）
+     *   接入 QrCapableInterface 并补齐漏报声明，同时诚实移除 douyin / jd / qq / hitpay / aggregate 五家的虚报 CAP_QR
+     *   （SDK 暂未实现其 createQrCode，遵循「不伪造无真实逻辑的 API」原则，待真正实现后再行补登）。
+     *
      * @var array<string, class-string>
      */
     public const CAPABILITY_CONTRACTS = [
@@ -239,6 +251,7 @@ class GatewayManifest
         self::CAP_SETTLEMENT => SettlementCapableInterface::class,
         self::CAP_CRYPTO => CryptoCapableInterface::class,
         self::CAP_WEBHOOK => WebhookCapableInterface::class,
+        self::CAP_QR => QrCapableInterface::class,
     ];
 
     /**
@@ -1185,6 +1198,7 @@ class GatewayManifest
                 // 现金红包为 V2 专有接口，APIv3 无对应能力
                 'capabilities' => [
                     self::CAP_CREATE_ORDER => true,
+                    self::CAP_QR => true,
                     self::CAP_QUERY_ORDER => true,
                     self::CAP_CLOSE_ORDER => true,
                     self::CAP_VERIFY_NOTIFY => true,
@@ -1218,7 +1232,7 @@ class GatewayManifest
                 'label' => '抖音支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true, self::CAP_PROFIT_SHARING => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_PROFIT_SHARING => true, self::CAP_WEBHOOK => true],
             ],
             'meituan' => [
                 'label' => '美团支付',
@@ -1238,7 +1252,6 @@ class GatewayManifest
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
                 'capabilities' => [
-                    self::CAP_QR => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_PROFIT_SHARING => true,
                     self::CAP_RED_PACKET => true,
@@ -1257,7 +1270,7 @@ class GatewayManifest
                 'label' => 'QQ 支付',
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
-                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'paypal' => [
                 'label' => 'PayPal',
@@ -1265,6 +1278,7 @@ class GatewayManifest
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
                     self::CAP_SUBSCRIPTION => true,
+                    self::CAP_QR => true,
                     self::CAP_WEBHOOK => true,
                     self::CAP_BALANCE => true,
                     self::CAP_SETTLEMENT => true,
@@ -1292,6 +1306,7 @@ class GatewayManifest
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_QR => true,
                     self::CAP_WEBHOOK => true,
                     self::CAP_SUBSCRIPTION => true,
                     self::CAP_PERSONAL_RECEIVE => true,
@@ -1348,6 +1363,7 @@ class GatewayManifest
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_QR => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
@@ -1385,7 +1401,7 @@ class GatewayManifest
                 'label' => 'HitPay',
                 'region' => self::REGION_REGIONAL,
                 'signature' => self::SIGN_HMAC_SHA256,
-                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
             'xendit' => [
                 'label' => 'Xendit',
@@ -1397,7 +1413,7 @@ class GatewayManifest
                 'label' => '聚合支付',
                 'region' => self::REGION_REGIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_QR => true, self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true],
             ],
         ];
     }

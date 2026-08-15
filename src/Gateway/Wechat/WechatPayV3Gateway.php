@@ -6,6 +6,7 @@ namespace Kode\Pays\Gateway\Wechat;
 
 use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
@@ -36,7 +37,8 @@ class WechatPayV3Gateway extends AbstractGateway implements
     SettlementCapableInterface,
     PersonalReceiveCapableInterface,
     BalanceCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 测试环境基础 URL

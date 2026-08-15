@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\UnionPay;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -22,7 +23,8 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
 class UnionPayGateway extends AbstractGateway implements
     ProfitSharingCapableInterface,
     PersonalReceiveCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 测试环境基础 URL

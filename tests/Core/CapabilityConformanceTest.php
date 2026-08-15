@@ -4,16 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Core;
 
-use Kode\Pays\Contract\BalanceCapableInterface;
-use Kode\Pays\Contract\CryptoCapableInterface;
-use Kode\Pays\Contract\PersonalReceiveCapableInterface;
-use Kode\Pays\Contract\ProfitSharingCapableInterface;
-use Kode\Pays\Contract\ReconciliationCapableInterface;
-use Kode\Pays\Contract\RedPacketCapableInterface;
-use Kode\Pays\Contract\SettlementCapableInterface;
-use Kode\Pays\Contract\SubscriptionCapableInterface;
-use Kode\Pays\Contract\TransferCapableInterface;
-use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\CapabilityAuditor;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
@@ -36,6 +27,26 @@ class CapabilityConformanceTest extends TestCase
         $drifts = CapabilityAuditor::audit();
 
         $this->assertSame([], $drifts, PHP_EOL . CapabilityAuditor::format($drifts));
+    }
+
+    /**
+     * 二维码能力已登记为契约（CAP_QR => QrCapableInterface）
+     *
+     * 防回归：v2.11.0 前 CAP_QR 仅登记于能力操作、无对应接口亦无审计守护，
+     * 导致声明与实现双向漂移（漏报 4 家 / 虚报 5 家）。登记契约后由审计器强制守护。
+     */
+    public function testQrContractIsRegistered(): void
+    {
+        $this->assertArrayHasKey(
+            GatewayManifest::CAP_QR,
+            GatewayManifest::CAPABILITY_CONTRACTS,
+            'CAP_QR 必须登记为能力契约',
+        );
+        $this->assertSame(
+            QrCapableInterface::class,
+            GatewayManifest::CAPABILITY_CONTRACTS[GatewayManifest::CAP_QR],
+            'CAP_QR 应映射到 QrCapableInterface',
+        );
     }
 
     /**
@@ -167,18 +178,8 @@ class CapabilityConformanceTest extends TestCase
      */
     public function testCapabilityMethodSignaturesAreUniform(): void
     {
-        $contracts = [
-            GatewayManifest::CAP_TRANSFER => TransferCapableInterface::class,
-            GatewayManifest::CAP_PROFIT_SHARING => ProfitSharingCapableInterface::class,
-            GatewayManifest::CAP_SUBSCRIPTION => SubscriptionCapableInterface::class,
-            GatewayManifest::CAP_RECONCILIATION => ReconciliationCapableInterface::class,
-            GatewayManifest::CAP_BALANCE => BalanceCapableInterface::class,
-            GatewayManifest::CAP_RED_PACKET => RedPacketCapableInterface::class,
-            GatewayManifest::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
-            GatewayManifest::CAP_SETTLEMENT => SettlementCapableInterface::class,
-            GatewayManifest::CAP_CRYPTO => CryptoCapableInterface::class,
-            GatewayManifest::CAP_WEBHOOK => WebhookCapableInterface::class,
-        ];
+        // 直接以 CAPABILITY_CONTRACTS 为单一事实源遍历，避免新增契约时漏审签名一致性
+        $contracts = GatewayManifest::CAPABILITY_CONTRACTS;
 
         $drifts = [];
         foreach ($contracts as $capability => $iface) {
@@ -234,6 +235,6 @@ abstract class DriftFakeGateway extends \Kode\Pays\Tests\Core\FakeGateway
 /**
  * 实现转账能力的测试网关
  */
-abstract class DriftCapableFakeGateway extends \Kode\Pays\Tests\Core\FakeGateway implements TransferCapableInterface
+abstract class DriftCapableFakeGateway extends \Kode\Pays\Tests\Core\FakeGateway implements \Kode\Pays\Contract\TransferCapableInterface
 {
 }

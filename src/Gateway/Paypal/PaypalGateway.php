@@ -10,6 +10,7 @@ use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -24,7 +25,8 @@ class PaypalGateway extends AbstractGateway implements
     RefundCapableInterface,
     SettlementCapableInterface,
     PersonalReceiveCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 沙箱环境基础 URL

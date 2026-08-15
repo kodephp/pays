@@ -13,6 +13,7 @@ use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -34,7 +35,8 @@ class WechatPayGateway extends AbstractGateway implements
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
     SubscriptionCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     use WechatV3SigningTrait;
 

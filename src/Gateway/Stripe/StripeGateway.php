@@ -13,6 +13,7 @@ use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -32,7 +33,8 @@ class StripeGateway extends AbstractGateway implements
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
     BalanceCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 测试环境基础 URL

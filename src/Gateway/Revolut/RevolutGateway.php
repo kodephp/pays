@@ -11,6 +11,7 @@ use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -28,7 +29,8 @@ class RevolutGateway extends AbstractGateway implements
     SettlementCapableInterface,
     PersonalReceiveCapableInterface,
     BalanceCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 测试环境基础 URL

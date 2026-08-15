@@ -7,6 +7,7 @@ namespace Kode\Pays\Gateway\Square;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
+use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -20,7 +21,8 @@ use Kode\Pays\Core\PayException;
 class SquareGateway extends AbstractGateway implements
     SubscriptionCapableInterface,
     PersonalReceiveCapableInterface,
-    WebhookCapableInterface
+    WebhookCapableInterface,
+    QrCapableInterface
 {
     /**
      * 测试环境基础 URL
