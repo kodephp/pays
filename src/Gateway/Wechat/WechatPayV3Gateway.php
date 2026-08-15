@@ -914,18 +914,13 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * 查询分账回退结果
      *
      * @param string $outReturnNo 商户回退单号
-     * @param string|null $outOrderNo 商户分账订单号（可选）
      * @return array<string, mixed>
      * @throws PayException
      */
     #[\Override]
-    public function queryProfitSharingReturn(string $outReturnNo, ?string $outOrderNo = null): array
+    public function queryProfitSharingReturn(string $outReturnNo): array
     {
-        $query = $outOrderNo !== null && $outOrderNo !== ''
-            ? ['out_order_no' => $outOrderNo]
-            : [];
-
-        return $this->signedGet("profitsharing/return-orders/{$outReturnNo}", $query);
+        return $this->signedGet("profitsharing/return-orders/{$outReturnNo}", []);
     }
 
     /**

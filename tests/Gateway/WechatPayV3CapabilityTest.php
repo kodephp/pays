@@ -319,13 +319,13 @@ class WechatPayV3CapabilityTest extends TestCase
             'profitsharing/return-orders' => json_encode(['out_return_no' => 'RETURN1']),
         ]);
 
-        $gateway->queryProfitSharingReturn('RETURN1', 'SHARE1');
+        $gateway->queryProfitSharingReturn('RETURN1');
 
         $last = $this->getMockClient($gateway)->getLastRequest();
         $this->assertNotNull($last);
         $this->assertSame('GET', $last['method']);
         $this->assertSame('https://api.mch.weixin.qq.com/v3/profitsharing/return-orders/RETURN1', $last['url']);
-        $this->assertSame(['out_order_no' => 'SHARE1'], $last['data']);
+        $this->assertSame([], $last['data']);
     }
 
     /**

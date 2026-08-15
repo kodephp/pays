@@ -4,7 +4,16 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Core;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
+use Kode\Pays\Contract\CryptoCapableInterface;
+use Kode\Pays\Contract\PersonalReceiveCapableInterface;
+use Kode\Pays\Contract\ProfitSharingCapableInterface;
+use Kode\Pays\Contract\ReconciliationCapableInterface;
+use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\SettlementCapableInterface;
+use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\CapabilityAuditor;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
@@ -147,6 +156,71 @@ class CapabilityConformanceTest extends TestCase
                 }
             }
         }
+    }
+
+    /**
+     * 能力接口方法签名在「契约 ↔ 各实现」间形参名一致（防签名漂移）
+     *
+     * 同一能力接口的不同网关实现，其方法形参名必须与接口契约完全一致；
+     * 仅允许实现侧追加「可选形参」（接口未声明而实现额外提供），但凡接口已声明的形参
+     * 在实现侧不得改名或缺失，否则统一入口按名转发 / 类型推断会出现静默漂移。
+     */
+    public function testCapabilityMethodSignaturesAreUniform(): void
+    {
+        $contracts = [
+            GatewayManifest::CAP_TRANSFER => TransferCapableInterface::class,
+            GatewayManifest::CAP_PROFIT_SHARING => ProfitSharingCapableInterface::class,
+            GatewayManifest::CAP_SUBSCRIPTION => SubscriptionCapableInterface::class,
+            GatewayManifest::CAP_RECONCILIATION => ReconciliationCapableInterface::class,
+            GatewayManifest::CAP_BALANCE => BalanceCapableInterface::class,
+            GatewayManifest::CAP_RED_PACKET => RedPacketCapableInterface::class,
+            GatewayManifest::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
+            GatewayManifest::CAP_SETTLEMENT => SettlementCapableInterface::class,
+            GatewayManifest::CAP_CRYPTO => CryptoCapableInterface::class,
+            GatewayManifest::CAP_WEBHOOK => WebhookCapableInterface::class,
+        ];
+
+        $drifts = [];
+        foreach ($contracts as $capability => $iface) {
+            $refI = new \ReflectionClass($iface);
+            foreach ($refI->getMethods() as $method) {
+                $ifaceNames = array_map(
+                    static fn (\ReflectionParameter $p): string => $p->getName(),
+                    $method->getParameters(),
+                );
+
+                foreach (GatewayManifest::all() as $name => $meta) {
+                    if (($meta['capabilities'][$capability] ?? false) !== true) {
+                        continue;
+                    }
+
+                    $cls = GatewayFactory::getGatewayClass($name);
+                    if ($cls === null || !class_exists($cls)) {
+                        continue;
+                    }
+
+                    $refC = new \ReflectionClass($cls);
+                    if (!$refC->hasMethod($method->getName())) {
+                        $drifts[] = "{$name}::{$method->getName()} 缺失";
+                        continue;
+                    }
+
+                    $implNames = array_map(
+                        static fn (\ReflectionParameter $p): string => $p->getName(),
+                        $refC->getMethod($method->getName())->getParameters(),
+                    );
+                    // 仅校验接口声明的形参在实现侧完整且同名（实现可追加可选形参，允许更长）
+                    $trimmed = array_slice($implNames, 0, count($ifaceNames));
+                    if ($trimmed !== $ifaceNames) {
+                        $drifts[] = "{$name}::{$method->getName()} 形参名=["
+                            . implode(',', $implNames) . "] 与契约=["
+                            . implode(',', $ifaceNames) . '] 不一致';
+                    }
+                }
+            }
+        }
+
+        $this->assertSame([], $drifts, "能力接口形参名漂移:\n" . implode("\n", $drifts));
     }
 }
 

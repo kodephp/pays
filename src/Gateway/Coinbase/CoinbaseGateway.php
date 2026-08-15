@@ -46,7 +46,7 @@ use Kode\Pays\Exception\GatewayException;
  * ]);
  *
  * // 查询链上确认数
- * $confirmations = $gateway->getConfirmations($chargeId);
+ * $confirmations = $gateway->getConfirmations($orderId);
  * ```
  */
 class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface, WebhookCapableInterface
@@ -169,12 +169,12 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      *
      * 为指定 charge 获取各币种的区块链收款地址。
      *
-     * @param string $chargeId Charge ID
+     * @param string $orderId Charge ID
      * @return array<string, array<string, mixed>> 各币种收款地址
      */
-    public function getPaymentAddresses(string $chargeId): array
+    public function getPaymentAddresses(string $orderId): array
     {
-        $response = $this->get("v2/charges/{$chargeId}", [], $this->resolveHeader());
+        $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
         $data = $response['data'] ?? [];
         $addresses = [];
 
@@ -192,12 +192,12 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
     /**
      * 查询链上确认数
      *
-     * @param string $chargeId Charge ID
+     * @param string $orderId Charge ID
      * @return array<string, mixed> 各币种的确认数信息
      */
-    public function getConfirmations(string $chargeId): array
+    public function getConfirmations(string $orderId): array
     {
-        $response = $this->get("v2/charges/{$chargeId}", [], $this->resolveHeader());
+        $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
         $data = $response['data'] ?? [];
         $confirmations = [];
 
