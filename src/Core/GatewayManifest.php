@@ -292,10 +292,10 @@ class GatewayManifest
     public const CAPABILITY_OPERATIONS = [
         self::CAP_CREATE_ORDER => ['createOrder'],
         self::CAP_QUERY_ORDER => ['queryOrder'],
-        self::CAP_REFUND => ['refund', 'applyRefund'],
+        self::CAP_REFUND => ['refund'],
         self::CAP_QUERY_REFUND => ['queryRefund'],
         self::CAP_CLOSE_ORDER => ['closeOrder'],
-        self::CAP_VERIFY_NOTIFY => ['verifyNotify', 'verify'],
+        self::CAP_VERIFY_NOTIFY => ['verifyNotify'],
         self::CAP_TRANSFER => ['singleTransfer', 'batchTransfer', 'queryTransfer', 'transferReceipt'],
         self::CAP_PROFIT_SHARING => [
             'createProfitSharing', 'queryProfitSharing', 'returnProfitSharing',

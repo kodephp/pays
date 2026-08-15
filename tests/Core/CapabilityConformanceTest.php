@@ -223,6 +223,41 @@ class CapabilityConformanceTest extends TestCase
 
         $this->assertSame([], $drifts, "能力接口形参名漂移:\n" . implode("\n", $drifts));
     }
+
+    /**
+     * inspect() 对外公布的「能力 → 可调用操作」方法名必须真实存在于网关实现中
+     *
+     * 防回归：v2.12.0 前 CAPABILITY_OPERATIONS 含两个虚报方法名——
+     * CAP_VERIFY_NOTIFY 列出不存在的 `verify`（仅 Facade/protected 方法，非网关能力）、
+     * CAP_REFUND 列出仅属 RefundCapableInterface 高级退款的 `applyRefund`（base 级 refund 才是通用能力），
+     * 导致 inspect() 向调用方承诺了不可调用的方法。此测试逐网关校验每个公布的
+     * 操作名在网关类（含其实现的能力接口）上真实存在，杜绝此类幻影方法回归。
+     */
+    public function testAdvertisedOperationsExistOnGateways(): void
+    {
+        foreach (GatewayManifest::all() as $name => $meta) {
+            $gatewayClass = GatewayFactory::getGatewayClass($name);
+            if ($gatewayClass === null || !class_exists($gatewayClass)) {
+                continue;
+            }
+
+            $gc = new \ReflectionClass($gatewayClass);
+            $capabilities = $meta['capabilities'] ?? [];
+
+            foreach ($capabilities as $capability => $enabled) {
+                if (!$enabled) {
+                    continue;
+                }
+
+                foreach (GatewayManifest::capabilityOperations($capability) as $operation) {
+                    $this->assertTrue(
+                        $gc->hasMethod($operation),
+                        "网关 {$name} 声明能力 {$capability} 的操作 {$operation} 在网关实现中不存在（虚报方法名）",
+                    );
+                }
+            }
+        }
+    }
 }
 
 /**
