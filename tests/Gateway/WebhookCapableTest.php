@@ -17,7 +17,12 @@ use Kode\Pays\Gateway\Xendit\XenditGateway;
 use Kode\Pays\Gateway\Payoneer\PayoneerGateway;
 use Kode\Pays\Gateway\Revolut\RevolutGateway;
 use Kode\Pays\Gateway\Adyen\AdyenGateway;
+use Kode\Pays\Gateway\Aggregate\AggregateGateway;
+use Kode\Pays\Gateway\AlipayGlobal\AlipayGlobalGateway;
+use Kode\Pays\Gateway\Klarna\KlarnaGateway;
 use Kode\Pays\Gateway\Paypal\PaypalGateway;
+use Kode\Pays\Gateway\Square\SquareGateway;
+use Kode\Pays\Gateway\Wechat\WechatPayV3Gateway;
 use Kode\Pays\Support\Signer;
 use Kode\Pays\Tests\MockHttpClient;
 use Kode\Pays\Tests\TestCase;
@@ -25,9 +30,10 @@ use Kode\Pays\Tests\TestCase;
 /**
  * WebhookCapableInterface 种子实现测试（v2.4.0 起，v2.5.0 扩展）
  *
- * 覆盖 Stripe / Coinbase / HitPay / Xendit（v2.4.0）以及微信支付 / 支付宝（v2.5.0）
- * 共六个已有真实验签逻辑的网关，验证 verifyWebhook（与运行时解耦的签名校验）与
- * parseWebhook（统一事件结构）行为。
+ * 覆盖 Stripe / Coinbase / HitPay / Xendit（v2.4.0）、微信支付 / 支付宝（v2.5.0）、
+ * 银联 / Adyen / Wise / Payoneer / Revolut / PayPal（v2.5~v2.7），以及 v2.8.0 接纳的
+ * wechat_v3 / alipay_global / square（真实 HMAC-SHA1）/ aggregate（委派）共多个网关，
+ * 验证 verifyWebhook（与运行时解耦的签名校验）与 parseWebhook（统一事件结构）行为。
  */
 class WebhookCapableTest extends TestCase
 {
@@ -152,6 +158,76 @@ class WebhookCapableTest extends TestCase
         return $gateway;
     }
 
+    private function wechatV3(array $config = []): array
+    {
+        // 生成 RSA 密钥对：私钥用于签名、公钥证书（PEM）用作平台证书验签
+        $res = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'digest_alg' => 'sha256', 'bits' => 2048]);
+        $this->assertNotFalse($res, '环境不支持 openssl_pkey_new');
+        openssl_pkey_export($res, $privPem);
+        $pubPem = (string) (openssl_pkey_get_details($res)['key'] ?? '');
+        $this->assertNotEmpty($pubPem);
+
+        $gateway = new WechatPayV3Gateway(array_merge([
+            'app_id' => 'wx_v3',
+            'mch_id' => 'mch_v3',
+            'serial_no' => 'serial_v3',
+            'private_key' => $privPem,
+            'api_key' => 'wx_api_v3',
+            'platform_certificate' => $pubPem,
+            'api_v3_key' => str_repeat('a', 32),
+        ], $config));
+
+        return [$gateway, $privPem];
+    }
+
+    private function alipayGlobal(array $config = []): array
+    {
+        $res = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        $this->assertNotFalse($res, '环境不支持 openssl_pkey_new');
+        openssl_pkey_export($res, $privatePem);
+        $publicPem = (string) (openssl_pkey_get_details($res)['key'] ?? '');
+        $this->assertNotEmpty($publicPem);
+
+        $gateway = new AlipayGlobalGateway(array_merge([
+            'app_id' => 'ag_app',
+            'private_key' => $privatePem,
+            'public_key' => $publicPem,
+            'sign_type' => 'RSA2',
+        ], $config));
+
+        return [$gateway, $privatePem];
+    }
+
+    private function square(array $config = []): SquareGateway
+    {
+        return new SquareGateway(array_merge([
+            'application_id' => 'sq_app',
+            'access_token' => 'sq_token',
+            'webhook_signature_key' => 'sq_webhook_secret',
+        ], $config));
+    }
+
+    private function aggregate(array $config = []): AggregateGateway
+    {
+        return new AggregateGateway(array_merge([
+            'channels' => [
+                [
+                    'gateway' => 'stripe',
+                    'config' => ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test'],
+                    'priority' => 1,
+                ],
+            ],
+        ], $config));
+    }
+
+    private function klarna(array $config = []): KlarnaGateway
+    {
+        return new KlarnaGateway(array_merge([
+            'username' => 'k_user',
+            'password' => 'k_pass',
+        ], $config));
+    }
+
     private function buildWechatXml(array $data): string
     {
         $xml = '<xml>';
@@ -176,6 +252,12 @@ class WebhookCapableTest extends TestCase
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->payoneer());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->revolut());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->paypal());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->wechatV3()[0]);
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->alipayGlobal()[0]);
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->square());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->aggregate());
+        // klarna 不签名 webhook，不应实现 WebhookCapableInterface
+        $this->assertNotInstanceOf(WebhookCapableInterface::class, $this->klarna());
     }
 
     public function testStripeVerifyAndParse(): void
@@ -443,5 +525,131 @@ class WebhookCapableTest extends TestCase
         $this->assertSame('PAYMENT.CAPTURE.COMPLETED', $event['event_type']);
         $this->assertSame($payload, $event['raw']);
         $this->assertSame('evt_pp', $event['data']['id']);
+    }
+
+    public function testWechatV3VerifyAndParse(): void
+    {
+        [$gateway, $privPem] = $this->wechatV3();
+
+        $payload = (string) json_encode([
+            'id' => 'evt_v3',
+            'event_type' => 'TRANSACTION.SUCCESS',
+        ]);
+        $timestamp = (string) time();
+        $nonce = 'nonce_v3';
+        $serial = 'serial_v3';
+        $message = $timestamp . "\n" . $nonce . "\n" . $payload . "\n";
+        openssl_sign($message, $sig, $privPem, OPENSSL_ALGO_SHA256);
+        $headers = [
+            'Wechatpay-Signature' => base64_encode($sig),
+            'Wechatpay-Timestamp' => $timestamp,
+            'Wechatpay-Nonce' => $nonce,
+            'Wechatpay-Serial' => $serial,
+        ];
+
+        $this->assertTrue($gateway->verifyWebhook($payload, $headers));
+
+        // 缺头应校验失败
+        $this->assertFalse($gateway->verifyWebhook($payload, []));
+
+        // 篡改签名应校验失败
+        $bad = $headers;
+        $bad['Wechatpay-Signature'] = base64_encode('forged');
+        $this->assertFalse($gateway->verifyWebhook($payload, $bad));
+
+        // parseWebhook 返回统一事件结构（无 resource 时不触发解密）
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('wechat_v3', $event['gateway']);
+        $this->assertSame('evt_v3', $event['event_id']);
+        $this->assertSame('TRANSACTION.SUCCESS', $event['event_type']);
+        $this->assertSame($payload, $event['raw']);
+        $this->assertSame('evt_v3', $event['data']['id']);
+    }
+
+    public function testWechatV3ParseThrowsOnUnparseableResource(): void
+    {
+        [$gateway] = $this->wechatV3();
+
+        // 携带 resource（密文/nonce）但密文非法，解密应抛出而非伪造数据
+        $payload = (string) json_encode([
+            'id' => 'evt_v3',
+            'event_type' => 'TRANSACTION.SUCCESS',
+            'resource' => ['ciphertext' => 'x', 'nonce' => 'y', 'associated_data' => ''],
+        ]);
+
+        $this->expectException(PayException::class);
+        $gateway->parseWebhook($payload);
+    }
+
+    public function testAlipayGlobalVerifyAndParse(): void
+    {
+        [$gateway, $privatePem] = $this->alipayGlobal();
+        $data = [
+            'app_id' => 'ag_app',
+            'trade_no' => 'agn_1',
+            'out_trade_no' => 'ao_1',
+            'trade_status' => 'TRADE_SUCCESS',
+            'total_amount' => '9.00',
+        ];
+        $data['sign'] = Signer::rsa2($data, $privatePem);
+        $data['sign_type'] = 'RSA2';
+        $payload = http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        // 错误签名应失败
+        $bad = $data;
+        $bad['sign'] = 'invalid-signature';
+        $this->assertFalse($gateway->verifyWebhook(http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('alipay_global', $event['gateway']);
+        $this->assertSame('agn_1', $event['event_id']);
+        $this->assertSame('TRADE_SUCCESS', $event['event_type']);
+        $this->assertSame('agn_1', $event['data']['trade_no']);
+    }
+
+    public function testSquareVerifyAndParse(): void
+    {
+        $gateway = $this->square(['webhook_signature_key' => 'sq_secret']);
+        $payload = (string) json_encode(['event_id' => 'evt_sq', 'type' => 'payment.updated', 'entity_id' => 'ent_1']);
+        $sig = base64_encode(hash_hmac('sha1', $payload, 'sq_secret', true));
+        $headers = ['X-Square-Signature' => $sig];
+
+        $this->assertTrue($gateway->verifyWebhook($payload, $headers));
+        // 错误签名应失败
+        $bad = base64_encode(hash_hmac('sha1', 'tampered', 'sq_secret', true));
+        $this->assertFalse($gateway->verifyWebhook($payload, ['X-Square-Signature' => $bad]));
+        // 未配置密钥应诚实返回 false
+        $this->assertFalse($this->square(['webhook_signature_key' => ''])->verifyWebhook($payload, $headers));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('square', $event['gateway']);
+        $this->assertSame('evt_sq', $event['event_id']);
+        $this->assertSame('payment.updated', $event['event_type']);
+    }
+
+    public function testAggregateDelegatesToSubGateway(): void
+    {
+        $gateway = $this->aggregate();
+        $payload = (string) json_encode(['id' => 'evt_ag', 'type' => 'payment_intent.succeeded']);
+        $timestamp = (string) time();
+        $sig = hash_hmac('sha256', "{$timestamp}.{$payload}", 'whsec_test');
+        $headers = ['Stripe-Signature' => "t={$timestamp},v1={$sig}"];
+
+        // 委派到 stripe 子网关验签通过
+        $this->assertTrue($gateway->verifyWebhook($payload, $headers));
+        // 子网关无法验签时聚合返回 false（不伪造通过）
+        $this->assertFalse($gateway->verifyWebhook($payload, []));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('stripe', $event['gateway']);
+        $this->assertSame('evt_ag', $event['event_id']);
+    }
+
+    public function testKlarnaDoesNotFakeWebhook(): void
+    {
+        // Klarna 异步通知不携带签名，verifyNotify 诚实返回 false，不伪造通过
+        $this->assertFalse($this->klarna()->verifyNotify(['event_type' => 'x', 'order_id' => 'y']));
     }
 }

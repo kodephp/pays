@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\AlipayGlobal;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -15,7 +16,7 @@ use Kode\Pays\Support\Signer;
  * 支持 Alipay+ 跨境支付、Alipay Global 海外商户收单。
  * 覆盖东南亚、欧洲、中东等市场，支持多币种结算。
  */
-class AlipayGlobalGateway extends AbstractGateway
+class AlipayGlobalGateway extends AbstractGateway implements WebhookCapableInterface
 {
     /**
      * 测试环境网关地址
@@ -173,7 +174,7 @@ class AlipayGlobalGateway extends AbstractGateway
     /**
      * 验证异步通知签名
      *
-     * @param array<string, mixed> $data 通知数据
+     * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
     public function verifyNotify(array $data): bool
@@ -195,6 +196,65 @@ class AlipayGlobalGateway extends AbstractGateway
         $algo = $signType === 'RSA2' ? 'SHA256' : 'SHA1';
 
         return Signer::verifyRsa($data, $publicKey, $sign, false, $algo);
+    }
+
+    /**
+     * 解析支付宝国际版通知报文（form-urlencoded 或 JSON）
+     *
+     * @param string $payload 原始请求体
+     * @return array<int|string, mixed>
+     */
+    private function parseAlipayGlobalNotify(string $payload): array
+    {
+        $payload = trim($payload);
+        if ($payload !== '' && ($payload[0] === '{' || $payload[0] === '[')) {
+            $decoded = json_decode($payload, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        parse_str($payload, $data);
+
+        /** @var array<int|string, mixed> $data */
+        return $data;
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 RSA 验签逻辑，但接收原始报文与请求头，
+     * 不再依赖全局 `$_SERVER` / `php://input`。
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @param array<string, string> $headers 请求头（支付宝国际版通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        return $this->verifyNotify($this->parseAlipayGlobalNotify($payload));
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（form-urlencoded 或 JSON）
+     * @return array<string, mixed>
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->parseAlipayGlobalNotify($payload);
+
+        return [
+            'gateway' => 'alipay_global',
+            'event_id' => $data['trade_no'] ?? $data['out_trade_no'] ?? null,
+            'event_type' => $data['trade_status'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

@@ -121,24 +121,27 @@ class GatewayManifestTest extends TestCase
     }
 
     /**
-     * Webhook 能力契约一致性（v2.4.0）
+     * Webhook 能力契约一致性（v2.8.0）
      *
-     * - CAP_WEBHOOK 渐进落地期间暂不登记进 CAPABILITY_CONTRACTS（与 CAP_VERIFY_NOTIFY 同理，
-     *   所有声明网关仍经 verifyNotify 兜底），避免审计漂移；
-     * - CAPABILITY_OPERATIONS 已列出 verifyWebhook / parseWebhook（此前为空，inspect 无法列出 Webhook 方法）；
-     * - Stripe / Coinbase / HitPay / Xendit 四个种子网关，以及微信 / 支付宝 / 银联 / Adyen / Wise / Payoneer /
-     *   Revolut / PayPal 已落地 WebhookCapableInterface（v2.4.0~v2.7.0 渐进）。
+     * - CAP_WEBHOOK 已在 v2.8.0 正式登记进 CAPABILITY_CONTRACTS：自此「声明支持 Webhook
+     *   ⟺ 实现 WebhookCapableInterface」由 CapabilityAuditor 强制守护（见 CapabilityConformanceTest）；
+     * - CAPABILITY_OPERATIONS 已列出 verifyWebhook / parseWebhook（inspect 可列出 Webhook 方法）；
+     * - 全部声明 CAP_WEBHOOK 的网关均已实现 WebhookCapableInterface（v2.4.0~v2.8.0 渐进落地完成）。
      */
     public function testWebhookContract(): void
     {
-        // 渐进落地期：CAP_WEBHOOK 暂不入契约映射（待全部声明网关接纳接口后登记）
-        $this->assertArrayNotHasKey(
+        // v2.8.0 起 CAP_WEBHOOK 正式登记进契约映射
+        $this->assertArrayHasKey(
             GatewayManifest::CAP_WEBHOOK,
             GatewayManifest::CAPABILITY_CONTRACTS,
-            'CAP_WEBHOOK 渐进落地期不应登记进契约映射，否则非实现网关将触发审计漂移'
+            'CAP_WEBHOOK 应登记进契约映射，由能力一致性审计守护「声明=实现」'
+        );
+        $this->assertSame(
+            WebhookCapableInterface::class,
+            GatewayManifest::CAPABILITY_CONTRACTS[GatewayManifest::CAP_WEBHOOK]
         );
 
-        // 操作映射：不再为空（此前 inspect 无法列出 Webhook 方法）
+        // 操作映射：不再为空（inspect 可列出 Webhook 方法）
         $this->assertSame(
             ['verifyWebhook', 'parseWebhook'],
             GatewayManifest::CAPABILITY_OPERATIONS[GatewayManifest::CAP_WEBHOOK]
@@ -146,11 +149,10 @@ class GatewayManifestTest extends TestCase
         $this->assertNotEmpty(GatewayManifest::capabilityOperations(GatewayManifest::CAP_WEBHOOK));
 
         // 已落地网关：声明支持（CAP_WEBHOOK=true）且已实现接口
-        // 注：wise / payoneer / revolut 虽已实现 WebhookCapableInterface，但其 manifest 能力块
-        // 仅声明 CAP_BALANCE（未声明 CAP_WEBHOOK），故不计入本「声明+实现」一致性断言，
-        // 留待后续把 CAP_WEBHOOK 正式登记进契约映射时一并收敛。
+        // klarna 因异步通知不携带签名，已从能力矩阵移除 CAP_WEBHOOK（不伪造）。
         $webhookGateways = [
-            'stripe', 'coinbase', 'hitpay', 'xendit', 'wechat', 'alipay', 'unionpay', 'adyen', 'paypal',
+            'stripe', 'coinbase', 'hitpay', 'xendit', 'wechat', 'alipay', 'wechat_v3', 'unionpay',
+            'adyen', 'paypal', 'square', 'alipay_global', 'aggregate', 'wise', 'payoneer', 'revolut',
         ];
         foreach ($webhookGateways as $name) {
             $this->assertTrue(GatewayManifest::supports($name, GatewayManifest::CAP_WEBHOOK));
@@ -160,6 +162,9 @@ class GatewayManifestTest extends TestCase
                 "{$name} 应实现 WebhookCapableInterface"
             );
         }
+
+        // klarna 不应声明 CAP_WEBHOOK（其通知无签名，不伪造能力）
+        $this->assertFalse(GatewayManifest::supports('klarna', GatewayManifest::CAP_WEBHOOK));
     }
 
     /**

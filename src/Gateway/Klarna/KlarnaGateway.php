@@ -180,8 +180,9 @@ class KlarnaGateway extends AbstractGateway
      */
     public function verifyNotify(array $data): bool
     {
-        // Klarna 通知包含 event_type 和 order_id
-        return isset($data['event_type']) && isset($data['order_id']);
+        // Klarna 异步通知不携带任何签名（仅经 HTTPS 传输），无法在网关侧做密码学验签；
+        // 其真实性应通过回查订单 API 确认。此处诚实返回 false，引导调用方走业务回查，不伪造通过。
+        return false;
     }
 
     /**

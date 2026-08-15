@@ -14,6 +14,7 @@ use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
 
 /**
@@ -191,10 +192,10 @@ class GatewayManifest
      * 未列入此表的能力（如 create_order / refund / verify_notify）由 {@see GatewayInterface}
      * 基础契约覆盖，所有网关天然具备，不参与契约核对。
      *
-     * Webhook 能力（CAP_WEBHOOK）的渐进落地说明（v2.4.0）：
-     * - 所有声明 CAP_WEBHOOK 的网关都经 {@see GatewayInterface::verifyNotify()} 提供基础通知验签
-     *   （多数依赖全局 `$_SERVER` / `php://input`，与运行时耦合），故 CAP_WEBHOOK 暂不入此契约映射，
-     *   与 CAP_VERIFY_NOTIFY 同理，避免「声明支持却未实现接口」的审计漂移；
+     * Webhook 能力（CAP_WEBHOOK）的渐进落地说明：
+     * - 早期所有声明 CAP_WEBHOOK 的网关都仅经 {@see GatewayInterface::verifyNotify()} 提供基础通知验签
+     *   （依赖全局 `$_SERVER` / `php://input`，与运行时耦合），故 CAP_WEBHOOK 当时未入契约映射，
+     *   避免「声明支持却未实现接口」的审计漂移；
      * - 自 v2.4.0 起新增 WebhookCapableInterface 作为「与运行时解耦」的富契约
      *   （verifyWebhook / parseWebhook），并由 {@see GatewayManifest::CAPABILITY_OPERATIONS} 列出；
      * - v2.4.0 起 Stripe / Coinbase / HitPay / Xendit 四个已有真实验签逻辑的网关落地了该接口；
@@ -210,6 +211,15 @@ class GatewayManifest
      *   真正校验统一走 verifyWebhook）；
      * - 其余声明 CAP_WEBHOOK 的网关（wechat_v3 / square / klarna / alipay_global / aggregate）仍经 verifyNotify 兜底，
      *   将在后续版本逐步接纳 WebhookCapableInterface 后，再把 CAP_WEBHOOK 正式登记进本映射。
+     * - v2.8.0 接纳 wechat_v3（RSA-SHA256 + 平台证书）/ alipay_global（RSA2 兼容 RSA）/ aggregate（委派到子网关）
+     *   三家 WebhookCapableInterface；其中 square 原 verifyNotify 是「恒返回 true」的伪造占位，现已替换为真实
+     *   HMAC-SHA1 验签（X-Square-Signature 头 = base64(HMAC-SHA1(raw_body, webhook_signature_key))），并接纳接口；
+     *   另据实情纠正 klarna 的虚假声明：Klarna 异步通知不携带任何签名（仅经 HTTPS 传输），无法在网关侧做密码学
+     *   验签，故从能力矩阵移除 CAP_WEBHOOK，其 verifyNotify 诚实返回 false、引导调用方走业务回查，不伪造通过。
+     * - v2.8.0 同步补齐 wise / payoneer / revolut 三家的 CAP_WEBHOOK 声明（其接口早已在 v2.6.0 接纳但清单未登记，
+     *   属漏报），并正式把 CAP_WEBHOOK 登记进 {@see GatewayManifest::CAPABILITY_CONTRACTS}：自此「声明支持 Webhook
+     *   ⟺ 实现 WebhookCapableInterface」由能力一致性审计（{@see \Kode\Pays\Core\CapabilityAuditor}）强制守护，
+     *   Webhook 能力从「verifyNotify 兜底」彻底收敛为统一的富契约。
      *
      * @var array<string, class-string>
      */
@@ -223,6 +233,7 @@ class GatewayManifest
         self::CAP_PERSONAL_RECEIVE => PersonalReceiveCapableInterface::class,
         self::CAP_SETTLEMENT => SettlementCapableInterface::class,
         self::CAP_CRYPTO => CryptoCapableInterface::class,
+        self::CAP_WEBHOOK => WebhookCapableInterface::class,
     ];
 
     /**
@@ -346,7 +357,7 @@ class GatewayManifest
         ],
         'square' => [
             'required' => ['application_id', 'access_token'],
-            'optional' => ['environment', 'api_version'],
+            'optional' => ['environment', 'api_version', 'webhook_signature_key'],
         ],
         'adyen' => [
             'required' => ['api_key', 'merchant_account'],
@@ -1300,7 +1311,7 @@ class GatewayManifest
                 'label' => 'Klarna',
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true],
+                'capabilities' => [],
             ],
             'afterpay' => [
                 'label' => 'Afterpay / Clearpay',
@@ -1318,6 +1329,7 @@ class GatewayManifest
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_WEBHOOK => true,
                     self::CAP_BALANCE => true,
                 ],
             ],
@@ -1330,6 +1342,7 @@ class GatewayManifest
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_WEBHOOK => true,
                     self::CAP_BALANCE => true,
                 ],
             ],
@@ -1338,6 +1351,7 @@ class GatewayManifest
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_WEBHOOK => true,
                     self::CAP_BALANCE => true,
                 ],
             ],

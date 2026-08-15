@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Wechat;
 
 use Kode\Pays\Contract\BalanceCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
@@ -34,7 +35,8 @@ class WechatPayV3Gateway extends AbstractGateway implements
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
     PersonalReceiveCapableInterface,
-    BalanceCapableInterface
+    BalanceCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -338,6 +340,62 @@ class WechatPayV3Gateway extends AbstractGateway implements
         $message = $data['timestamp'] . "\n" . $data['nonce'] . "\n" . ($data['body'] ?? '') . "\n";
 
         return Encryptor::rsaVerify($message, $data['signature'], $this->getPlatformCertificate($data['serial']), 'sha256');
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 RSA-SHA256 验签逻辑，但接收微信 V3 原始请求头与原始报文，
+     * 不再依赖全局 `$_SERVER` / `php://input`。签名串为 `timestamp\nnonce\nbody\n`，
+     * 使用平台证书（按 Wechatpay-Serial 选取）验签。
+     *
+     * @param string $payload 原始请求体
+     * @param array<string, string> $headers 请求头
+     *   （Wechatpay-Signature / Wechatpay-Timestamp / Wechatpay-Nonce / Wechatpay-Serial）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $signature = $this->webhookHeader($headers, 'Wechatpay-Signature');
+        $timestamp = $this->webhookHeader($headers, 'Wechatpay-Timestamp');
+        $nonce = $this->webhookHeader($headers, 'Wechatpay-Nonce');
+        $serial = $this->webhookHeader($headers, 'Wechatpay-Serial');
+
+        if ($signature === '' || $timestamp === '' || $nonce === '' || $serial === '') {
+            return false;
+        }
+
+        $message = $timestamp . "\n" . $nonce . "\n" . $payload . "\n";
+
+        return Encryptor::rsaVerify($message, $signature, $this->getPlatformCertificate($serial), 'sha256');
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * 解码 JSON 报文，并尝试对 resource（AES-256-GCM 密文）做解密；解密失败则抛出，
+     * 不伪造数据。返回结构含 gateway / event_id / event_type / data / raw。
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     * @throws PayException 报文非合法 JSON 或 resource 解密失败时
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        $resource = $data['resource'] ?? null;
+        if (is_array($resource) && isset($resource['ciphertext'], $resource['nonce'])) {
+            $data['resource'] = $this->decryptResource($resource);
+        }
+
+        return [
+            'gateway' => 'wechat_v3',
+            'event_id' => $data['id'] ?? null,
+            'event_type' => $data['event_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

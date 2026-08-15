@@ -6,6 +6,7 @@ namespace Kode\Pays\Gateway\Square;
 
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 
@@ -16,7 +17,10 @@ use Kode\Pays\Core\PayException;
  * 另通过 Catalog + Subscriptions API 提供完整的订阅能力，
  * 并经 Online Checkout + Payouts API 提供个人收款与提现查询能力。
  */
-class SquareGateway extends AbstractGateway implements SubscriptionCapableInterface, PersonalReceiveCapableInterface
+class SquareGateway extends AbstractGateway implements
+    SubscriptionCapableInterface,
+    PersonalReceiveCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -148,13 +152,55 @@ class SquareGateway extends AbstractGateway implements SubscriptionCapableInterf
      */
     public function verifyNotify(array $data): bool
     {
-        // Square Webhook 签名验证
-        if (!isset($data['signature'], $data['body'])) {
+        // Square Webhook 验签依赖原始请求体，数组入参无法承载，统一引导走 verifyWebhook
+        return false;
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（真实实现）
+     *
+     * Square 通过 `X-Square-Signature` 头下发 Base64(HMAC-SHA1(raw_body, webhook_signature_key))，
+     * 与原始请求体逐字节比对。缺少配置或未取到签名头一律返回 false，不伪造通过。
+     *
+     * @param string $payload 原始请求体
+     * @param array<string, string> $headers 请求头（含 X-Square-Signature）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $signatureKey = $this->getConfig('webhook_signature_key', '');
+        if (!is_string($signatureKey) || $signatureKey === '') {
             return false;
         }
 
-        // 实际实现需根据 Square Webhook 验证规范处理
-        return true;
+        $signature = $this->webhookHeader($headers, 'X-Square-Signature');
+        if ($signature === '') {
+            return false;
+        }
+
+        $expected = base64_encode(hash_hmac('sha1', $payload, $signatureKey, true));
+
+        return hash_equals($expected, $signature);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON）
+     * @return array<string, mixed>
+     * @throws PayException 报文非合法 JSON 时
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        return [
+            'gateway' => 'square',
+            'event_id' => $data['event_id'] ?? $data['entity_id'] ?? null,
+            'event_type' => $data['type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

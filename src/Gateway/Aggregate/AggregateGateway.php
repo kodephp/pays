@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Aggregate;
 
 use Kode\Pays\Contract\GatewayInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\PayException;
 
@@ -14,7 +15,7 @@ use Kode\Pays\Core\PayException;
  * 封装多家支付渠道，根据配置自动路由到最优渠道
  * 支持渠道优先级配置、失败自动切换等能力
  */
-class AggregateGateway implements GatewayInterface
+class AggregateGateway implements GatewayInterface, WebhookCapableInterface
 {
     /**
      * 渠道配置列表
@@ -169,6 +170,78 @@ class AggregateGateway implements GatewayInterface
         }
 
         return false;
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（委派到子网关）
+     *
+     * 聚合支付本身不持有密钥，通知验签委派给各渠道子网关；任一实现
+     * {@see WebhookCapableInterface} 的子网关验签通过即返回 true。
+     * 仅当所有子网关均无法验签时才返回 false，不伪造通过。
+     *
+     * @param string $payload 原始请求体
+     * @param array<string, string> $headers 请求头
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        foreach ($this->channels as $channel) {
+            try {
+                $gateway = $this->getGateway($channel);
+
+                if (!$gateway instanceof WebhookCapableInterface) {
+                    continue;
+                }
+
+                if ($gateway->verifyWebhook($payload, $headers)) {
+                    return true;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构（委派到子网关）
+     *
+     * 优先委派给首个实现 {@see WebhookCapableInterface} 且能成功解析的子网关；
+     * 若所有子网关均无法解析，则回退为通用结构（gateway 标记为 aggregate）。
+     *
+     * @param string $payload 原始请求体
+     * @return array<string, mixed>
+     * @throws PayException 报文无法被任何子网关解析时
+     */
+    public function parseWebhook(string $payload): array
+    {
+        foreach ($this->channels as $channel) {
+            try {
+                $gateway = $this->getGateway($channel);
+
+                if (!$gateway instanceof WebhookCapableInterface) {
+                    continue;
+                }
+
+                return $gateway->parseWebhook($payload);
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        $data = json_decode($payload, true);
+        if (!is_array($data)) {
+            parse_str($payload, $data);
+        }
+
+        return [
+            'gateway' => 'aggregate',
+            'event_id' => $data['out_trade_no'] ?? $data['trade_no'] ?? null,
+            'event_type' => $data['trade_status'] ?? $data['event_type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**
