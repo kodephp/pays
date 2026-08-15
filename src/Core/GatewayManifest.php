@@ -1227,6 +1227,7 @@ class GatewayManifest
                 'capabilities' => [
                     self::CAP_SUBSCRIPTION => true,
                     self::CAP_WEBHOOK => true,
+                    self::CAP_BALANCE => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_PERSONAL_RECEIVE => true,
                 ],
@@ -1343,7 +1344,7 @@ class GatewayManifest
                 'label' => 'Xendit',
                 'region' => self::REGION_REGIONAL,
                 'signature' => self::SIGN_NONE,
-                'capabilities' => [self::CAP_WEBHOOK => true],
+                'capabilities' => [self::CAP_WEBHOOK => true, self::CAP_BALANCE => true],
             ],
             'aggregate' => [
                 'label' => '聚合支付',

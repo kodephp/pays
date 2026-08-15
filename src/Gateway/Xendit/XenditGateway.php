@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Xendit;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Exception\GatewayException;
@@ -45,7 +46,7 @@ use Kode\Pays\Exception\GatewayException;
  * $paymentUrl = $result['invoice_url'];
  * ```
  */
-class XenditGateway extends AbstractGateway
+class XenditGateway extends AbstractGateway implements BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -244,6 +245,47 @@ class XenditGateway extends AbstractGateway
         }
 
         return $data;
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 查询账户实时余额
+     *
+     * 对齐 Xendit 真实余额规范：`GET /balance` 返回账户当前余额（整数，已为账户币种最小单位），
+     * 例如 IDR 下返回 `balance` 即印尼盾分。Xendit 余额接口无独立币种字段，币种取自配置 `currency`。
+     *
+     * @param array<string, mixed> $params 可选参数（Xendit 余额接口无需额外业务参数）
+     * @return array<string, mixed> 含 available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $response = $this->get('balance', [], $this->resolveHeader());
+
+        return [
+            'available_amount' => (int) ($response['balance'] ?? 0),
+            'pending_amount' => 0,
+            'currency' => strtoupper((string) ($this->getConfig('currency', 'IDR'))),
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Xendit 未提供按日期的「日终余额」接口，`/balance` 仅返回实时余额，故本方法不支持；
+     * 如需历史资金快照请结合 `downloadBill` 对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('xendit', 'queryDayEndBalance');
     }
 
     /**

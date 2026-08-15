@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Paypal;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
@@ -17,6 +18,7 @@ use Kode\Pays\Core\PayException;
  * 支持 PayPal Checkout、订阅等支付场景
  */
 class PaypalGateway extends AbstractGateway implements
+    BalanceCapableInterface,
     SubscriptionCapableInterface,
     RefundCapableInterface,
     SettlementCapableInterface,
@@ -439,6 +441,100 @@ class PaypalGateway extends AbstractGateway implements
         $this->accessToken = $data['access_token'];
 
         return $this->accessToken;
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 查询账户实时余额（PayPal Reporting API）
+     *
+     * 对齐 PayPal 真实规范：`GET /v1/reporting/balances` 返回各币种余额列表，
+     * 每个条目含 `total_balance` 与 `available_balance`（`value` 为十进制主单位字符串，如 "123.45"）。
+     * 需将主单位换算为最小货币单位（分）：`(int) round((float) $value * 100)`。
+     * 多币种时取首个余额作为可用余额，并保留完整列表于 `raw`。
+     *
+     * @param array<string, mixed> $params 可选参数：
+     *        - currency_code：指定币种（默认不传，返回全部币种）
+     * @return array<string, mixed> 含 available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $query = [];
+        if (isset($params['currency_code'])) {
+            $query['currency_code'] = strtoupper((string) $params['currency_code']);
+        }
+
+        $response = $this->get(
+            'v1/reporting/balances',
+            $query,
+            ['Authorization' => 'Bearer ' . $this->getAccessToken()],
+        );
+
+        $balances = $response['balances'] ?? [];
+        if ($balances === []) {
+            throw PayException::gatewayError('PayPal 余额查询无返回数据', 'paypal');
+        }
+
+        $primary = $balances[0];
+        $total = (float) ($primary['total_balance']['value'] ?? '0');
+        $available = (float) ($primary['available_balance']['value'] ?? '0');
+
+        return [
+            'available_amount' => (int) round($available * 100),
+            'pending_amount' => (int) round(($total - $available) * 100),
+            'currency' => $primary['available_balance']['currency_code']
+                ?? $primary['total_balance']['currency_code']
+                ?? 'USD',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额（PayPal Reporting API 支持 as_of_time 时间点）
+     *
+     * PayPal `/v1/reporting/balances` 支持 `as_of_time`（ISO8601 UTC）时间点快照，
+     * 取当日 23:59:59Z 即等价于「日终余额」，与全 SDK `downloadFundFlow` 的 `bill_date` 约定互补。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数：
+     *        - currency_code：指定币种（默认不传，返回全部币种）
+     * @return array<string, mixed> 含 available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        $query = ['as_of_time' => $date . 'T23:59:59Z'];
+        if (isset($params['currency_code'])) {
+            $query['currency_code'] = strtoupper((string) $params['currency_code']);
+        }
+
+        $response = $this->get(
+            'v1/reporting/balances',
+            $query,
+            ['Authorization' => 'Bearer ' . $this->getAccessToken()],
+        );
+
+        $balances = $response['balances'] ?? [];
+        if ($balances === []) {
+            throw PayException::gatewayError('PayPal 日终余额查询无返回数据', 'paypal');
+        }
+
+        $primary = $balances[0];
+        $total = (float) ($primary['total_balance']['value'] ?? '0');
+        $available = (float) ($primary['available_balance']['value'] ?? '0');
+
+        return [
+            'available_amount' => (int) round($available * 100),
+            'pending_amount' => (int) round(($total - $available) * 100),
+            'currency' => $primary['available_balance']['currency_code']
+                ?? $primary['total_balance']['currency_code']
+                ?? 'USD',
+            'raw' => $response,
+            'day_end_balance' => (int) round($total * 100),
+        ];
     }
 
     /* ==================== 自动结算能力（SettlementCapableInterface） ==================== */

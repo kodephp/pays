@@ -37,7 +37,7 @@
 
 ## 余额查询（BalanceCapableInterface）
 
-与对账单下载互补，用于账实核对与可用资金监控。微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen 提供实时余额查询：
+与对账单下载互补，用于账实核对与可用资金监控。微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen / Xendit / PayPal 提供实时余额查询：
 
 | 平台 | `queryBalance` | `queryDayEndBalance` | 说明 |
 |------|----------------|----------------------|------|
@@ -47,8 +47,10 @@
 | Revolut | ✅ `GET /api/1.0/accounts` | ❌ 报「无此方法」 | 实时余额（最小货币单位整数）；多账户取首个 `active` 账户，完整账户列表见 `raw` |
 | Wise | ✅ `GET /v4/profiles/{profile_id}/balances` | ❌ 报「无此方法」 | 实时余额（最小货币单位整数）；多币种取首个余额，完整余额列表见 `raw` |
 | Adyen | ✅ `GET /balancePlatform/balanceAccounts/{id}/balances` | ❌ 报「无此方法」 | Balance Platform 资金账户实时余额（最小货币单位整数）；需配置 `balance_account_id`，与 PAL 收单主机相互独立 |
+| Xendit | ✅ `GET /balance` | ❌ 报「无此方法」 | 实时余额（整数，已为账户币种最小单位）；币种取自配置 `currency`（默认 IDR） |
+| PayPal | ✅ `GET /v1/reporting/balances` | ✅ `as_of_time` 时间点快照 | 实时余额（`value` 为十进制主单位，换算为分）；`queryDayEndBalance` 以 `as_of_time=日期T23:59:59Z` 取当日日终快照，返回 `day_end_balance` |
 
-> 能力开关：微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen 在 `GatewayManifest` 中均声明 `CAP_BALANCE => true`，
+> 能力开关：微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen / Xendit / PayPal 在 `GatewayManifest` 中均声明 `CAP_BALANCE => true`，
 > 可用 `GatewayManifest::supports($gateway, GatewayManifest::CAP_BALANCE)` 判断。
 > 微信 V3 的 `account_type` 仅接受 `BASIC` / `OPERATION` / `FEES`；`queryDayEndBalance` 的 `date` 必须为 `YYYY-MM-DD`。
 > 支付宝、Stripe、Revolut、Wise 无按日期的日终余额接口（余额接口均为实时），`queryDayEndBalance` 调用会抛「无此方法」，
