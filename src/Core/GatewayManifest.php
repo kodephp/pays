@@ -191,6 +191,16 @@ class GatewayManifest
      * 未列入此表的能力（如 create_order / refund / verify_notify）由 {@see GatewayInterface}
      * 基础契约覆盖，所有网关天然具备，不参与契约核对。
      *
+     * Webhook 能力（CAP_WEBHOOK）的渐进落地说明（v2.4.0）：
+     * - 所有声明 CAP_WEBHOOK 的网关都经 {@see GatewayInterface::verifyNotify()} 提供基础通知验签
+     *   （多数依赖全局 `$_SERVER` / `php://input`，与运行时耦合），故 CAP_WEBHOOK 暂不入此契约映射，
+     *   与 CAP_VERIFY_NOTIFY 同理，避免「声明支持却未实现接口」的审计漂移；
+     * - 自 v2.4.0 起新增 WebhookCapableInterface 作为「与运行时解耦」的富契约
+     *   （verifyWebhook / parseWebhook），并由 {@see GatewayManifest::CAPABILITY_OPERATIONS} 列出；
+     * - 当前仅 Stripe / Coinbase / HitPay / Xendit 四个已有真实验签逻辑的网关落地了该接口，
+     *   其余声明 CAP_WEBHOOK 的网关仍经 verifyNotify 兜底，将在后续版本逐步接纳 WebhookCapableInterface
+     *   后，再把 CAP_WEBHOOK 正式登记进本映射。
+     *
      * @var array<string, class-string>
      */
     public const CAPABILITY_CONTRACTS = [
@@ -262,7 +272,7 @@ class GatewayManifest
         self::CAP_RED_PACKET => ['sendRedPacket', 'groupRedPacket', 'queryRedPacket'],
         self::CAP_PERSONAL_RECEIVE => ['createQrCode', 'queryRecords', 'withdraw', 'queryWithdraw'],
         self::CAP_SETTLEMENT => ['settleToWallet', 'settleToBankCard', 'settleToPayout', 'querySettlement'],
-        self::CAP_WEBHOOK => [],
+        self::CAP_WEBHOOK => ['verifyWebhook', 'parseWebhook'],
         self::CAP_CRYPTO => ['createCryptoOrder', 'getExchangeRate', 'getPaymentAddresses', 'getConfirmations'],
     ];
 

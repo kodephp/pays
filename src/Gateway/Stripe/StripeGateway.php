@@ -12,6 +12,7 @@ use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -30,7 +31,8 @@ class StripeGateway extends AbstractGateway implements
     RefundCapableInterface,
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
-    BalanceCapableInterface
+    BalanceCapableInterface,
+    WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -184,6 +186,77 @@ class StripeGateway extends AbstractGateway implements
         }
 
         return false;
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 Stripe-Signature HMAC-SHA256 校验逻辑，但接收原始报文与请求头，
+     * 不再依赖全局 `$_SERVER` / `php://input`，便于测试与中间层复用。
+     *
+     * @param string $payload 原始请求体
+     * @param array<string, string> $headers 请求头（含 Stripe-Signature）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $sigHeader = $this->webhookHeader($headers, 'Stripe-Signature');
+        $secret = $this->getConfig('webhook_secret', $this->getConfig('secret_key', ''));
+        if ($sigHeader === '' || $payload === '' || $secret === '') {
+            return false;
+        }
+
+        $elements = explode(',', $sigHeader);
+        $timestamp = null;
+        $signatures = [];
+        foreach ($elements as $element) {
+            $parts = explode('=', $element, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            if ($parts[0] === 't') {
+                $timestamp = $parts[1];
+            } elseif ($parts[0] === 'v1') {
+                $signatures[] = $parts[1];
+            }
+        }
+        if ($timestamp === null || $signatures === []) {
+            return false;
+        }
+
+        // 时间戳容差 5 分钟，防止重放攻击
+        if (abs(time() - (int) $timestamp) > 300) {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
+        foreach ($signatures as $signature) {
+            if (hash_equals($expected, $signature)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON 字符串）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        return [
+            'gateway' => 'stripe',
+            'event_id' => $data['id'] ?? null,
+            'event_type' => $data['type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

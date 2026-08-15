@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Tests\Core;
 
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\GatewayManifest;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Gateway\Wechat\WechatPayGateway;
@@ -117,6 +118,41 @@ class GatewayManifestTest extends TestCase
 
         $caps = GatewayManifest::capabilities('wechat');
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $caps);
+    }
+
+    /**
+     * Webhook 能力契约一致性（v2.4.0）
+     *
+     * - CAP_WEBHOOK 渐进落地期间暂不登记进 CAPABILITY_CONTRACTS（与 CAP_VERIFY_NOTIFY 同理，
+     *   所有声明网关仍经 verifyNotify 兜底），避免审计漂移；
+     * - CAPABILITY_OPERATIONS 已列出 verifyWebhook / parseWebhook（此前为空，inspect 无法列出 Webhook 方法）；
+     * - Stripe / Coinbase / HitPay / Xendit 四个种子网关已落地 WebhookCapableInterface。
+     */
+    public function testWebhookContract(): void
+    {
+        // 渐进落地期：CAP_WEBHOOK 暂不入契约映射（待全部声明网关接纳接口后登记）
+        $this->assertArrayNotHasKey(
+            GatewayManifest::CAP_WEBHOOK,
+            GatewayManifest::CAPABILITY_CONTRACTS,
+            'CAP_WEBHOOK 渐进落地期不应登记进契约映射，否则非实现网关将触发审计漂移'
+        );
+
+        // 操作映射：不再为空（此前 inspect 无法列出 Webhook 方法）
+        $this->assertSame(
+            ['verifyWebhook', 'parseWebhook'],
+            GatewayManifest::CAPABILITY_OPERATIONS[GatewayManifest::CAP_WEBHOOK]
+        );
+        $this->assertNotEmpty(GatewayManifest::capabilityOperations(GatewayManifest::CAP_WEBHOOK));
+
+        // 种子网关：声明支持且已实现接口
+        foreach (['stripe', 'coinbase', 'hitpay', 'xendit'] as $name) {
+            $this->assertTrue(GatewayManifest::supports($name, GatewayManifest::CAP_WEBHOOK));
+            $gatewayClass = GatewayManifest::get($name)['gateway_class'];
+            $this->assertTrue(
+                is_subclass_of($gatewayClass, WebhookCapableInterface::class),
+                "{$name} 应实现 WebhookCapableInterface"
+            );
+        }
     }
 
     /**

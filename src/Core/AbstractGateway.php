@@ -346,6 +346,30 @@ abstract class AbstractGateway implements GatewayInterface, HttpCapableInterface
     }
 
     /**
+     * 从请求头集合中按大小写不敏感键名取值（用于 Webhook 验签）
+     *
+     * Webhook 签名头（如 Stripe-Signature / X-Cc-Webhook-Signature）在真实请求中大小写
+     * 不固定，本方法统一按小写比对返回，便于 {@see \Kode\Pays\Contract\WebhookCapableInterface}
+     * 各网关复用，避免重复实现大小写归一逻辑。
+     *
+     * @param array<string, string> $headers 请求头集合（键为头名、值为头内容）
+     * @param string $name 目标头名（任意大小写）
+     * @return string 命中则返回头内容，否则返回空串
+     */
+    protected function webhookHeader(array $headers, string $name): string
+    {
+        $target = strtolower($name);
+
+        foreach ($headers as $key => $value) {
+            if (strtolower((string) $key) === $target) {
+                return (string) $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * 验证必填参数
      *
      * @param array<string, mixed> $params 待校验参数

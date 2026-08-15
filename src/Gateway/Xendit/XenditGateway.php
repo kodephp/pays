@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Xendit;
 
 use Kode\Pays\Contract\BalanceCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Exception\GatewayException;
@@ -46,7 +47,7 @@ use Kode\Pays\Exception\GatewayException;
  * $paymentUrl = $result['invoice_url'];
  * ```
  */
-class XenditGateway extends AbstractGateway implements BalanceCapableInterface
+class XenditGateway extends AbstractGateway implements BalanceCapableInterface, WebhookCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -212,6 +213,45 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface
         }
 
         return hash_equals($callbackToken, $this->config['callback_token'] ?? '');
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 X-Callback-Token 令牌比对逻辑，接收原始报文与请求头。
+     *
+     * @param string $payload 原始请求体（令牌比对不依赖报文内容，仅作占位入参）
+     * @param array<string, string> $headers 请求头（含 X-Callback-Token）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $callbackToken = $this->webhookHeader($headers, 'X-Callback-Token');
+        if ($callbackToken === '') {
+            return false;
+        }
+
+        return hash_equals($callbackToken, $this->config['callback_token'] ?? '');
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * @param string $payload 原始请求体（JSON 字符串）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        return [
+            'gateway' => 'xendit',
+            'event_id' => $data['id'] ?? null,
+            'event_type' => $data['event_type'] ?? $data['type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**

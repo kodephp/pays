@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Gateway\Coinbase;
 
 use Kode\Pays\Contract\CryptoCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -48,7 +49,7 @@ use Kode\Pays\Exception\GatewayException;
  * $confirmations = $gateway->getConfirmations($chargeId);
  * ```
  */
-class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface
+class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface, WebhookCapableInterface
 {
     /**
      * 支持的加密货币列表
@@ -293,6 +294,50 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface
         $computed = hash_hmac('sha256', $payload, $this->config['webhook_secret'] ?? '');
 
         return hash_equals($computed, $signature);
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 X-Cc-Webhook-Signature HMAC-SHA256 校验逻辑，接收原始报文与请求头。
+     *
+     * @param string $payload 原始请求体
+     * @param array<string, string> $headers 请求头（含 X-Cc-Webhook-Signature）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        $signature = $this->webhookHeader($headers, 'X-Cc-Webhook-Signature');
+        $secret = $this->config['webhook_secret'] ?? '';
+        if ($signature === '' || $secret === '' || $payload === '') {
+            return false;
+        }
+
+        $computed = hash_hmac('sha256', $payload, $secret);
+
+        return hash_equals($computed, $signature);
+    }
+
+    /**
+     * 解析 Webhook 原始请求体为统一事件结构
+     *
+     * Coinbase 事件包以 `event` 包裹，事件 ID / 类型优先取自 `event.id` / `event.type`。
+     *
+     * @param string $payload 原始请求体（JSON 字符串）
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->decodeJson($payload);
+
+        return [
+            'gateway' => 'coinbase',
+            'event_id' => $data['event']['id'] ?? $data['id'] ?? null,
+            'event_type' => $data['event']['type'] ?? $data['type'] ?? 'unknown',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     public static function getName(): string
