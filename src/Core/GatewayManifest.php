@@ -1295,6 +1295,9 @@ class GatewayManifest
                 'label' => 'Wise',
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
+                'capabilities' => [
+                    self::CAP_BALANCE => true,
+                ],
             ],
             'revolut' => [
                 'label' => 'Revolut',
@@ -1305,6 +1308,7 @@ class GatewayManifest
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,
                     self::CAP_PERSONAL_RECEIVE => true,
+                    self::CAP_BALANCE => true,
                 ],
             ],
             'payoneer' => [

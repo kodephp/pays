@@ -214,4 +214,44 @@ class RevolutGatewayTest extends TestCase
     {
         $this->assertSame('revolut', RevolutGateway::getName());
     }
+
+    /**
+     * 余额查询：GET /api/1.0/accounts，取首个 active 账户的 balance
+     */
+    public function testQueryBalance(): void
+    {
+        $resp = json_encode([
+            'accounts' => [
+                ['id' => 'acc_1', 'state' => 'created', 'currency' => 'GBP', 'balance' => 0],
+                ['id' => 'acc_2', 'state' => 'active', 'currency' => 'EUR', 'balance' => 123450],
+            ],
+        ]);
+
+        $gateway = $this->createGateway(['api/1.0/accounts' => $resp]);
+
+        $result = $gateway->queryBalance();
+
+        $this->assertSame('acc_2', $result['account_id']);
+        $this->assertSame(123450, $result['available_amount']);
+        $this->assertSame(0, $result['pending_amount']);
+        $this->assertSame('EUR', $result['currency']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertNotNull($last);
+        $this->assertStringContainsString('api/1.0/accounts', $last['url']);
+        $this->assertSame('Bearer revolut_key', $last['headers']['Authorization'] ?? '');
+    }
+
+    /**
+     * 日终余额：Revolut 无按日期接口，抛「无此方法」
+     */
+    public function testQueryDayEndBalanceNotSupported(): void
+    {
+        $gateway = $this->createGateway();
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessageMatches('/无此方法|not supported|queryDayEndBalance/i');
+
+        $gateway->queryDayEndBalance('2024-04-25');
+    }
 }

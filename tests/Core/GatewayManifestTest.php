@@ -104,6 +104,9 @@ class GatewayManifestTest extends TestCase
         // 支付宝、Stripe 亦支持实时余额查询
         $this->assertTrue(GatewayManifest::supports('alipay', GatewayManifest::CAP_BALANCE));
         $this->assertTrue(GatewayManifest::supports('stripe', GatewayManifest::CAP_BALANCE));
+        // 2.0.0：Revolut、Wise 补齐实时余额查询能力
+        $this->assertTrue(GatewayManifest::supports('revolut', GatewayManifest::CAP_BALANCE));
+        $this->assertTrue(GatewayManifest::supports('wise', GatewayManifest::CAP_BALANCE));
 
         $caps = GatewayManifest::capabilities('wechat');
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $caps);

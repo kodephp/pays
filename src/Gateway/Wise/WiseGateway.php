@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Wise;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -14,7 +15,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Wise（原 TransferWise）跨境汇款、多币种转账。
  * 覆盖全球 80+ 国家，支持 50+ 种货币。
  */
-class WiseGateway extends AbstractGateway
+class WiseGateway extends AbstractGateway implements BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -223,6 +224,54 @@ class WiseGateway extends AbstractGateway
     public static function getName(): string
     {
         return 'wise';
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 查询账户实时余额
+     *
+     * 对齐 Wise 真实余额规范：GET /v4/profiles/{profileId}/balances 返回余额列表，
+     * 每个余额含 `amount`（最小货币单位，整数）与 `currency`。多币种时取首个余额作为可用余额，
+     * 并保留完整余额列表于 `raw`，便于调用方按需聚合。
+     *
+     * @param array<string, mixed> $params 可选参数（Wise 余额接口无需额外业务参数，profile_id 取自配置）
+     * @return array<string, mixed> 含 balance_id / available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $response = $this->get('v4/profiles/' . $this->getConfig('profile_id') . '/balances', [], [
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+
+        $balances = $response['balances'] ?? (is_array($response) ? $response : []);
+        $primary = $balances[0] ?? [];
+
+        return [
+            'balance_id' => $primary['id'] ?? null,
+            'available_amount' => (int) ($primary['amount'] ?? 0),
+            'pending_amount' => 0,
+            'currency' => $primary['currency'] ?? 'EUR',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Wise 未提供按日期的「日终余额」接口，`/balances` 仅返回实时余额，故本方法不支持；
+     * 如需历史资金快照请结合 `downloadBill` 对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('wise', 'queryDayEndBalance');
     }
 
     /**

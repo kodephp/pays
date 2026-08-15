@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Revolut;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\PersonalReceiveCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
@@ -24,7 +25,8 @@ class RevolutGateway extends AbstractGateway implements
     ReconciliationCapableInterface,
     RefundCapableInterface,
     SettlementCapableInterface,
-    PersonalReceiveCapableInterface
+    PersonalReceiveCapableInterface,
+    BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -352,6 +354,62 @@ class RevolutGateway extends AbstractGateway implements
     public function transferReceipt(string $outBizNo): array
     {
         throw PayException::methodNotSupported('revolut', 'transferReceipt');
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 查询账户实时余额
+     *
+     * 对齐 Revolut 真实账户余额规范：GET /api/1.0/accounts 返回账户列表，
+     * 每个账户含 `balance`（最小货币单位，整数）与 `currency`。多账户/多币种时取首个
+     * `active` 账户作为可用余额，并保留完整账户列表于 `raw`，便于调用方按需聚合。
+     *
+     * @param array<string, mixed> $params 可选参数（Revolut 余额接口无额外业务参数）
+     * @return array<string, mixed> 含 account_id / available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $response = $this->get('api/1.0/accounts', [], [
+            'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
+        ]);
+
+        $accounts = $response['accounts'] ?? (is_array($response) ? $response : []);
+
+        $primary = null;
+        foreach ($accounts as $account) {
+            if (($account['state'] ?? '') === 'active') {
+                $primary = $account;
+                break;
+            }
+        }
+        $primary = $primary ?? $accounts[0] ?? [];
+
+        return [
+            'account_id' => $primary['id'] ?? null,
+            'available_amount' => (int) ($primary['balance'] ?? 0),
+            'pending_amount' => 0,
+            'currency' => $primary['currency'] ?? 'EUR',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Revolut 未提供按日期的「日终余额」接口，`/api/1.0/accounts` 仅返回实时余额，故本方法不支持；
+     * 如需历史资金快照请结合 `downloadBill`（交易列表）对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('revolut', 'queryDayEndBalance');
     }
 
     /* ==================== 对账能力（ReconciliationCapableInterface） ==================== */
