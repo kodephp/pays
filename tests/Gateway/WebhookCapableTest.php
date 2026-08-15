@@ -6,17 +6,21 @@ namespace Kode\Pays\Tests\Gateway;
 
 use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\PayException;
+use Kode\Pays\Gateway\Alipay\AlipayGateway;
 use Kode\Pays\Gateway\Coinbase\CoinbaseGateway;
 use Kode\Pays\Gateway\HitPay\HitPayGateway;
 use Kode\Pays\Gateway\Stripe\StripeGateway;
+use Kode\Pays\Gateway\Wechat\WechatPayGateway;
 use Kode\Pays\Gateway\Xendit\XenditGateway;
+use Kode\Pays\Support\Signer;
 use Kode\Pays\Tests\TestCase;
 
 /**
- * WebhookCapableInterface 种子实现测试（v2.4.0）
+ * WebhookCapableInterface 种子实现测试（v2.4.0 起，v2.5.0 扩展）
  *
- * 覆盖 Stripe / Coinbase / HitPay / Xendit 四个已有真实验签逻辑的网关，
- * 验证 verifyWebhook（与运行时解耦的签名校验）与 parseWebhook（统一事件结构）行为。
+ * 覆盖 Stripe / Coinbase / HitPay / Xendit（v2.4.0）以及微信支付 / 支付宝（v2.5.0）
+ * 共六个已有真实验签逻辑的网关，验证 verifyWebhook（与运行时解耦的签名校验）与
+ * parseWebhook（统一事件结构）行为。
  */
 class WebhookCapableTest extends TestCase
 {
@@ -52,12 +56,42 @@ class WebhookCapableTest extends TestCase
         ], $config));
     }
 
+    private function wechat(array $config = []): WechatPayGateway
+    {
+        return new WechatPayGateway(array_merge([
+            'app_id' => 'wx_app',
+            'mch_id' => 'mch_1',
+            'api_key' => 'wechat_api_key',
+        ], $config));
+    }
+
+    private function alipay(array $config = []): AlipayGateway
+    {
+        return new AlipayGateway(array_merge([
+            'app_id' => 'alipay_app',
+            'private_key' => $config['private_key'] ?? 'alipay_priv',
+            'public_key' => $config['public_key'] ?? 'alipay_pub',
+        ], $config));
+    }
+
+    private function buildWechatXml(array $data): string
+    {
+        $xml = '<xml>';
+        foreach ($data as $key => $value) {
+            $xml .= is_numeric($value) ? "<{$key}>{$value}</{$key}>" : "<{$key}><![CDATA[{$value}]]></{$key}>";
+        }
+
+        return $xml . '</xml>';
+    }
+
     public function testGatewaysImplementInterface(): void
     {
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->stripe());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->coinbase());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->hitpay());
         $this->assertInstanceOf(WebhookCapableInterface::class, $this->xendit());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->wechat());
+        $this->assertInstanceOf(WebhookCapableInterface::class, $this->alipay());
     }
 
     public function testStripeVerifyAndParse(): void
@@ -128,6 +162,70 @@ class WebhookCapableTest extends TestCase
         $this->assertSame('xendit', $event['gateway']);
         $this->assertSame('evt_x', $event['event_id']);
         $this->assertSame('invoice.paid', $event['event_type']);
+    }
+
+    public function testWechatVerifyAndParse(): void
+    {
+        $gateway = $this->wechat();
+        $data = [
+            'appid' => 'wx_app',
+            'mch_id' => 'mch_1',
+            'out_trade_no' => 'order_1',
+            'transaction_id' => 'txn_1',
+            'result_code' => 'SUCCESS',
+            'return_code' => 'SUCCESS',
+            'total_fee' => '100',
+        ];
+        $data['sign'] = Signer::md5($data, 'wechat_api_key');
+        $payload = $this->buildWechatXml($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        // 篡改金额后 MD5 验签应失败（沿用原 sign）
+        $tampered = $this->buildWechatXml(array_merge($data, ['total_fee' => '999']));
+        $this->assertFalse($gateway->verifyWebhook($tampered));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('wechat', $event['gateway']);
+        $this->assertSame('txn_1', $event['event_id']);
+        $this->assertSame('pay_success', $event['event_type']);
+        $this->assertSame($payload, $event['raw']);
+        $this->assertSame('txn_1', $event['data']['transaction_id']);
+    }
+
+    public function testAlipayVerifyAndParse(): void
+    {
+        $res = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        if ($res === false) {
+            $this->markTestSkipped('当前环境不支持 openssl_pkey_new');
+        }
+        openssl_pkey_export($res, $privatePem);
+        $publicPem = (string) openssl_pkey_get_details($res)['key'];
+
+        $gateway = $this->alipay(['private_key' => $privatePem, 'public_key' => $publicPem]);
+        $data = [
+            'app_id' => 'alipay_app',
+            'trade_no' => 'tn_1',
+            'out_trade_no' => 'o_1',
+            'trade_status' => 'TRADE_SUCCESS',
+            'total_amount' => '9.00',
+        ];
+        $data['sign'] = Signer::rsa2($data, $privatePem);
+        $data['sign_type'] = 'RSA2';
+        $payload = http_build_query($data);
+
+        $this->assertTrue($gateway->verifyWebhook($payload));
+
+        // 错误签名应失败
+        $bad = $data;
+        $bad['sign'] = 'invalid-signature';
+        $this->assertFalse($gateway->verifyWebhook(http_build_query($bad)));
+
+        $event = $gateway->parseWebhook($payload);
+        $this->assertSame('alipay', $event['gateway']);
+        $this->assertSame('tn_1', $event['event_id']);
+        $this->assertSame('TRADE_SUCCESS', $event['event_type']);
+        $this->assertSame('tn_1', $event['data']['trade_no']);
     }
 
     public function testParseWebhookThrowsOnInvalidJson(): void

@@ -12,6 +12,7 @@ use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Plugin\ProfitSharing\Receiver;
@@ -32,7 +33,8 @@ class WechatPayGateway extends AbstractGateway implements
     RefundCapableInterface,
     ProfitSharingCapableInterface,
     SettlementCapableInterface,
-    SubscriptionCapableInterface
+    SubscriptionCapableInterface,
+    WebhookCapableInterface
 {
     use WechatV3SigningTrait;
 
@@ -198,6 +200,45 @@ class WechatPayGateway extends AbstractGateway implements
         }
 
         return Signer::verifyMd5($data, $this->getConfig('api_key'));
+    }
+
+    /**
+     * 验证 Webhook 原始请求签名（与运行时解耦版本）
+     *
+     * 复用 {@see verifyNotify()} 的 MD5 验签逻辑，但接收原始 XML 报文，
+     * 不再依赖全局 `$_SERVER` / `php://input`。
+     *
+     * @param string $payload 原始 XML 请求体
+     * @param array<string, string> $headers 请求头（微信 V2 通知签名在报文体内，未使用）
+     * @return bool
+     */
+    public function verifyWebhook(string $payload, array $headers = []): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        return $this->verifyNotify($this->xmlToArray($payload));
+    }
+
+    /**
+     * 解析 Webhook 原始 XML 请求体为统一事件结构
+     *
+     * @param string $payload 原始 XML 请求体
+     * @return array<string, mixed>
+     * @throws PayException
+     */
+    public function parseWebhook(string $payload): array
+    {
+        $data = $this->xmlToArray($payload);
+
+        return [
+            'gateway' => 'wechat',
+            'event_id' => $data['transaction_id'] ?? $data['out_trade_no'] ?? null,
+            'event_type' => ($data['result_code'] ?? 'SUCCESS') === 'SUCCESS' ? 'pay_success' : 'pay_fail',
+            'data' => $data,
+            'raw' => $payload,
+        ];
     }
 
     /**
