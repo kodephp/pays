@@ -37,7 +37,7 @@
 
 ## 余额查询（BalanceCapableInterface）
 
-与对账单下载互补，用于账实核对与可用资金监控。微信支付 V3 / 支付宝 / Stripe / Revolut / Wise 提供实时余额查询：
+与对账单下载互补，用于账实核对与可用资金监控。微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen 提供实时余额查询：
 
 | 平台 | `queryBalance` | `queryDayEndBalance` | 说明 |
 |------|----------------|----------------------|------|
@@ -46,8 +46,9 @@
 | Stripe | ✅ `GET /v1/balance` | ❌ 报「无此方法」 | 实时余额（各币种最小单位，如 CNY 为分）；多币种取首个可用/待结算条目 |
 | Revolut | ✅ `GET /api/1.0/accounts` | ❌ 报「无此方法」 | 实时余额（最小货币单位整数）；多账户取首个 `active` 账户，完整账户列表见 `raw` |
 | Wise | ✅ `GET /v4/profiles/{profile_id}/balances` | ❌ 报「无此方法」 | 实时余额（最小货币单位整数）；多币种取首个余额，完整余额列表见 `raw` |
+| Adyen | ✅ `GET /balancePlatform/balanceAccounts/{id}/balances` | ❌ 报「无此方法」 | Balance Platform 资金账户实时余额（最小货币单位整数）；需配置 `balance_account_id`，与 PAL 收单主机相互独立 |
 
-> 能力开关：微信支付 V3 / 支付宝 / Stripe / Revolut / Wise 在 `GatewayManifest` 中均声明 `CAP_BALANCE => true`，
+> 能力开关：微信支付 V3 / 支付宝 / Stripe / Revolut / Wise / Adyen 在 `GatewayManifest` 中均声明 `CAP_BALANCE => true`，
 > 可用 `GatewayManifest::supports($gateway, GatewayManifest::CAP_BALANCE)` 判断。
 > 微信 V3 的 `account_type` 仅接受 `BASIC` / `OPERATION` / `FEES`；`queryDayEndBalance` 的 `date` 必须为 `YYYY-MM-DD`。
 > 支付宝、Stripe、Revolut、Wise 无按日期的日终余额接口（余额接口均为实时），`queryDayEndBalance` 调用会抛「无此方法」，

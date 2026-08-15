@@ -107,6 +107,8 @@ class GatewayManifestTest extends TestCase
         // 2.0.0：Revolut、Wise 补齐实时余额查询能力
         $this->assertTrue(GatewayManifest::supports('revolut', GatewayManifest::CAP_BALANCE));
         $this->assertTrue(GatewayManifest::supports('wise', GatewayManifest::CAP_BALANCE));
+        // 2.1.0：Adyen 通过 Balance Platform 补齐资金账户余额查询
+        $this->assertTrue(GatewayManifest::supports('adyen', GatewayManifest::CAP_BALANCE));
 
         $caps = GatewayManifest::capabilities('wechat');
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $caps);

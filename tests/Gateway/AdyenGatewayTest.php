@@ -232,6 +232,52 @@ class AdyenGatewayTest extends TestCase
         $this->assertSame('IBANX', $last['data']['counterparty']['bankAccount']['iban']);
     }
 
+    public function testQueryBalanceSuccess(): void
+    {
+        $responses = [
+            'balancePlatform/balanceAccounts' => json_encode([
+                'data' => [
+                    [
+                        'balanceAccountId' => 'BA123',
+                        'balance' => ['currency' => 'EUR', 'value' => 12345],
+                        'pendingBalance' => ['currency' => 'EUR', 'value' => 67],
+                    ],
+                ],
+            ]),
+        ];
+
+        $gateway = $this->createGateway($responses, ['balance_account_id' => 'BA123']);
+        $result = $gateway->queryBalance();
+
+        $this->assertSame('BA123', $result['balance_account_id']);
+        $this->assertSame(12345, $result['available_amount']);
+        $this->assertSame(67, $result['pending_amount']);
+        $this->assertSame('EUR', $result['currency']);
+        $this->assertArrayHasKey('data', $result['raw']);
+
+        $last = $this->getMockClient($gateway)->getLastRequest();
+        $this->assertStringContainsString('balancePlatform/balanceAccounts/BA123/balances', $last['url']);
+        $this->assertSame('adyen_key', $last['headers']['X-API-Key'] ?? '');
+    }
+
+    public function testQueryBalanceRequiresBalanceAccountId(): void
+    {
+        $gateway = $this->createGateway(); // 默认配置不含 balance_account_id
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('balance_account_id');
+        $gateway->queryBalance();
+    }
+
+    public function testQueryDayEndBalanceNotSupported(): void
+    {
+        $gateway = $this->createGateway(['balance_account_id' => 'BA123']);
+
+        $this->expectException(PayException::class);
+        $this->expectExceptionMessage('无此方法');
+        $gateway->queryDayEndBalance('2026-08-15');
+    }
+
     public function testGetName(): void
     {
         $this->assertSame('adyen', AdyenGateway::getName());

@@ -1263,6 +1263,7 @@ class GatewayManifest
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
                     self::CAP_WEBHOOK => true,
+                    self::CAP_BALANCE => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,
                     self::CAP_SETTLEMENT => true,

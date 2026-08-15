@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Adyen;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
@@ -19,6 +20,7 @@ use Kode\Pays\Core\PayException;
  * 提供统一的全球支付、本地支付、订阅支付能力。
  */
 class AdyenGateway extends AbstractGateway implements
+    BalanceCapableInterface,
     TransferCapableInterface,
     ReconciliationCapableInterface,
     RefundCapableInterface,
@@ -34,6 +36,18 @@ class AdyenGateway extends AbstractGateway implements
      * 生产环境基础 URL
      */
     protected const PROD_BASE_URL = 'https://pal-live.adyen.com/';
+
+    /**
+     * Balance Platform（资金账户/余额）测试环境基础 URL
+     *
+     * 与 PAL 收单主机（pal-test/live.adyen.com）相互独立，需单独主机访问。
+     */
+    protected const TEST_BALANCE_PLATFORM_BASE_URL = 'https://balanceplatform-api-test.adyen.com/balanceplatform/v2';
+
+    /**
+     * Balance Platform 生产环境基础 URL
+     */
+    protected const PROD_BALANCE_PLATFORM_BASE_URL = 'https://balanceplatform-api-live.adyen.com/balanceplatform/v2';
 
     /**
      * 初始化
@@ -385,6 +399,76 @@ class AdyenGateway extends AbstractGateway implements
     public function transferReceipt(string $outBizNo): array
     {
         throw PayException::methodNotSupported('adyen', 'transferReceipt');
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 获取 Balance Platform 基础 URL
+     *
+     * Adyen Balance Platform（资金账户余额）与 PAL 收单主机相互独立，
+     * 需以 `balanceplatform-api-{env}.adyen.com` 主机访问。
+     */
+    protected function getBalancePlatformBaseUrl(): string
+    {
+        $env = $this->getConfig('environment', 'test');
+
+        return $env === 'live' ? self::PROD_BALANCE_PLATFORM_BASE_URL : self::TEST_BALANCE_PLATFORM_BASE_URL;
+    }
+
+    /**
+     * 查询资金账户实时余额（Adyen Balance Platform）
+     *
+     * 对齐 Adyen Balance Platform 真实规范：
+     * `GET /balancePlatform/balanceAccounts/{balanceAccountId}/balances`，
+     * 返回该资金账户下各币种余额列表，每个条目含 `balance`（最小货币单位整数 `value`）。
+     * 多币种时取首个余额作为可用余额，并保留完整列表于 `raw`。
+     *
+     * @param array<string, mixed> $params 可选参数：
+     *        - balance_account_id：资金账户 ID；缺省时取配置 `balance_account_id`
+     * @return array<string, mixed> 含 balance_account_id / available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $balanceAccountId = (string) ($params['balance_account_id'] ?? $this->getConfig('balance_account_id', ''));
+        if ($balanceAccountId === '') {
+            throw PayException::gatewayError('查询余额需配置 balance_account_id（Balance Platform 资金账户 ID）', 'adyen');
+        }
+
+        $url = $this->getBalancePlatformBaseUrl()
+            . '/balancePlatform/balanceAccounts/' . $balanceAccountId . '/balances';
+        $response = $this->decodeJson($this->httpClient->get($url, [], $this->buildAuthHeaders()));
+
+        $entries = $response['data'] ?? [];
+        $primary = $entries[0] ?? [];
+        $balance = $primary['balance'] ?? [];
+        $pending = $primary['pendingBalance'] ?? [];
+
+        return [
+            'balance_account_id' => $primary['balanceAccountId'] ?? $balanceAccountId,
+            'available_amount' => (int) ($balance['value'] ?? 0),
+            'pending_amount' => (int) ($pending['value'] ?? 0),
+            'currency' => $balance['currency'] ?? 'EUR',
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Adyen Balance Platform 未提供按日期的「日终余额」接口（仅 `GET .../balances` 实时余额），
+     * 故本方法不支持；如需历史资金快照请结合 `downloadBill`（Report API）对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('adyen', 'queryDayEndBalance');
     }
 
     /* ==================== 对账能力（ReconciliationCapableInterface） ==================== */
