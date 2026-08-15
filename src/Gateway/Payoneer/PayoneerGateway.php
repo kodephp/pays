@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kode\Pays\Gateway\Payoneer;
 
+use Kode\Pays\Contract\BalanceCapableInterface;
 use Kode\Pays\Core\AbstractGateway;
 use Kode\Pays\Core\PayException;
 use Kode\Pays\Core\SandboxManager;
@@ -14,7 +15,7 @@ use Kode\Pays\Core\SandboxManager;
  * 支持 Payoneer 跨境支付、批量付款、收款等。
  * 覆盖全球 200+ 国家和地区。
  */
-class PayoneerGateway extends AbstractGateway
+class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
 {
     /**
      * 测试环境基础 URL
@@ -159,6 +160,70 @@ class PayoneerGateway extends AbstractGateway
         $expected = hash_hmac('sha256', $payload, $this->getConfig('api_secret'));
 
         return hash_equals($expected, $signature);
+    }
+
+    /* ==================== 余额查询能力（BalanceCapableInterface） ==================== */
+
+    /**
+     * 查询项目账户实时余额
+     *
+     * 对齐 Payoneer 真实余额规范：项目（Program）余额接口为
+     * `GET /v2/programs/{programId}/balance`，使用 Basic(api_key:api_secret) 认证。
+     * 注意：网关基础域为 `/v4/`（与付款/退款接口一致），而项目余额端点位于 `/v2/programs/` 下，
+     * 故此处直接拼接完整 URL（不依赖 getBaseUrl 前缀）。
+     *
+     * Payoneer 余额响应可能以多种形态返回（`balance` 数值 / `available_balance` 字符串 /
+     * 嵌套 `balance` 对象），本方法做健壮提取，并将金额换算为最小货币单位（分）。
+     *
+     * @param array<string, mixed> $params 可选参数（Payoneer 项目余额接口无需额外业务参数，program_id 取自配置）
+     * @return array<string, mixed> 含 balance_id / available_amount（分）/ pending_amount / currency / raw
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryBalance(array $params = []): array
+    {
+        $url = str_replace(
+            '/v4/',
+            '/v2/programs/' . $this->getConfig('program_id') . '/',
+            $this->getBaseUrl(),
+        ) . 'balance';
+
+        $headers = [
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret'),
+            ),
+        ];
+
+        // 直接走原生 HTTP 通道（端点不在 getBaseUrl 前缀下），复用 parseResponse 做错误校验
+        $data = $this->parseResponse($this->httpClient->get($url, [], $headers));
+
+        $balanceNode = is_array($data['balance'] ?? null) ? $data['balance'] : $data;
+        $amount = $balanceNode['amount'] ?? $balanceNode['available_balance'] ?? $balanceNode['balance'] ?? 0;
+        $currency = $balanceNode['currency'] ?? 'USD';
+
+        return [
+            'balance_id' => $balanceNode['id'] ?? null,
+            'available_amount' => (int) round((float) $amount * 100),
+            'pending_amount' => 0,
+            'currency' => $currency,
+            'raw' => $data,
+        ];
+    }
+
+    /**
+     * 查询日终余额
+     *
+     * Payoneer 未提供按日期的「日终余额」接口，项目余额 `/balance` 仅返回实时余额，故本方法不支持；
+     * 如需历史资金快照请结合 `downloadBill` 对账。
+     *
+     * @param string $date 对账日期，格式 YYYY-MM-DD
+     * @param array<string, mixed> $params 可选参数
+     * @throws PayException
+     */
+    #[\Override]
+    public function queryDayEndBalance(string $date, array $params = []): array
+    {
+        throw PayException::methodNotSupported('payoneer', 'queryDayEndBalance');
     }
 
     /**

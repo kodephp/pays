@@ -112,6 +112,8 @@ class GatewayManifestTest extends TestCase
         // 2.2.0：Xendit、PayPal 补齐实时余额查询（PayPal 额外支持日终余额）
         $this->assertTrue(GatewayManifest::supports('xendit', GatewayManifest::CAP_BALANCE));
         $this->assertTrue(GatewayManifest::supports('paypal', GatewayManifest::CAP_BALANCE));
+        // 2.3.0：Payoneer 补齐项目账户实时余额查询
+        $this->assertTrue(GatewayManifest::supports('payoneer', GatewayManifest::CAP_BALANCE));
 
         $caps = GatewayManifest::capabilities('wechat');
         $this->assertArrayHasKey(GatewayManifest::CAP_QR, $caps);

@@ -1317,6 +1317,9 @@ class GatewayManifest
                 'label' => 'Payoneer',
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
+                'capabilities' => [
+                    self::CAP_BALANCE => true,
+                ],
             ],
             'apple' => [
                 'label' => 'Apple Pay',
