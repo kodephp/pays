@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kode\Pays\Tests\Core;
 
 use Kode\Pays\Contract\QrCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Core\CapabilityAuditor;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
@@ -47,6 +48,66 @@ class CapabilityConformanceTest extends TestCase
             GatewayManifest::CAPABILITY_CONTRACTS[GatewayManifest::CAP_QR],
             'CAP_QR 应映射到 QrCapableInterface',
         );
+    }
+
+    /**
+     * 高级退款能力已登记为契约（CAP_REFUND_ADVANCED => RefundCapableInterface）
+     *
+     * 防回归：v2.14.0 前 RefundCapableInterface（applyRefund / queryRefund / cancelRefund）
+     * 由 7 家网关实现真实原生退款逻辑，却未登记进能力矩阵，既无法经 supports() 发现，
+     * 也不受一致性审计守护。登记契约后由审计器强制守护其与实现的一致性。
+     */
+    public function testRefundAdvancedContractIsRegistered(): void
+    {
+        $this->assertArrayHasKey(
+            GatewayManifest::CAP_REFUND_ADVANCED,
+            GatewayManifest::CAPABILITY_CONTRACTS,
+            'CAP_REFUND_ADVANCED 必须登记为能力契约',
+        );
+        $this->assertSame(
+            RefundCapableInterface::class,
+            GatewayManifest::CAPABILITY_CONTRACTS[GatewayManifest::CAP_REFUND_ADVANCED],
+            'CAP_REFUND_ADVANCED 应映射到 RefundCapableInterface',
+        );
+    }
+
+    /**
+     * 声明 CAP_REFUND_ADVANCED 的网关集合必须恰好等于实现 RefundCapableInterface 的 7 家
+     *
+     * 锁定「声明 ⟺ 实现」的边界，防止未来误增/漏增声明导致的能力漂移。
+     */
+    public function testRefundAdvancedDeclaredGatewaysMatchImplementation(): void
+    {
+        $expected = ['wechat', 'alipay', 'wechat_v3', 'paypal', 'stripe', 'revolut', 'adyen'];
+
+        $declared = [];
+        foreach (GatewayManifest::all() as $name => $meta) {
+            if (($meta['capabilities'][GatewayManifest::CAP_REFUND_ADVANCED] ?? false) === true) {
+                $declared[] = $name;
+            }
+        }
+
+        sort($declared);
+        sort($expected);
+        $this->assertSame(
+            $expected,
+            $declared,
+            '声明 CAP_REFUND_ADVANCED 的网关集合应与实现 RefundCapableInterface 的 7 家一致',
+        );
+
+        // 每一家声明方都确实实现了接口，且对外公布的三个操作真实存在
+        foreach ($expected as $name) {
+            $cls = GatewayFactory::getGatewayClass($name);
+            $this->assertNotNull($cls, "{$name} 应有网关实现");
+            $this->assertTrue(
+                is_subclass_of($cls, RefundCapableInterface::class),
+                "{$name} 声明高级退款但未实现 RefundCapableInterface",
+            );
+            $gc = new \ReflectionClass($cls);
+            foreach (['applyRefund', 'queryRefund', 'cancelRefund'] as $op) {
+                $this->assertTrue($gc->hasMethod($op), "{$name} 缺少高级退款操作 {$op}");
+            }
+        }
     }
 
     /**

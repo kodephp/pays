@@ -166,14 +166,14 @@ class RevolutGateway extends AbstractGateway implements
      * Revolut 退款会生成一个新的 refund 类型 order，查询即检索该退款订单：
      * GET /api/orders/{refundOrderId}。
      *
-     * @param string $refundId 退款订单 ID（退款创建时返回）
+     * @param string $outRefundNo 退款订单 ID（退款创建时返回）
      * @return array<string, mixed>
      * @throws PayException
      */
     #[\Override]
-    public function queryRefund(string $refundId): array
+    public function queryRefund(string $outRefundNo): array
     {
-        return $this->get("api/orders/{$refundId}", [], [
+        return $this->get("api/orders/{$outRefundNo}", [], [
             'Authorization' => 'Bearer ' . $this->getConfig('api_key'),
         ]);
     }

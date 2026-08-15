@@ -13,6 +13,7 @@ use Kode\Pays\Contract\ProfitSharingCapableInterface;
 use Kode\Pays\Contract\QrCapableInterface;
 use Kode\Pays\Contract\ReconciliationCapableInterface;
 use Kode\Pays\Contract\RedPacketCapableInterface;
+use Kode\Pays\Contract\RefundCapableInterface;
 use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
@@ -120,6 +121,17 @@ class GatewayManifest
      * 能力：查询退款
      */
     public const CAP_QUERY_REFUND = 'query_refund';
+
+    /**
+     * 能力：高级退款（申请退款 / 查询退款 / 取消退款）
+     *
+     * 与基础 {@see self::CAP_REFUND}（所有网关通用的 refund() 入口）不同，本能力表示
+     * 网关实现了 {@see \Kode\Pays\Contract\RefundCapableInterface} 的「申请/查询/取消」三件套，
+     * 由 {@see \Kode\Pays\Plugin\RefundPlugin} 统一入口转发。仅微信 / 支付宝 / 微信V3 / PayPal /
+     * Stripe / Revolut / Adyen 七家提供真实原生退款组装与签名逻辑，故单独作为可发现能力暴露，
+     * 与 Webhook / 二维码一样受能力一致性审计守护。
+     */
+    public const CAP_REFUND_ADVANCED = 'refund_advanced';
 
     /**
      * 能力：关闭订单
@@ -238,6 +250,17 @@ class GatewayManifest
      *   接入 QrCapableInterface 并补齐漏报声明，同时诚实移除 douyin / jd / qq / hitpay / aggregate 五家的虚报 CAP_QR
      *   （SDK 暂未实现其 createQrCode，遵循「不伪造无真实逻辑的 API」原则，待真正实现后再行补登）。
      *
+     * 高级退款能力（CAP_REFUND_ADVANCED）的契约化（v2.14.0）：
+     * - 既有 {@see \Kode\Pays\Contract\RefundCapableInterface}（applyRefund / queryRefund / cancelRefund）
+     *   由 7 家网关（wechat / alipay / wechat_v3 / paypal / stripe / revolut / adyen）实现真实原生退款逻辑，
+     *   但此前未登记进能力矩阵，调用方无法经 {@see GatewayManifest::supports()} 发现、亦不受审计守护；
+     * - v2.14.0 新增 CAP_REFUND_ADVANCED 常量并登记 RefundCapableInterface 为契约，自此
+     *   「声明支持高级退款 ⟺ 实现 RefundCapableInterface」由能力一致性审计强制守护，与 Webhook / 二维码同构；
+     *   同时补登 7 家漏报，并统一 3 家网关 queryRefund 形参名（$refundId → $outRefundNo）以对齐接口契约
+     *   的签名一致性守护；
+     * - 基础 CAP_REFUND（通用 refund() 入口）仍由 {@see GatewayInterface} 覆盖，不登记契约，避免误伤
+     *   其余 19 家仅具备基础退款、未实现 RefundCapableInterface 的网关。
+     *
      * @var array<string, class-string>
      */
     public const CAPABILITY_CONTRACTS = [
@@ -252,6 +275,7 @@ class GatewayManifest
         self::CAP_CRYPTO => CryptoCapableInterface::class,
         self::CAP_WEBHOOK => WebhookCapableInterface::class,
         self::CAP_QR => QrCapableInterface::class,
+        self::CAP_REFUND_ADVANCED => RefundCapableInterface::class,
     ];
 
     /**
@@ -266,6 +290,7 @@ class GatewayManifest
         self::CAP_QUERY_ORDER => '查询订单',
         self::CAP_REFUND => '申请退款',
         self::CAP_QUERY_REFUND => '查询退款',
+        self::CAP_REFUND_ADVANCED => '高级退款（申请/查询/取消）',
         self::CAP_CLOSE_ORDER => '关闭订单',
         self::CAP_VERIFY_NOTIFY => '异步通知验签',
         self::CAP_TRANSFER => '企业付款/转账',
@@ -294,6 +319,7 @@ class GatewayManifest
         self::CAP_QUERY_ORDER => ['queryOrder'],
         self::CAP_REFUND => ['refund'],
         self::CAP_QUERY_REFUND => ['queryRefund'],
+        self::CAP_REFUND_ADVANCED => ['applyRefund', 'queryRefund', 'cancelRefund'],
         self::CAP_CLOSE_ORDER => ['closeOrder'],
         self::CAP_VERIFY_NOTIFY => ['verifyNotify'],
         self::CAP_TRANSFER => ['singleTransfer', 'batchTransfer', 'queryTransfer', 'transferReceipt'],
@@ -1070,6 +1096,7 @@ class GatewayManifest
             self::CAP_WEBHOOK => false,
             self::CAP_CRYPTO => false,
             self::CAP_SETTLEMENT => false,
+            self::CAP_REFUND_ADVANCED => false,
         ];
     }
 
@@ -1163,6 +1190,7 @@ class GatewayManifest
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_MD5,
                 'capabilities' => array_merge($domesticFeatures, [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
@@ -1182,6 +1210,7 @@ class GatewayManifest
                 'region' => self::REGION_DOMESTIC,
                 'signature' => self::SIGN_RSA2,
                 'capabilities' => array_merge($domesticFeatures, [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RED_PACKET => true,
                     self::CAP_RECONCILIATION => true,
@@ -1198,6 +1227,7 @@ class GatewayManifest
                 // 现金红包为 V2 专有接口，APIv3 无对应能力
                 'capabilities' => [
                     self::CAP_CREATE_ORDER => true,
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_QR => true,
                     self::CAP_QUERY_ORDER => true,
                     self::CAP_CLOSE_ORDER => true,
@@ -1277,6 +1307,7 @@ class GatewayManifest
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_SUBSCRIPTION => true,
                     self::CAP_QR => true,
                     self::CAP_WEBHOOK => true,
@@ -1290,6 +1321,7 @@ class GatewayManifest
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_HMAC_SHA256,
                 'capabilities' => [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_SUBSCRIPTION => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_WEBHOOK => true,
@@ -1317,6 +1349,7 @@ class GatewayManifest
                 'region' => self::REGION_INTERNATIONAL,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_WEBHOOK => true,
                     self::CAP_BALANCE => true,
                     self::CAP_TRANSFER => true,
@@ -1363,6 +1396,7 @@ class GatewayManifest
                 'region' => self::REGION_CROSS_BORDER,
                 'signature' => self::SIGN_NONE,
                 'capabilities' => [
+                    self::CAP_REFUND_ADVANCED => true,
                     self::CAP_QR => true,
                     self::CAP_TRANSFER => true,
                     self::CAP_RECONCILIATION => true,

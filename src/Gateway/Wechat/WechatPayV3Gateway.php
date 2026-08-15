@@ -263,14 +263,14 @@ class WechatPayV3Gateway extends AbstractGateway implements
     /**
      * 查询退款
      *
-     * @param string $refundId 商户退款单号
+     * @param string $outRefundNo 商户退款单号
      * @return array<string, mixed>
      * @throws PayException
      */
     #[\Override]
-    public function queryRefund(string $refundId): array
+    public function queryRefund(string $outRefundNo): array
     {
-        return $this->signedGet("refund/domestic/refunds/{$refundId}");
+        return $this->signedGet("refund/domestic/refunds/{$outRefundNo}");
     }
 
     /* ==================== 退款能力（RefundCapableInterface） ==================== */

@@ -156,18 +156,18 @@ class AdyenGateway extends AbstractGateway implements
     /**
      * 查询退款
      *
-     * @param string $refundId 退款 PSP 参考号
+     * @param string $outRefundNo 退款 PSP 参考号
      * @return array<string, mixed>
      * @throws PayException
      */
     #[\Override]
-    public function queryRefund(string $refundId): array
+    public function queryRefund(string $outRefundNo): array
     {
         $headers = $this->buildAuthHeaders();
 
         return $this->post('pal/servlet/Payment/v68/refundWithData', [
             'merchantAccount' => $this->getConfig('merchant_account'),
-            'originalReference' => $refundId,
+            'originalReference' => $outRefundNo,
         ], $headers);
     }
 
