@@ -599,6 +599,56 @@ class GatewayManifest
     }
 
     /**
+     * 全量能力矩阵（网关 × 扩展能力契约）
+     *
+     * 返回每个已登记平台对每一个「扩展能力契约」({@see self::CAPABILITY_CONTRACTS}) 的二维视图，
+     * 每个单元格包含：
+     * - declared：清单声明的开关（对外承诺，来自 {@see self::builtinMeta()} / register）
+     * - actual：网关真实实现对应能力接口（经反射 is_subclass_of 判定，不依赖声明）
+     * - consistent：声明与实现是否一致（false 即存在漂移，等价于 {@see \Kode\Pays\Core\CapabilityAuditor} 命中）
+     *
+     * 该矩阵是 capability-discovery 模式的横向收口：调用方可据此一次性生成「全部平台能力对照表」
+     * 或在运行时自检零漂移，无需逐个翻阅各网关实现。在零漂移状态下每个单元格的
+     * declared 与 actual 恒等（由 {@see \Kode\Pays\Tests\Core\CapabilityConformanceTest} 守护）。
+     *
+     * @return array<string, array{label: string, capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>}>
+     * @throws PayException
+     */
+    public static function matrix(): array
+    {
+        self::bootstrap();
+
+        $contracts = self::CAPABILITY_CONTRACTS;
+        $rows = [];
+
+        foreach (self::$entries as $name => $entry) {
+            $gatewayClass = $entry['gateway_class'] ?? null;
+            $declaredCaps = $entry['capabilities'] ?? [];
+
+            $cells = [];
+            foreach ($contracts as $capability => $contract) {
+                $declared = (bool) ($declaredCaps[$capability] ?? false);
+                $actual = is_string($gatewayClass)
+                    && class_exists($gatewayClass)
+                    && is_subclass_of($gatewayClass, $contract);
+
+                $cells[$capability] = [
+                    'declared' => $declared,
+                    'actual' => $actual,
+                    'consistent' => $declared === $actual,
+                ];
+            }
+
+            $rows[$name] = [
+                'label' => $entry['label'] ?? $name,
+                'capabilities' => $cells,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
      * 获取平台基础域名
      *
      * 优先返回清单中显式声明的域名；若未声明则通过网关类常量

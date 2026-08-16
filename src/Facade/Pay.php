@@ -9,6 +9,7 @@ use Kode\Pays\Contract\ConfigInterface;
 use Kode\Pays\Contract\GatewayInterface;
 use Kode\Pays\Core\GatewayFactory;
 use Kode\Pays\Core\GatewayManifest;
+use Kode\Pays\Core\CapabilityAuditor;
 use Kode\Pays\Core\IdempotencyGuard;
 use Kode\Pays\Core\NotifyGuard;
 use Kode\Pays\Core\PayException;
@@ -1097,6 +1098,42 @@ class Pay
     public static function supports(string $name, string $capability): bool
     {
         return GatewayManifest::supports($name, $capability);
+    }
+
+    /**
+     * 运行能力一致性自检（零漂移守护，运行时可用）
+     *
+     * 委托 {@see CapabilityAuditor::audit()} 双向核对「清单声明 ⟺ 接口实现」，
+     * 返回漂移条目列表（空数组表示完全一致）。可在应用启动、部署自检或 CI 钩子中调用，
+     * 提前暴露「声明支持却未实现 / 已实现却未声明」的信任级缺陷，无需依赖测试套件。
+     *
+     * ```php
+     * $drifts = Pay::audit();
+     * if ($drifts !== []) {
+     *     throw new \RuntimeException(CapabilityAuditor::format($drifts));
+     * }
+     * ```
+     *
+     * @return array<int, array{gateway: string, capability: string, contract: class-string, type: string}>
+     * @throws PayException
+     */
+    public static function audit(): array
+    {
+        return CapabilityAuditor::audit();
+    }
+
+    /**
+     * 获取全量能力矩阵（网关 × 扩展能力：声明 / 真实实现 / 一致性）
+     *
+     * 委托 {@see GatewayManifest::matrix()} 一次性返回每个平台对 12 项扩展能力契约的二维视图，
+     * 便于生成「全部平台能力对照表」或运行时零漂移自检。详见 {@see GatewayManifest::matrix()}。
+     *
+     * @return array<string, array{label: string, capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>}>
+     * @throws PayException
+     */
+    public static function matrix(): array
+    {
+        return GatewayManifest::matrix();
     }
 
     /**
