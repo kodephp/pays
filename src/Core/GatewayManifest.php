@@ -330,6 +330,39 @@ class GatewayManifest
     ];
 
     /**
+     * 核心支付能力 → 基础接口方法名映射
+     *
+     * 与 {@see self::CAPABILITY_CONTRACTS}（扩展能力契约，以接口声明为门槛）不同，
+     * 核心能力是 {@see \Kode\Pays\Contract\GatewayInterface} 规定的基础支付方法，
+     * 经反射 method_exists 判定网关是否真实实现（无「声明」概念，要么实现要么未实现）。
+     * 用于把 renderMatrix() 从「仅扩展能力」扩展为「完整能力全景」。
+     *
+     * @var array<string, string>
+     */
+    public const CAPABILITY_CORE_METHODS = [
+        self::CAP_CREATE_ORDER => 'createOrder',
+        self::CAP_QUERY_ORDER => 'queryOrder',
+        self::CAP_REFUND => 'refund',
+        self::CAP_QUERY_REFUND => 'queryRefund',
+        self::CAP_VERIFY_NOTIFY => 'verifyNotify',
+        self::CAP_CLOSE_ORDER => 'closeOrder',
+    ];
+
+    /**
+     * 核心能力短码（表格表头用）
+     *
+     * @var array<string, string>
+     */
+    public const CAPABILITY_CORE_SHORT_CODES = [
+        self::CAP_CREATE_ORDER => 'ORD',
+        self::CAP_QUERY_ORDER => 'QRY',
+        self::CAP_REFUND => 'RFO',
+        self::CAP_QUERY_REFUND => 'QRF',
+        self::CAP_VERIFY_NOTIFY => 'VRF',
+        self::CAP_CLOSE_ORDER => 'CLO',
+    ];
+
+    /**
      * 能力 → 可调用操作（接口方法名）映射
      *
      * 声明「某能力为 true」后，调用方可据此得知网关上实际可用的接口方法名，
@@ -672,9 +705,37 @@ class GatewayManifest
     }
 
     /**
+     * 核心支付能力实现情况（按网关）
+     *
+     * 返回指定平台对每一个「核心支付能力」({@see self::CAPABILITY_CORE_METHODS}) 的实现情况，
+     * 经反射 method_exists 判定网关是否真实实现对应基础接口方法（无「声明」概念）。
+     * 与 {@see self::matrix()}（扩展能力契约，声明 ⟺ 实现）互补，构成完整能力全景。
+     *
+     * @return array<string, bool> 键为核心能力常量，值为是否已实现
+     * @throws PayException
+     */
+    public static function coreCapabilities(string $name): array
+    {
+        self::bootstrap();
+
+        $entry = self::get($name);
+        $gatewayClass = $entry['gateway_class'] ?? null;
+
+        $result = [];
+        foreach (self::CAPABILITY_CORE_METHODS as $capability => $method) {
+            $result[$capability] = is_string($gatewayClass)
+                && class_exists($gatewayClass)
+                && method_exists($gatewayClass, $method);
+        }
+
+        return $result;
+    }
+
+    /**
      * 渲染全量能力矩阵为可读文档
      *
-     * 基于 {@see self::matrix()} 的二维数据，生成一份「网关 × 12 项扩展能力契约」对照表。
+     * 基于 {@see self::matrix()} 的二维数据，生成一份「网关 × 12 项扩展能力契约」对照表，
+     * 并在其后追加 6 项「核心支付能力」列（基于 {@see self::coreCapabilities()} 的 method_exists 判定）。
      * 单元格三态（由 declared / actual / consistent 推导）：
      * - ✔（markdown）/ [x]（text）：已声明且已实现（已验证，零漂移）
      * - ✗（markdown）/ [ ]（text）：未声明且未实现（不支持）
@@ -689,18 +750,27 @@ class GatewayManifest
      */
     public static function renderMatrix(string $format = 'markdown'): string
     {
+        self::bootstrap();
+
         $matrix = self::matrix();
         $caps = array_keys(self::CAPABILITY_CONTRACTS);
         $codes = self::CAPABILITY_SHORT_CODES;
+
+        $coreCaps = array_keys(self::CAPABILITY_CORE_METHODS);
+        $coreCodes = self::CAPABILITY_CORE_SHORT_CODES;
 
         $header = ['网关'];
         foreach ($caps as $cap) {
             $header[] = $codes[$cap] ?? substr($cap, 0, 4);
         }
+        foreach ($coreCaps as $cap) {
+            $header[] = $coreCodes[$cap] ?? substr($cap, 0, 4);
+        }
 
         $rows = [];
         $drifts = [];
         foreach ($matrix as $name => $row) {
+            $core = self::coreCapabilities($name);
             $cells = [$row['label'] ?? $name];
             foreach ($caps as $cap) {
                 $cell = $row['capabilities'][$cap]
@@ -715,18 +785,24 @@ class GatewayManifest
                     $cells[] = $format === 'text' ? '[ ]' : '✗';
                 }
             }
+            // 核心能力列：method_exists 判定实现情况
+            foreach ($coreCaps as $cap) {
+                $cells[] = !empty($core[$cap])
+                    ? ($format === 'text' ? '[x]' : '✔')
+                    : ($format === 'text' ? '[ ]' : '✗');
+            }
             $rows[] = $cells;
         }
 
         $gatewayCount = count($matrix);
-        $capCount = count($caps);
+        $capCount = count($caps) + count($coreCaps);
         $driftCount = count($drifts);
 
         if ($format === 'text') {
             return self::renderMatrixText($header, $rows, $gatewayCount, $capCount, $driftCount, $drifts);
         }
 
-        return self::renderMatrixMarkdown($header, $rows, $gatewayCount, $capCount, $driftCount, $drifts);
+        return self::renderMatrixMarkdown($header, $rows, $gatewayCount, $capCount, $driftCount, $drifts, $coreCodes);
     }
 
     /**
@@ -735,6 +811,7 @@ class GatewayManifest
      * @param string[] $header
      * @param string[][] $rows
      * @param string[] $drifts
+     * @param array<string, string> $coreCodes
      */
     private static function renderMatrixMarkdown(
         array $header,
@@ -742,16 +819,18 @@ class GatewayManifest
         int $gatewayCount,
         int $capCount,
         int $driftCount,
-        array $drifts
+        array $drifts,
+        array $coreCodes = []
     ): string {
         $out = "# 支付网关能力矩阵\n\n";
-        $out .= sprintf("> 网关数：**%d** | 能力项：**%d** | 漂移：**%d**\n\n", $gatewayCount, $capCount, $driftCount);
+        $out .= sprintf("> 网关数：**%d** | 能力项：**%d**（扩展 %d + 核心 %d）| 漂移：**%d**\n\n", $gatewayCount, $capCount, count(array_diff($header, ['网关'])) - count($coreCodes), count($coreCodes), $driftCount);
         $out .= '| ' . implode(' | ', $header) . " |\n";
         $out .= '|' . str_repeat('------|', count($header)) . "\n";
         foreach ($rows as $r) {
             $out .= '| ' . implode(' | ', $r) . " |\n";
         }
-        $out .= "\n图例：✔ = 已声明且已实现（已验证） · ✗ = 不支持 · ⚠ = 漂移（声明与实现不一致，需排查）\n";
+        $out .= "\n图例：✔ = 已实现/已验证 · ✗ = 不支持 · ⚠ = 漂移（声明与实现不一致，需排查）。";
+        $out .= "核心能力列（" . implode('/', $coreCodes) . "）为 GatewayInterface 基础方法，经反射判定实现情况。\n";
         if ($driftCount > 0) {
             $out .= "\n## 漂移告警\n\n- " . implode("\n- ", $drifts) . "\n";
         }

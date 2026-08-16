@@ -1137,9 +1137,24 @@ class Pay
     }
 
     /**
+     * 获取平台核心支付能力实现情况
+     *
+     * 委托 {@see GatewayManifest::coreCapabilities()} 返回指定平台对 6 项基础支付方法
+     * （createOrder / queryOrder / refund / queryRefund / verifyNotify / closeOrder）的实现情况，
+     * 与 {@see self::matrix()}（扩展能力契约）互补，构成完整能力全景。
+     *
+     * @return array<string, bool>
+     * @throws PayException
+     */
+    public static function coreCapabilities(string $name): array
+    {
+        return GatewayManifest::coreCapabilities($name);
+    }
+
+    /**
      * 渲染全量能力矩阵为可读文档
      *
-     * 委托 {@see GatewayManifest::renderMatrix()} 生成「网关 × 12 项扩展能力」对照表
+     * 委托 {@see GatewayManifest::renderMatrix()} 生成「网关 × 12 项扩展能力 + 6 项核心能力」对照表
      * （markdown / text），用于 README 能力对照表、CI 能力快照、SRE 运行时审计产物。
      * 单元格三态：✔/✗/⚠（markdown）或 [x]/[ ]/[!]（text），详见 {@see GatewayManifest::renderMatrix()}。
      *
