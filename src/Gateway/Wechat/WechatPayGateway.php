@@ -867,6 +867,27 @@ class WechatPayGateway extends AbstractGateway implements
      */
     protected function parseResponse(string $response): array
     {
+        $trimmed = trim($response);
+
+        // V3 接口（如转账到零钱批次、V3 查询/回单）返回 JSON，而非 V2 的 XML。
+        // 以首字符区分响应格式，避免把 JSON 误当 XML 解析而抛「响应格式异常」。
+        if ($trimmed !== '' && ($trimmed[0] === '{' || $trimmed[0] === '[')) {
+            $data = $this->decodeJson($trimmed);
+
+            if (!is_array($data)) {
+                throw PayException::gatewayError('微信支付 V3 响应格式异常');
+            }
+
+            if (isset($data['code'])) {
+                throw PayException::gatewayError(
+                    $data['message'] ?? '微信支付 V3 业务失败',
+                    (string) ($data['code'] ?? ''),
+                );
+            }
+
+            return $data;
+        }
+
         $data = $this->xmlToArray($response);
 
         if (!isset($data['return_code'])) {
