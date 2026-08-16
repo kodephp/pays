@@ -1137,6 +1137,22 @@ class Pay
     }
 
     /**
+     * 渲染全量能力矩阵为可读文档
+     *
+     * 委托 {@see GatewayManifest::renderMatrix()} 生成「网关 × 12 项扩展能力」对照表
+     * （markdown / text），用于 README 能力对照表、CI 能力快照、SRE 运行时审计产物。
+     * 单元格三态：✔/✗/⚠（markdown）或 [x]/[ ]/[!]（text），详见 {@see GatewayManifest::renderMatrix()}。
+     *
+     * @param string $format 'markdown'（默认）或 'text'
+     * @return string
+     * @throws PayException
+     */
+    public static function renderMatrix(string $format = 'markdown'): string
+    {
+        return GatewayManifest::renderMatrix($format);
+    }
+
+    /**
      * 获取平台基础域名
      *
      * @param string $name 平台标识

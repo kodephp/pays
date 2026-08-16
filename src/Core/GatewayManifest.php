@@ -307,6 +307,29 @@ class GatewayManifest
     ];
 
     /**
+     * 能力短码（表格表头用）
+     *
+     * 用于 {@see self::renderMatrix()} 把 12 项扩展能力压缩为 3 字符短码，
+     * 使「网关 × 能力」Markdown 对照表的表头保持紧凑可读。
+     *
+     * @var array<string, string>
+     */
+    public const CAPABILITY_SHORT_CODES = [
+        self::CAP_TRANSFER => 'TRF',
+        self::CAP_PROFIT_SHARING => 'PFS',
+        self::CAP_SUBSCRIPTION => 'SUB',
+        self::CAP_RECONCILIATION => 'REC',
+        self::CAP_BALANCE => 'BAL',
+        self::CAP_RED_PACKET => 'RDP',
+        self::CAP_PERSONAL_RECEIVE => 'PRC',
+        self::CAP_SETTLEMENT => 'STL',
+        self::CAP_CRYPTO => 'CRY',
+        self::CAP_WEBHOOK => 'WHK',
+        self::CAP_QR => 'QR',
+        self::CAP_REFUND_ADVANCED => 'RFD',
+    ];
+
+    /**
      * 能力 → 可调用操作（接口方法名）映射
      *
      * 声明「某能力为 true」后，调用方可据此得知网关上实际可用的接口方法名，
@@ -646,6 +669,131 @@ class GatewayManifest
         }
 
         return $rows;
+    }
+
+    /**
+     * 渲染全量能力矩阵为可读文档
+     *
+     * 基于 {@see self::matrix()} 的二维数据，生成一份「网关 × 12 项扩展能力契约」对照表。
+     * 单元格三态（由 declared / actual / consistent 推导）：
+     * - ✔（markdown）/ [x]（text）：已声明且已实现（已验证，零漂移）
+     * - ✗（markdown）/ [ ]（text）：未声明且未实现（不支持）
+     * - ⚠（markdown）/ [!]（text）：漂移（声明与实现不一致，等价于 {@see \Kode\Pays\Core\CapabilityAuditor} 命中，需排查）
+     *
+     * 该方法是 capability-discovery 模式的文档化收口：可用于生成 README 能力对照表、
+     * CI 能力全景快照、或 SRE 运行时能力审计产物。当前零漂移状态下不会出现 ⚠ 行。
+     *
+     * @param string $format 'markdown'（默认）或 'text'
+     * @return string
+     * @throws PayException
+     */
+    public static function renderMatrix(string $format = 'markdown'): string
+    {
+        $matrix = self::matrix();
+        $caps = array_keys(self::CAPABILITY_CONTRACTS);
+        $codes = self::CAPABILITY_SHORT_CODES;
+
+        $header = ['网关'];
+        foreach ($caps as $cap) {
+            $header[] = $codes[$cap] ?? substr($cap, 0, 4);
+        }
+
+        $rows = [];
+        $drifts = [];
+        foreach ($matrix as $name => $row) {
+            $cells = [$row['label'] ?? $name];
+            foreach ($caps as $cap) {
+                $cell = $row['capabilities'][$cap]
+                    ?? ['declared' => false, 'actual' => false, 'consistent' => true];
+
+                if (!$cell['consistent']) {
+                    $drifts[] = ($row['label'] ?? $name) . ' → ' . ($codes[$cap] ?? $cap);
+                    $cells[] = $format === 'text' ? '[!]' : '⚠';
+                } elseif ($cell['declared'] && $cell['actual']) {
+                    $cells[] = $format === 'text' ? '[x]' : '✔';
+                } else {
+                    $cells[] = $format === 'text' ? '[ ]' : '✗';
+                }
+            }
+            $rows[] = $cells;
+        }
+
+        $gatewayCount = count($matrix);
+        $capCount = count($caps);
+        $driftCount = count($drifts);
+
+        if ($format === 'text') {
+            return self::renderMatrixText($header, $rows, $gatewayCount, $capCount, $driftCount, $drifts);
+        }
+
+        return self::renderMatrixMarkdown($header, $rows, $gatewayCount, $capCount, $driftCount, $drifts);
+    }
+
+    /**
+     * 渲染为 Markdown 表格
+     *
+     * @param string[] $header
+     * @param string[][] $rows
+     * @param string[] $drifts
+     */
+    private static function renderMatrixMarkdown(
+        array $header,
+        array $rows,
+        int $gatewayCount,
+        int $capCount,
+        int $driftCount,
+        array $drifts
+    ): string {
+        $out = "# 支付网关能力矩阵\n\n";
+        $out .= sprintf("> 网关数：**%d** | 能力项：**%d** | 漂移：**%d**\n\n", $gatewayCount, $capCount, $driftCount);
+        $out .= '| ' . implode(' | ', $header) . " |\n";
+        $out .= '|' . str_repeat('------|', count($header)) . "\n";
+        foreach ($rows as $r) {
+            $out .= '| ' . implode(' | ', $r) . " |\n";
+        }
+        $out .= "\n图例：✔ = 已声明且已实现（已验证） · ✗ = 不支持 · ⚠ = 漂移（声明与实现不一致，需排查）\n";
+        if ($driftCount > 0) {
+            $out .= "\n## 漂移告警\n\n- " . implode("\n- ", $drifts) . "\n";
+        }
+
+        return $out;
+    }
+
+    /**
+     * 渲染为纯文本表格（控制台 / 日志友好）
+     *
+     * @param string[] $header
+     * @param string[][] $rows
+     * @param string[] $drifts
+     */
+    private static function renderMatrixText(
+        array $header,
+        array $rows,
+        int $gatewayCount,
+        int $capCount,
+        int $driftCount,
+        array $drifts
+    ): string {
+        $pad = static function (string $v): string {
+            return str_pad($v, 6);
+        };
+
+        $out = sprintf(
+            "支付网关能力矩阵 | 网关:%d 能力:%d 漂移:%d\n",
+            $gatewayCount,
+            $capCount,
+            $driftCount
+        );
+        $out .= implode(' ', array_map($pad, $header)) . "\n";
+        $out .= str_repeat('-', 7 * count($header)) . "\n";
+        foreach ($rows as $r) {
+            $out .= implode(' ', array_map($pad, $r)) . "\n";
+        }
+        if ($driftCount > 0) {
+            $out .= "\n漂移告警: " . implode(' / ', $drifts) . "\n";
+        }
+
+        return $out;
     }
 
     /**
