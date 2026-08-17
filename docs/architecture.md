@@ -162,7 +162,7 @@ interface GatewayInterface
 | `Encryptor` | 敏感数据加密 |
 | `Validator` | 参数验证工具 |
 | `QrCodeGenerator` | 二维码生成（基于 endroid/qr-code） |
-| `ArrayUtil` / `StrUtil` / `DateUtil` | 通用工具 |
+| `StrUtil` | 字符串工具（驼峰/下划线互转、截断等） |
 
 ### 2.8 插件层
 
