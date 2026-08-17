@@ -667,7 +667,10 @@ class GatewayManifest
      * 或在运行时自检零漂移，无需逐个翻阅各网关实现。在零漂移状态下每个单元格的
      * declared 与 actual 恒等（由 {@see \Kode\Pays\Tests\Core\CapabilityConformanceTest} 守护）。
      *
-     * @return array<string, array{label: string, capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>}>
+     * @return array<string, array{
+     *     label: string,
+     *     capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>
+     * }>
      * @throws PayException
      */
     public static function matrix(): array
@@ -823,14 +826,23 @@ class GatewayManifest
         array $coreCodes = []
     ): string {
         $out = "# 支付网关能力矩阵\n\n";
-        $out .= sprintf("> 网关数：**%d** | 能力项：**%d**（扩展 %d + 核心 %d）| 漂移：**%d**\n\n", $gatewayCount, $capCount, count(array_diff($header, ['网关'])) - count($coreCodes), count($coreCodes), $driftCount);
+        $out .= sprintf(
+            "> 网关数：**%d** | 能力项：**%d**（扩展 %d + 核心 %d）| 漂移：**%d**\n\n",
+            $gatewayCount,
+            $capCount,
+            count(array_diff($header, ['网关'])) - count($coreCodes),
+            count($coreCodes),
+            $driftCount
+        );
         $out .= '| ' . implode(' | ', $header) . " |\n";
         $out .= '|' . str_repeat('------|', count($header)) . "\n";
         foreach ($rows as $r) {
             $out .= '| ' . implode(' | ', $r) . " |\n";
         }
-        $out .= "\n图例：✔ = 已实现/已验证 · ✗ = 不支持 · ⚠ = 漂移（声明与实现不一致，需排查）。";
-        $out .= "核心能力列（" . implode('/', $coreCodes) . "）为 GatewayInterface 基础方法，经反射判定实现情况。\n";
+        $out .= "\n图例：✔ = 已实现/已验证 · ✗ = 不支持 · ⚠ = 漂移"
+            . "（声明与实现不一致，需排查）。";
+        $out .= "核心能力列（" . implode('/', $coreCodes) . "）为 GatewayInterface 基础方法，"
+            . "经反射判定实现情况。\n";
         if ($driftCount > 0) {
             $out .= "\n## 漂移告警\n\n- " . implode("\n- ", $drifts) . "\n";
         }
@@ -960,7 +972,11 @@ class GatewayManifest
      * 用于配置字段的自动文档生成与 IDE 提示（均由 Config 类反射得到，与 fromArray() 一致）。
      *
      * @param string $name 平台标识
-     * @return array{required: string[], optional: string[], fields: array<string, array{type: string, required: bool, default: mixed, description: string}>}
+     * @return array{
+     *     required: string[],
+     *     optional: string[],
+     *     fields: array<string, array{type: string, required: bool, default: mixed, description: string}>
+     * }
      * @throws PayException
      */
     public static function configSchema(string $name): array
@@ -1191,11 +1207,15 @@ class GatewayManifest
         $configClass = $manifest['config_class'] ?? null;
 
         if ($gatewayClass !== null && !is_subclass_of($gatewayClass, GatewayInterface::class)) {
-            throw PayException::configError("平台 {$name} 的 gateway_class 必须实现 GatewayInterface：{$gatewayClass}");
+            throw PayException::configError(
+                "平台 {$name} 的 gateway_class 必须实现 GatewayInterface：{$gatewayClass}",
+            );
         }
 
         if ($configClass !== null && !is_subclass_of($configClass, ConfigInterface::class)) {
-            throw PayException::configError("平台 {$name} 的 config_class 必须实现 ConfigInterface：{$configClass}");
+            throw PayException::configError(
+                "平台 {$name} 的 config_class 必须实现 ConfigInterface：{$configClass}",
+            );
         }
 
         return [
@@ -1227,7 +1247,11 @@ class GatewayManifest
      *
      * @param string $name 平台标识
      * @param array<string, mixed> $manifest 原始清单（用于回退时读取 config_class）
-     * @return array{required: string[], optional: string[], fields: array<string, array{type: string, required: bool, default: mixed, description: string}>}
+     * @return array{
+     *     required: string[],
+     *     optional: string[],
+     *     fields: array<string, array{type: string, required: bool, default: mixed, description: string}>
+     * }
      */
     protected static function resolveConfigSchema(string $name, array $manifest): array
     {
@@ -1476,10 +1500,14 @@ class GatewayManifest
                     self::CAP_SUBSCRIPTION => true,
                 ]),
                 'notes' => [
-                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
-                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
-                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
-                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，本包仅消费该绑定关系，不会代为绑定。',
+                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权'
+                        . '（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
+                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。'
+                        . 'JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
+                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，'
+                        . '或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
+                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，'
+                        . '本包仅消费该绑定关系，不会代为绑定。',
                 ],
             ],
             'alipay' => [
@@ -1518,10 +1546,14 @@ class GatewayManifest
                     self::CAP_WEBHOOK => true,
                 ],
                 'notes' => [
-                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
-                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
-                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
-                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，本包仅消费该绑定关系，不会代为绑定。',
+                    'JSAPI / 小程序支付必须传入支付用户的 openid，通常来自 OAuth 授权'
+                        . '（如 kode/miniapp 等登录/授权包），本包不在支付域处理授权登录。',
+                    '同一微信商户可同时绑定多个 appid（公众号 / 小程序 / App / 开放平台）。'
+                        . 'JSAPI 下单的 appid 必须与 openid 来源一致，否则报 appid/openid 不匹配。',
+                    '可通过配置 jsapi_app_id 指定 JSAPI 场景默认绑定 appid，'
+                        . '或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
+                    '商户需在微信支付后台完成 appid 与 mch_id 的绑定，'
+                        . '本包仅消费该绑定关系，不会代为绑定。',
                 ],
             ],
             'unionpay' => [

@@ -587,7 +587,10 @@ class MeituanGateway extends AbstractGateway implements
     #[\Override]
     public function sendRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired(
+            $params,
+            ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark'],
+        );
 
         $requestData = [
             'app_id' => $this->getConfig('app_id'),
@@ -618,7 +621,10 @@ class MeituanGateway extends AbstractGateway implements
     #[\Override]
     public function groupRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired(
+            $params,
+            ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark'],
+        );
 
         if ((int) $params['total_num'] < 3) {
             throw PayException::paramError('裂变红包 total_num 必须 >= 3');

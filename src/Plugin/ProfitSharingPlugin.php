@@ -41,7 +41,12 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
  *     'out_order_no' => 'SHARE_001',
  *     'receivers' => [
  *         ['type' => 'MERCHANT_ID', 'account' => '123456', 'amount' => 100, 'description' => '供应商分账'],
- *         ['type' => 'PERSONAL_OPENID', 'account' => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o', 'amount' => 50, 'description' => '推广者分账'],
+ *         [
+ *             'type' => 'PERSONAL_OPENID',
+ *             'account' => 'oUpF8uMuAJO_M2pxb1Q9zNjWeS6o',
+ *             'amount' => 50,
+ *             'description' => '推广者分账',
+ *         ],
  *     ],
  * ]);
  *
@@ -267,7 +272,10 @@ class ProfitSharingPlugin
     {
         if (!$this->gateway instanceof ProfitSharingCapableInterface) {
             throw PayException::invalidArgument(
-                sprintf('网关 %s 未实现分账能力接口（ProfitSharingCapableInterface）', $this->gateway::getName()),
+                sprintf(
+                    '网关 %s 未实现分账能力接口（ProfitSharingCapableInterface）',
+                    $this->gateway::getName(),
+                ),
             );
         }
 

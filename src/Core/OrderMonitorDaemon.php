@@ -102,7 +102,14 @@ class OrderMonitorDaemon
      * @param string $routerId 统一收款入口 ID（业务关联用）
      * @param string $channel 通道标识（如 wechat / alipay）
      * @param array<string, mixed> $order 本地订单数据，至少包含 out_trade_no 与金额
-     * @param array{interval?: int, timeout?: int, max_attempts?: int, on_success?: callable, on_failure?: callable, on_timeout?: callable} $options
+     * @param array{
+     *     interval?: int,
+     *     timeout?: int,
+     *     max_attempts?: int,
+     *     on_success?: callable,
+     *     on_failure?: callable,
+     *     on_timeout?: callable
+     * } $options
      *        interval 轮询间隔秒；timeout 总超时秒；max_attempts 最大重试次数；
      *        on_success 成功回调（参数：$paymentData, $routerId）；
      *        on_failure 失败回调（参数：$reason, $paymentData, $routerId）；
@@ -462,7 +469,9 @@ class OrderMonitorDaemon
             return $gateway;
         }
 
-        throw PayException::configError("无法获取通道 {$channel} 的网关实例：缺少 router 与 gatewayCache");
+        throw PayException::configError(
+            "无法获取通道 {$channel} 的网关实例：缺少 router 与 gatewayCache",
+        );
     }
 
     /**

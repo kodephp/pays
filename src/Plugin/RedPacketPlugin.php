@@ -99,7 +99,15 @@ class RedPacketPlugin
      */
     public function send(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired($params, [
+            'mch_billno',
+            'send_name',
+            're_openid',
+            'total_amount',
+            'wishing',
+            'act_name',
+            'remark',
+        ]);
 
         return $this->forwardToCapableGateway('sendRedPacket', $params);
     }
@@ -121,7 +129,16 @@ class RedPacketPlugin
      */
     public function group(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired($params, [
+            'mch_billno',
+            'send_name',
+            're_openid',
+            'total_amount',
+            'total_num',
+            'wishing',
+            'act_name',
+            'remark',
+        ]);
 
         return $this->forwardToCapableGateway('groupRedPacket', $params);
     }
@@ -156,7 +173,10 @@ class RedPacketPlugin
     {
         if (!$this->gateway instanceof RedPacketCapableInterface) {
             throw PayException::invalidArgument(
-                sprintf('网关 %s 未实现红包能力接口（RedPacketCapableInterface）', $this->gateway::getName()),
+                sprintf(
+                    '网关 %s 未实现红包能力接口（RedPacketCapableInterface）',
+                    $this->gateway::getName(),
+                ),
             );
         }
 

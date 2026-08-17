@@ -37,8 +37,12 @@ class Signer
      * @param bool $excludeEmpty 是否排除空值
      * @return bool 验证结果
      */
-    public static function verifyMd5(array $params, string $key, string $signField = 'sign', bool $excludeEmpty = true): bool
-    {
+    public static function verifyMd5(
+        array $params,
+        string $key,
+        string $signField = 'sign',
+        bool $excludeEmpty = true
+    ): bool {
         if (!isset($params[$signField])) {
             return false;
         }
@@ -141,8 +145,11 @@ class Signer
      * @param string[] $excludeFields 不参与签名的字段
      * @return string 查询字符串
      */
-    public static function buildQueryString(array $params, bool $excludeEmpty = true, array $excludeFields = ['sign']): string
-    {
+    public static function buildQueryString(
+        array $params,
+        bool $excludeEmpty = true,
+        array $excludeFields = ['sign']
+    ): string {
         ksort($params);
 
         $pairs = [];

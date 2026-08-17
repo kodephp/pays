@@ -63,7 +63,8 @@ class QrCodeGenerator
         }
 
         throw PayException::configError(
-            '生成二维码需要安装扩展包，请执行：composer require kode/tools 或 composer require endroid/qr-code:^5.0',
+            '生成二维码需要安装扩展包，请执行：composer require kode/tools'
+                . ' 或 composer require endroid/qr-code:^5.0',
         );
     }
 
@@ -88,7 +89,8 @@ class QrCodeGenerator
         }
 
         throw PayException::configError(
-            '生成带 Logo 二维码需要安装扩展包，请执行：composer require kode/tools 或 composer require endroid/qr-code:^5.0',
+            '生成带 Logo 二维码需要安装扩展包，请执行：composer require kode/tools'
+                . ' 或 composer require endroid/qr-code:^5.0',
         );
     }
 

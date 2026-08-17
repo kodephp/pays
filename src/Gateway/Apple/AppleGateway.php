@@ -31,7 +31,11 @@ class AppleGateway extends AbstractGateway
      */
     protected function initialize(): void
     {
-        $this->validateRequired($this->config, ['merchant_identifier', 'merchant_certificate', 'apple_pay_merchant_id']);
+        $this->validateRequired($this->config, [
+            'merchant_identifier',
+            'merchant_certificate',
+            'apple_pay_merchant_id',
+        ]);
     }
 
     /**

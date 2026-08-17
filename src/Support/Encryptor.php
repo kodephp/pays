@@ -65,8 +65,13 @@ class Encryptor
      * @return string 明文
      * @throws PayException
      */
-    public static function aesGcmDecrypt(string $ciphertext, string $key, string $nonce, string $tag, ?string $aad = null): string
-    {
+    public static function aesGcmDecrypt(
+        string $ciphertext,
+        string $key,
+        string $nonce,
+        string $tag,
+        ?string $aad = null
+    ): string {
         if (strlen($key) !== 32) {
             throw PayException::paramError('AES-256-GCM 密钥必须为 32 字节');
         }
@@ -271,7 +276,12 @@ class Encryptor
      */
     public static function rsaDecrypt(string $ciphertext, string $privateKey): string
     {
-        $success = openssl_private_decrypt(base64_decode($ciphertext), $plaintext, $privateKey, OPENSSL_PKCS1_OAEP_PADDING);
+        $success = openssl_private_decrypt(
+            base64_decode($ciphertext),
+            $plaintext,
+            $privateKey,
+            OPENSSL_PKCS1_OAEP_PADDING
+        );
 
         if (!$success) {
             throw PayException::paramError('RSA 私钥解密失败');
@@ -312,8 +322,12 @@ class Encryptor
      * @return bool
      * @throws PayException
      */
-    public static function rsaVerify(string $data, string $signature, string $publicKey, string $algorithm = 'sha256'): bool
-    {
+    public static function rsaVerify(
+        string $data,
+        string $signature,
+        string $publicKey,
+        string $algorithm = 'sha256'
+    ): bool {
         $algo = self::getOpensslAlgorithm($algorithm);
 
         return openssl_verify($data, base64_decode($signature), $publicKey, $algo) === 1;

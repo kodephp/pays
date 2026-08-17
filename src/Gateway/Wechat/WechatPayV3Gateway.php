@@ -341,7 +341,12 @@ class WechatPayV3Gateway extends AbstractGateway implements
 
         $message = $data['timestamp'] . "\n" . $data['nonce'] . "\n" . ($data['body'] ?? '') . "\n";
 
-        return Encryptor::rsaVerify($message, $data['signature'], $this->getPlatformCertificate($data['serial']), 'sha256');
+        return Encryptor::rsaVerify(
+            $message,
+            $data['signature'],
+            $this->getPlatformCertificate($data['serial']),
+            'sha256',
+        );
     }
 
     /**

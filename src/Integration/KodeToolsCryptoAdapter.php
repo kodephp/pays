@@ -43,8 +43,13 @@ class KodeToolsCryptoAdapter
      * @return string 明文
      * @throws PayException
      */
-    public static function aesGcmDecrypt(string $ciphertext, string $key, string $nonce, string $tag, ?string $aad = null): string
-    {
+    public static function aesGcmDecrypt(
+        string $ciphertext,
+        string $key,
+        string $nonce,
+        string $tag,
+        ?string $aad = null
+    ): string {
         if (class_exists(\Kode\Tools\Crypto\Aes::class)) {
             return \Kode\Tools\Crypto\Aes::gcmDecrypt($ciphertext, $key, $nonce, $tag, $aad);
         }
@@ -148,8 +153,12 @@ class KodeToolsCryptoAdapter
      * @return bool
      * @throws PayException
      */
-    public static function rsaVerify(string $data, string $signature, string $publicKey, string $algorithm = 'sha256'): bool
-    {
+    public static function rsaVerify(
+        string $data,
+        string $signature,
+        string $publicKey,
+        string $algorithm = 'sha256'
+    ): bool {
         if (class_exists(\Kode\Tools\Crypto\Rsa::class)) {
             return \Kode\Tools\Crypto\Rsa::verify($data, $signature, $publicKey, $algorithm);
         }

@@ -18,8 +18,10 @@ class StrUtil
      * @param string $chars 可用字符集
      * @return string
      */
-    public static function random(int $length = 16, string $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'): string
-    {
+    public static function random(
+        int $length = 16,
+        string $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    ): string {
         $maxIndex = strlen($chars) - 1;
 
         if ($maxIndex < 0 || $length <= 0) {

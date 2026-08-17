@@ -100,7 +100,10 @@ class Pay
         } elseif (isset(self::$configCache[$name])) {
             $config = self::$configCache[$name];
         } else {
-            throw PayException::configError("创建 {$name} 网关时必须传入配置参数，或先调用 Pay::registerConfig('{$name}', ...) 预注册配置");
+            throw PayException::configError(
+                "创建 {$name} 网关时必须传入配置参数，"
+                    . "或先调用 Pay::registerConfig('{$name}', ...) 预注册配置",
+            );
         }
 
         $gateway = GatewayFactory::create($name, $config, self::$httpClient);
@@ -381,7 +384,8 @@ class Pay
             $resolved = self::$configCache[$gateway];
         } else {
             throw PayException::configError(
-                "创建 {$gateway} 网关时必须传入配置参数，或先调用 Pay::registerConfig('{$gateway}', ...)",
+                "创建 {$gateway} 网关时必须传入配置参数，"
+                    . "或先调用 Pay::registerConfig('{$gateway}', ...)",
             );
         }
 
@@ -548,8 +552,11 @@ class Pay
      * @return array<string, mixed>
      * @throws PayException
      */
-    public static function profitSharingUnfreeze(string $gateway, string $transactionId, ?string $outOrderNo = null): array
-    {
+    public static function profitSharingUnfreeze(
+        string $gateway,
+        string $transactionId,
+        ?string $outOrderNo = null
+    ): array {
         return self::call($gateway, 'unfreezeProfitSharing', $transactionId, $outOrderNo);
     }
 
@@ -1022,8 +1029,11 @@ class Pay
      * @return array<string, mixed>
      * @throws PayException
      */
-    public static function cryptoGetExchangeRate(string $gateway, string $cryptoCurrency, string $fiatCurrency = 'USD'): array
-    {
+    public static function cryptoGetExchangeRate(
+        string $gateway,
+        string $cryptoCurrency,
+        string $fiatCurrency = 'USD'
+    ): array {
         return self::call($gateway, 'getExchangeRate', $cryptoCurrency, $fiatCurrency);
     }
 
@@ -1128,7 +1138,10 @@ class Pay
      * 委托 {@see GatewayManifest::matrix()} 一次性返回每个平台对 12 项扩展能力契约的二维视图，
      * 便于生成「全部平台能力对照表」或运行时零漂移自检。详见 {@see GatewayManifest::matrix()}。
      *
-     * @return array<string, array{label: string, capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>}>
+     * @return array<string, array{
+     *     label: string,
+     *     capabilities: array<string, array{declared: bool, actual: bool, consistent: bool}>
+     * }>
      * @throws PayException
      */
     public static function matrix(): array

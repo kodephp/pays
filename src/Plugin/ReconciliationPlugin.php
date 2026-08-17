@@ -189,7 +189,10 @@ class ReconciliationPlugin
             'only_in_bill' => $onlyInBill,
             'amount_mismatch' => $amountMismatch,
             'status_mismatch' => $statusMismatch,
-            'is_consistent' => empty($onlyInSystem) && empty($onlyInBill) && empty($amountMismatch) && empty($statusMismatch),
+            'is_consistent' => empty($onlyInSystem)
+                && empty($onlyInBill)
+                && empty($amountMismatch)
+                && empty($statusMismatch),
         ];
     }
 

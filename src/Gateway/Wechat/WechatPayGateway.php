@@ -20,7 +20,6 @@ use Kode\Pays\Plugin\ProfitSharing\Receiver;
 use Kode\Pays\Support\Signer;
 use Kode\Pays\Support\WechatBillParser;
 
-
 /**
  * 微信支付网关
  *
@@ -81,7 +80,9 @@ class WechatPayGateway extends AbstractGateway implements
 
         // JSAPI 支付必须提供支付用户的 openid（公众号 / 关联小程序场景，通常由 kode/miniapp 等授权后获得）
         if ($tradeType === 'JSAPI' && empty($params['openid'])) {
-            throw PayException::paramError('JSAPI 支付必须提供 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）');
+            throw PayException::paramError(
+                'JSAPI 支付必须提供 openid（来自公众号/小程序 OAuth 授权，如 kode/miniapp）',
+            );
         }
 
         // 服务商模式字段（sub_appid / sub_mch_id）由配置驱动，
@@ -367,7 +368,15 @@ class WechatPayGateway extends AbstractGateway implements
      */
     public function sendRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired($params, [
+            'mch_billno',
+            'send_name',
+            're_openid',
+            'total_amount',
+            'wishing',
+            'act_name',
+            'remark',
+        ]);
 
         $requestData = [
             'nonce_str' => $this->generateNonceStr(),
@@ -400,7 +409,10 @@ class WechatPayGateway extends AbstractGateway implements
      */
     public function groupRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired(
+            $params,
+            ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark'],
+        );
 
         if ((int) $params['total_num'] < 3) {
             throw PayException::paramError('裂变红包 total_num 必须 >= 3');

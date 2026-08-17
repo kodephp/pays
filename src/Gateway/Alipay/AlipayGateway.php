@@ -388,7 +388,15 @@ class AlipayGateway extends AbstractGateway implements
      */
     public function sendRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired($params, [
+            'mch_billno',
+            'send_name',
+            're_openid',
+            'total_amount',
+            'wishing',
+            'act_name',
+            'remark',
+        ]);
 
         $bizContent = [
             'out_order_no' => $params['mch_billno'],
@@ -415,7 +423,16 @@ class AlipayGateway extends AbstractGateway implements
      */
     public function groupRedPacket(array $params): array
     {
-        $this->validateRequired($params, ['mch_billno', 'send_name', 're_openid', 'total_amount', 'total_num', 'wishing', 'act_name', 'remark']);
+        $this->validateRequired($params, [
+            'mch_billno',
+            'send_name',
+            're_openid',
+            'total_amount',
+            'total_num',
+            'wishing',
+            'act_name',
+            'remark',
+        ]);
 
         if ((int) $params['total_num'] < 3) {
             throw PayException::paramError('裂变红包 total_num 必须 >= 3');
@@ -689,7 +706,9 @@ class AlipayGateway extends AbstractGateway implements
     {
         if (substr($raw, 0, 2) === "PK") {
             if (!class_exists('ZipArchive')) {
-                throw PayException::configError('支付宝对账单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展才能解析');
+                throw PayException::configError(
+                    '支付宝对账单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展才能解析',
+                );
             }
 
             $tmp = tempnam(sys_get_temp_dir(), 'alipay_bill_');
@@ -821,7 +840,9 @@ class AlipayGateway extends AbstractGateway implements
     {
         if (substr($raw, 0, 2) === "PK") {
             if (!class_exists('ZipArchive')) {
-                throw PayException::configError('支付宝电子回单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展');
+                throw PayException::configError(
+                    '支付宝电子回单为 ZIP 压缩包，需启用 PHP ZipArchive 扩展',
+                );
             }
 
             $tmp = tempnam(sys_get_temp_dir(), 'alipay_ereceipt_');

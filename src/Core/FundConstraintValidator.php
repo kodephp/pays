@@ -175,7 +175,13 @@ class FundConstraintValidator
 
         // 日限额验证
         if ($userId !== '') {
-            $limitCheck = $this->validateDailyLimit($userId, 'transfer', $amount, $constraints['daily_limit'], $constraints['daily_count_limit']);
+            $limitCheck = $this->validateDailyLimit(
+                $userId,
+                'transfer',
+                $amount,
+                $constraints['daily_limit'],
+                $constraints['daily_count_limit']
+            );
             if (!$limitCheck['valid']) {
                 return $limitCheck;
             }
@@ -225,7 +231,13 @@ class FundConstraintValidator
 
         // 日限额验证
         if ($userId !== '') {
-            $limitCheck = $this->validateDailyLimit($userId, 'sharing', $amount, $constraints['daily_limit'], $constraints['daily_count_limit']);
+            $limitCheck = $this->validateDailyLimit(
+                $userId,
+                'sharing',
+                $amount,
+                $constraints['daily_limit'],
+                $constraints['daily_count_limit']
+            );
             if (!$limitCheck['valid']) {
                 return $limitCheck;
             }
@@ -283,7 +295,13 @@ class FundConstraintValidator
 
         // 日限额验证
         if ($userId !== '') {
-            $limitCheck = $this->validateDailyLimit($userId, 'red_packet', $amount, $constraints['daily_limit'], $constraints['daily_count_limit']);
+            $limitCheck = $this->validateDailyLimit(
+                $userId,
+                'red_packet',
+                $amount,
+                $constraints['daily_limit'],
+                $constraints['daily_count_limit']
+            );
             if (!$limitCheck['valid']) {
                 return $limitCheck;
             }
@@ -311,7 +329,11 @@ class FundConstraintValidator
         $userId = $params['user_id'] ?? '';
 
         // 金额范围验证
-        $amountCheck = $this->validateAmountRange($refundAmount, $constraints['min_amount'], $constraints['max_amount']);
+        $amountCheck = $this->validateAmountRange(
+            $refundAmount,
+            $constraints['min_amount'],
+            $constraints['max_amount']
+        );
         if (!$amountCheck['valid']) {
             return $amountCheck;
         }
@@ -335,7 +357,13 @@ class FundConstraintValidator
 
         // 日限额验证
         if ($userId !== '') {
-            $limitCheck = $this->validateDailyLimit($userId, 'refund', $refundAmount, $constraints['daily_limit'], $constraints['daily_count_limit']);
+            $limitCheck = $this->validateDailyLimit(
+                $userId,
+                'refund',
+                $refundAmount,
+                $constraints['daily_limit'],
+                $constraints['daily_count_limit']
+            );
             if (!$limitCheck['valid']) {
                 return $limitCheck;
             }
@@ -423,8 +451,13 @@ class FundConstraintValidator
      *
      * @return array<string, mixed>
      */
-    protected function validateDailyLimit(string $userId, string $type, int $amount, int $dailyLimit, int $countLimit): array
-    {
+    protected function validateDailyLimit(
+        string $userId,
+        string $type,
+        int $amount,
+        int $dailyLimit,
+        int $countLimit
+    ): array {
         $today = date('Y-m-d');
         $key = "{$userId}:{$type}:{$today}";
         $logs = $this->operationLogs[$key] ?? [];

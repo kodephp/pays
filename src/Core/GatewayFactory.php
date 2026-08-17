@@ -155,8 +155,11 @@ class GatewayFactory
      * @return GatewayInterface 网关实例
      * @throws PayException
      */
-    public static function createWithConfig(string $name, ConfigInterface $config, ?HttpClient $httpClient = null): GatewayInterface
-    {
+    public static function createWithConfig(
+        string $name,
+        ConfigInterface $config,
+        ?HttpClient $httpClient = null
+    ): GatewayInterface {
         $configArray = self::configToArray($config);
 
         return self::create($name, $configArray, $httpClient);
@@ -171,8 +174,11 @@ class GatewayFactory
      * @return GatewayInterface 网关实例
      * @throws PayException
      */
-    public static function createAutoConfig(string $name, array $config, ?HttpClient $httpClient = null): GatewayInterface
-    {
+    public static function createAutoConfig(
+        string $name,
+        array $config,
+        ?HttpClient $httpClient = null
+    ): GatewayInterface {
         if (isset(self::$configs[$name])) {
             $dtoClass = self::$configs[$name];
 

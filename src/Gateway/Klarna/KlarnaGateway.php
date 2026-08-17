@@ -66,7 +66,9 @@ class KlarnaGateway extends AbstractGateway
     protected function buildAuthHeaders(): array
     {
         return [
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('username') . ':' . $this->getConfig('password')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('username') . ':' . $this->getConfig('password')
+            ),
             'Content-Type' => 'application/json',
         ];
     }
@@ -157,7 +159,11 @@ class KlarnaGateway extends AbstractGateway
             $requestData['description'] = $params['description'];
         }
 
-        return $this->post("ordermanagement/v1/orders/{$params['order_id']}/refunds", $requestData, $this->buildAuthHeaders());
+        return $this->post(
+            "ordermanagement/v1/orders/{$params['order_id']}/refunds",
+            $requestData,
+            $this->buildAuthHeaders()
+        );
     }
 
     /**

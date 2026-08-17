@@ -75,7 +75,9 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
 
         return $this->post('payments', $requestData, [
             'Content-Type' => 'application/json',
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('api_key') . ':' . $this->getConfig('api_secret')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret')
+            ),
         ]);
     }
 
@@ -89,7 +91,9 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     public function queryOrder(string $orderId): array
     {
         return $this->get("payments/{$orderId}", [], [
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('api_key') . ':' . $this->getConfig('api_secret')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret')
+            ),
         ]);
     }
 
@@ -103,7 +107,9 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     public function closeOrder(string $orderId): array
     {
         return $this->delete("payments/{$orderId}", [], [
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('api_key') . ':' . $this->getConfig('api_secret')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret')
+            ),
         ]);
     }
 
@@ -123,7 +129,9 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
             'reason' => $params['reason'] ?? '',
         ], [
             'Content-Type' => 'application/json',
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('api_key') . ':' . $this->getConfig('api_secret')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret')
+            ),
         ]);
     }
 
@@ -137,7 +145,9 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     public function queryRefund(string $refundId): array
     {
         return $this->get("payments/{$refundId}", [], [
-            'Authorization' => 'Basic ' . base64_encode($this->getConfig('api_key') . ':' . $this->getConfig('api_secret')),
+            'Authorization' => 'Basic ' . base64_encode(
+                $this->getConfig('api_key') . ':' . $this->getConfig('api_secret')
+            ),
         ]);
     }
 
