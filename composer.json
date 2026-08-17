@@ -2,7 +2,7 @@
     "name": "kode/pays",
     "description": "Kode Pays - 企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、QQ 支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay、HitPay、Xendit 等国内外主流支付渠道",
     "type": "library",
-    "version": "2.28.0",
+    "version": "2.29.0",
     "keywords": [
         "pay",
         "payment",
@@ -63,17 +63,18 @@
         "php": ">=8.3",
         "ext-json": "*",
         "ext-openssl": "*",
-        "endroid/qr-code": "^5.0",
         "guzzlehttp/guzzle": "^7.8",
         "psr/log": "^3.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5",
         "phpstan/phpstan": "^1.10",
-        "squizlabs/php_codesniffer": "^3.9"
+        "squizlabs/php_codesniffer": "^3.9",
+        "endroid/qr-code": "^5.0"
     },
     "suggest": {
-        "kode/tools": "用于生成支付二维码、图片处理等工具功能",
+        "kode/tools": "用于生成支付二维码、图片处理等工具功能（自带 endroid ^6.0，优先于内置 endroid ^5.0）",
+        "endroid/qr-code": "可选：用于生成支付二维码（与 kode/tools 二选一）。注意 kode/tools 自带 endroid ^6.0，二者 API 不兼容，请勿同时硬性依赖两者",
         "kode/di": "用于依赖注入容器管理",
         "kode/cache": "用于支付订单缓存和分布式锁",
         "kode/database": "用于支付订单持久化和分库分表",

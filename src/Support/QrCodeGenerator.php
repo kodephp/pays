@@ -19,7 +19,8 @@ use Kode\Pays\Core\PayException;
  * 二维码生成器
  *
  * 为支付场景提供二维码生成能力，支持微信支付 Native、支付宝当面付等场景。
- * 默认使用 endroid/qr-code（已内置），如果安装了 kode/tools 则优先使用其高级能力。
+ * 优先使用 kode/tools 的高级能力（自带 endroid ^6.0）；未安装时回退到可选依赖 endroid/qr-code ^5.0。
+ * endroid/qr-code 为可选依赖（composer suggest），不会与 kode/tools 的 endroid ^6.0 产生版本冲突。
  *
  * 使用示例：
  * ```php
@@ -51,13 +52,19 @@ class QrCodeGenerator
      */
     public static function generate(string $content, int $size = self::DEFAULT_SIZE, string $format = 'png'): string
     {
-        // 如果安装了 kode/tools，优先使用其高级能力
+        // 优先使用 kode/tools 的高级能力（自带 endroid ^6.0）
         if (class_exists(\Kode\Tools\QrCode\QrCode::class)) {
             return self::generateWithKode($content, $size, $format);
         }
 
-        // 使用内置的 endroid/qr-code
-        return self::generateWithEndroid($content, $size, $format);
+        // 回退到可选依赖 endroid/qr-code ^5.0（需自行安装）
+        if (class_exists(\Endroid\QrCode\QrCode::class)) {
+            return self::generateWithEndroid($content, $size, $format);
+        }
+
+        throw PayException::configError(
+            '生成二维码需要安装扩展包，请执行：composer require kode/tools 或 composer require endroid/qr-code:^5.0',
+        );
     }
 
     /**
@@ -75,8 +82,14 @@ class QrCodeGenerator
             return self::generateWithKodeLogo($content, $logoPath, $size);
         }
 
-        // 使用 endroid/qr-code 内置的 Logo 支持
-        return self::generateWithEndroidLogo($content, $logoPath, $size);
+        // 回退到可选依赖 endroid/qr-code ^5.0（需自行安装）
+        if (class_exists(\Endroid\QrCode\QrCode::class)) {
+            return self::generateWithEndroidLogo($content, $logoPath, $size);
+        }
+
+        throw PayException::configError(
+            '生成带 Logo 二维码需要安装扩展包，请执行：composer require kode/tools 或 composer require endroid/qr-code:^5.0',
+        );
     }
 
     /**
