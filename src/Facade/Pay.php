@@ -1135,7 +1135,7 @@ class Pay
     /**
      * 获取全量能力矩阵（网关 × 扩展能力：声明 / 真实实现 / 一致性）
      *
-     * 委托 {@see GatewayManifest::matrix()} 一次性返回每个平台对 12 项扩展能力契约的二维视图，
+     * 委托 {@see GatewayManifest::matrix()} 一次性返回每个平台对 13 项扩展能力契约的二维视图，
      * 便于生成「全部平台能力对照表」或运行时零漂移自检。详见 {@see GatewayManifest::matrix()}。
      *
      * @return array<string, array{
@@ -1167,7 +1167,7 @@ class Pay
     /**
      * 渲染全量能力矩阵为可读文档
      *
-     * 委托 {@see GatewayManifest::renderMatrix()} 生成「网关 × 12 项扩展能力 + 6 项核心能力」对照表
+     * 委托 {@see GatewayManifest::renderMatrix()} 生成「网关 × 13 项扩展能力 + 6 项核心能力」对照表
      * （markdown / text），用于 README 能力对照表、CI 能力快照、SRE 运行时审计产物。
      * 单元格三态：✔/✗/⚠（markdown）或 [x]/[ ]/[!]（text），详见 {@see GatewayManifest::renderMatrix()}。
      *

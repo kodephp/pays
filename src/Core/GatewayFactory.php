@@ -33,6 +33,9 @@ class GatewayFactory
         // 微信支付 V3
         'wechat_v3' => \Kode\Pays\Gateway\Wechat\WechatPayV3Gateway::class,
 
+        // 微信小程序虚拟支付（xpay 服务端 API，会员/课程/道具/代币等虚拟商品）
+        'wechat_virtual' => \Kode\Pays\Gateway\Wechat\WechatVirtualGateway::class,
+
         // 国际支付
         'paypal' => \Kode\Pays\Gateway\Paypal\PaypalGateway::class,
         'stripe' => \Kode\Pays\Gateway\Stripe\StripeGateway::class,
@@ -91,6 +94,7 @@ class GatewayFactory
     protected static array $configs = [
         'wechat' => \Kode\Pays\Config\WechatConfig::class,
         'wechat_v3' => \Kode\Pays\Config\WechatV3Config::class,
+        'wechat_virtual' => \Kode\Pays\Config\WechatVirtualConfig::class,
         'alipay' => \Kode\Pays\Config\AlipayConfig::class,
         'unionpay' => \Kode\Pays\Config\UnionPayConfig::class,
         'douyin' => \Kode\Pays\Config\DouyinConfig::class,

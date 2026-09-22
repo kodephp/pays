@@ -36,13 +36,20 @@ class GatewayManifestMatrixTest extends TestCase
     }
 
     /**
-     * 每个网关的单元格应覆盖全部 12 项扩展能力契约，且结构统一
+     * 每个网关的单元格应覆盖全部扩展能力契约，且结构统一
      */
-    public function testMatrixIncludesAllTwelveContracts(): void
+    public function testMatrixIncludesAllContracts(): void
     {
         $matrix = GatewayManifest::matrix();
         $contracts = array_keys(GatewayManifest::CAPABILITY_CONTRACTS);
-        $this->assertCount(12, $contracts, '当前应有 12 项扩展能力契约');
+        // 守护能力契约与标签/表头成对登记，避免新增能力时漏补矩阵元数据
+        $this->assertSame(13, count($contracts), '当前应有 13 项扩展能力契约');
+        foreach ($contracts as $capability) {
+            $this->assertArrayHasKey($capability, GatewayManifest::CAPABILITY_LABELS, "契约 {$capability} 应有中文标签");
+            $this->assertArrayHasKey($capability, GatewayManifest::CAPABILITY_SHORT_CODES, "契约 {$capability} 应有表格短码");
+            $this->assertArrayHasKey($capability, GatewayManifest::CAPABILITY_OPERATIONS, "契约 {$capability} 应登记可调用操作");
+        }
+        $this->assertContains(GatewayManifest::CAP_VIRTUAL_PAY, $contracts);
 
         $first = reset($matrix);
         foreach ($contracts as $capability) {

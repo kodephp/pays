@@ -18,6 +18,7 @@ use Kode\Pays\Contract\SettlementCapableInterface;
 use Kode\Pays\Contract\SubscriptionCapableInterface;
 use Kode\Pays\Contract\WebhookCapableInterface;
 use Kode\Pays\Contract\TransferCapableInterface;
+use Kode\Pays\Contract\VirtualPayCapableInterface;
 
 /**
  * 支付平台统一清单（Manifest）注册中心
@@ -199,6 +200,11 @@ class GatewayManifest
     public const CAP_CRYPTO = 'crypto';
 
     /**
+     * 能力：小程序虚拟支付（微信 xpay：会员 / 课程 / 道具 / 代币等虚拟商品）
+     */
+    public const CAP_VIRTUAL_PAY = 'virtual_pay';
+
+    /**
      * 扩展能力与能力接口的契约映射
      *
      * 声明「某能力为 true」等价于「网关实现了对应的 CapableInterface」，是二者一致性的单一事实源。
@@ -261,6 +267,20 @@ class GatewayManifest
      * - 基础 CAP_REFUND（通用 refund() 入口）仍由 {@see GatewayInterface} 覆盖，不登记契约，避免误伤
      *   其余 19 家仅具备基础退款、未实现 RefundCapableInterface 的网关。
      *
+     * 小程序虚拟支付能力（CAP_VIRTUAL_PAY）的契约化（v2.32.0）：
+     * - 微信小程序虚拟支付对接微信开放平台 xpay 服务端 API（`/xpay/*`），采用 JSON 请求体 +
+     *   HMAC-SHA256 双签名（pay_sig / signature）+ access_token 鉴权，与商户平台常规微信支付
+     *   （`wechat` 的 XML/MD5、`wechat_v3` 的 RSA/证书）在凭据与协议层完全独立，
+     *   故以独立网关 `wechat_virtual` 承载，不复用 `wechat` 的配置契约；
+     * - v2.32.0 新增 {@see VirtualPayCapableInterface} 作为富契约并登记进本映射：
+     *   自此「声明支持虚拟支付 ⟺ 实现 VirtualPayCapableInterface」由能力一致性审计强制守护，
+     *   与 Webhook / 二维码 / 高级退款同构；
+     * - 该网关的异步通知（`xpay_goods_deliver_notify` 等）复用小程序消息推送通道，
+     *   仅在配置 `message_token` 时可做 SHA1 验签；未配置时 verifyNotify() 诚实返回 false，
+     *   引导调用方以 query_order 兜底回查，故**不声明 CAP_WEBHOOK**（其富契约
+     *   WebhookCapableInterface 要求 verifyWebhook / parseWebhook，本网关无对应实现，
+     *   声明会造成审计漂移）。
+     *
      * @var array<string, class-string>
      */
     public const CAPABILITY_CONTRACTS = [
@@ -276,6 +296,7 @@ class GatewayManifest
         self::CAP_WEBHOOK => WebhookCapableInterface::class,
         self::CAP_QR => QrCapableInterface::class,
         self::CAP_REFUND_ADVANCED => RefundCapableInterface::class,
+        self::CAP_VIRTUAL_PAY => VirtualPayCapableInterface::class,
     ];
 
     /**
@@ -304,12 +325,13 @@ class GatewayManifest
         self::CAP_SETTLEMENT => '自动结算',
         self::CAP_WEBHOOK => 'Webhook 事件订阅',
         self::CAP_CRYPTO => '加密货币支付',
+        self::CAP_VIRTUAL_PAY => '小程序虚拟支付',
     ];
 
     /**
      * 能力短码（表格表头用）
      *
-     * 用于 {@see self::renderMatrix()} 把 12 项扩展能力压缩为 3 字符短码，
+     * 用于 {@see self::renderMatrix()} 把 13 项扩展能力压缩为 3 字符短码，
      * 使「网关 × 能力」Markdown 对照表的表头保持紧凑可读。
      *
      * @var array<string, string>
@@ -327,6 +349,7 @@ class GatewayManifest
         self::CAP_WEBHOOK => 'WHK',
         self::CAP_QR => 'QR',
         self::CAP_REFUND_ADVANCED => 'RFD',
+        self::CAP_VIRTUAL_PAY => 'VPR',
     ];
 
     /**
@@ -395,6 +418,10 @@ class GatewayManifest
         self::CAP_SETTLEMENT => ['settleToWallet', 'settleToBankCard', 'settleToPayout', 'querySettlement'],
         self::CAP_WEBHOOK => ['verifyWebhook', 'parseWebhook'],
         self::CAP_CRYPTO => ['createCryptoOrder', 'getExchangeRate', 'getPaymentAddresses', 'getConfirmations'],
+        self::CAP_VIRTUAL_PAY => [
+            'createOrder', 'queryVirtualOrder', 'refundVirtualOrder', 'notifyProvideGoods',
+            'queryTokenBalance', 'deductTokens', 'refundTokens', 'giftTokens', 'downloadVirtualBill',
+        ],
     ];
 
     /**
@@ -418,6 +445,13 @@ class GatewayManifest
         'wechat_v3' => [
             'required' => ['mch_id', 'serial_no', 'private_key', 'api_key'],
             'optional' => ['app_id', 'sandbox', 'jsapi_app_id'],
+        ],
+        'wechat_virtual' => [
+            'required' => ['app_id', 'app_secret', 'offer_id', 'app_key'],
+            'optional' => [
+                'sandbox_app_key', 'env', 'session_key', 'openid', 'user_ip',
+                'message_token', 'access_token', 'base_url',
+            ],
         ],
         'alipay' => [
             'required' => ['app_id', 'private_key', 'public_key'],
@@ -737,7 +771,7 @@ class GatewayManifest
     /**
      * 渲染全量能力矩阵为可读文档
      *
-     * 基于 {@see self::matrix()} 的二维数据，生成一份「网关 × 12 项扩展能力契约」对照表，
+     * 基于 {@see self::matrix()} 的二维数据，生成一份「网关 × 13 项扩展能力契约」对照表，
      * 并在其后追加 6 项「核心支付能力」列（基于 {@see self::coreCapabilities()} 的 method_exists 判定）。
      * 单元格三态（由 declared / actual / consistent 推导）：
      * - ✔（markdown）/ [x]（text）：已声明且已实现（已验证，零漂移）
@@ -1554,6 +1588,39 @@ class GatewayManifest
                         . '或在 createOrder 时按请求传入 app_id 覆盖；两者均优先于基础 app_id。',
                     '商户需在微信支付后台完成 appid 与 mch_id 的绑定，'
                         . '本包仅消费该绑定关系，不会代为绑定。',
+                ],
+            ],
+            'wechat_virtual' => [
+                'label' => '微信小程序虚拟支付',
+                'region' => self::REGION_DOMESTIC,
+                'signature' => self::SIGN_HMAC_SHA256,
+                // 微信虚拟支付不提供关单接口（订单关闭由平台按超时/风控自动处理），
+                // 故不声明 CAP_CLOSE_ORDER；closeOrder() 诚实抛「无此方法」，避免伪造成功。
+                // 其异步推送复用小程序消息推送通道，仅在配置 message_token 时可做 SHA1 验签，
+                // 无 WebhookCapableInterface 的 verifyWebhook / parseWebhook 富实现，故不声明 CAP_WEBHOOK。
+                'capabilities' => [
+                    self::CAP_CREATE_ORDER => true,
+                    self::CAP_QUERY_ORDER => true,
+                    self::CAP_REFUND => true,
+                    self::CAP_QUERY_REFUND => true,
+                    self::CAP_VERIFY_NOTIFY => true,
+                    self::CAP_VIRTUAL_PAY => true,
+                ],
+                'notes' => [
+                    '与 wechat / wechat_v3 属两套独立凭据体系：本网关使用小程序 app_id + app_secret '
+                        . '换取 access_token，用虚拟支付 AppKey 做支付签名（pay_sig），'
+                        . '用用户 session_key 做用户态签名（signature），与商户号 / 证书无关。',
+                    '下单与拉起支付由客户端 wx.requestVirtualPayment 完成，本包不代发支付；'
+                        . 'createOrder() 的职责是产出该接口所需的 signData 与两套签名，调用方将返回值原样下发前端。',
+                    'pay_sig = hex(hmac_sha256(appKey, uri . "&" . requestBody))，uri 为不含 query 的接口路径；'
+                        . '参与签名的字节必须与实际请求体逐字节一致，故内部先编码 JSON 再签名并原样发送。',
+                    'AppKey 按环境二选一：env=0 用 app_key，env=1 用 sandbox_app_key。'
+                        . '代币充值模式（short_series_coin）的 signData 结构需按 MP 后台道具配置自行组装，'
+                        . '请传入 sign_data 字段，本包仅负责计算签名。',
+                    'refund_order 仅启动退款任务，退款最终状态需以退款单号经 query_order 追踪；'
+                        . 'queryRefund() 已按此语义实现。',
+                    '发货推送可能因客户端异常退出而丢失，官方建议以 query_order 轮询做兜底发货（status=2 已支付待发货）。',
+                    '未配置 message_token 时 verifyNotify() 诚实返回 false，请以 query_order 做业务回查兜底，勿伪造通过。',
                 ],
             ],
             'unionpay' => [

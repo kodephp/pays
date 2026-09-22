@@ -136,6 +136,29 @@ class Signer
     }
 
     /**
+     * 对原始字符串直接做 HMAC-SHA256 签名
+     *
+     * 与 {@see self::hmacSha256()} 不同：本方法不重排参数、不拼 `&key=`，
+     * 而是对调用方提供的**原始字节序列**原样签名，因此可保证「参与签名的字节」
+     * 与「实际发出的请求体字节」完全一致。
+     *
+     * 典型场景是微信小程序虚拟支付（xpay）的双签名机制：
+     * - 支付签名 pay_sig = hex(hmac_sha256(appKey, uri . '&' . requestBody))
+     * - 用户态签名 signature = hex(hmac_sha256(sessionKey, requestBody))
+     *
+     * 其中 requestBody 必须是与 HTTP 请求体逐字节相同的 JSON 字符串，
+     * 任何序列化差异（空格、键序、转义）都会导致微信侧验签失败。
+     *
+     * @param string $message 待签名的原始字符串
+     * @param string $key 密钥
+     * @return string 小写十六进制签名
+     */
+    public static function hmacSha256Raw(string $message, string $key): string
+    {
+        return hash_hmac('sha256', $message, $key);
+    }
+
+    /**
      * 构建待签名字符串
      *
      * 规则：参数按 key 升序排序，拼接为 key1=value1&key2=value2 格式

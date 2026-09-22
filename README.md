@@ -1187,6 +1187,7 @@ try {
 | 网关 | 标识 | 支持场景 |
 |------|------|----------|
 | 微信支付 | `wechat` | JSAPI、Native、App、H5、小程序、委托代扣（papay） |
+| 微信小程序虚拟支付 | `wechat_virtual` | 虚拟商品道具直购（short_series_goods）、代币充值/扣币/退款/赠送、对账、发货回执 |
 | 支付宝 | `alipay` | 电脑网站、手机网站、App、小程序、当面付、周期扣款 |
 | 云闪付 | `unionpay` | App、H5、小程序、二维码、个人收款（二维码消费）、代付提现 |
 | 抖音支付 | `douyin` | App、小程序 |
@@ -1292,6 +1293,7 @@ Kode Pays SDK 预留了与 kode 系列组件的集成扩展点：
 | [docs/development.md](docs/development.md) | 开发指南（新增网关/插件/测试） |
 | [docs/plugins.md](docs/plugins.md) | 插件体系总览 |
 | [docs/wechat.md](docs/wechat.md) | 微信支付接入文档 |
+| [docs/wechat-virtual.md](docs/wechat-virtual.md) | 微信小程序虚拟支付（xpay）接入文档 |
 | [docs/alipay.md](docs/alipay.md) | 支付宝接入文档 |
 | [docs/aggregate.md](docs/aggregate.md) | 聚合支付接入文档 |
 | [docs/personal-receive-verifier.md](docs/personal-receive-verifier.md) | 个人收款验证器（进程内/后台进程抓取） |

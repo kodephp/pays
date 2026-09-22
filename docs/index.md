@@ -23,6 +23,7 @@
 | 网关 | 文档 | 标识 |
 |------|------|------|
 | 微信支付 | [wechat.md](wechat.md) | `wechat` |
+| 微信小程序虚拟支付 | [wechat-virtual.md](wechat-virtual.md) | `wechat_virtual` |
 | 支付宝 | [alipay.md](alipay.md) | `alipay` |
 | 云闪付 | [unionpay.md](unionpay.md) | `unionpay` |
 | 抖音支付 | [douyin.md](douyin.md) | `douyin` |
