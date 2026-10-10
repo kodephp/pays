@@ -933,7 +933,7 @@ class AlipayGateway extends AbstractGateway implements
                 continue;
             }
 
-            $fields = str_getcsv($line);
+            $fields = str_getcsv($line, ',', '"', '\\');
             if (count($fields) < 10) {
                 continue;
             }

@@ -643,7 +643,7 @@ class AdyenGateway extends AbstractGateway implements
             return [];
         }
         /** @var array<int, string> $header */
-        $header = str_getcsv($headerLine);
+        $header = str_getcsv($headerLine, ',', '"', '\\');
 
         $records = [];
         foreach ($lines as $line) {
@@ -653,7 +653,7 @@ class AdyenGateway extends AbstractGateway implements
             }
 
             /** @var array<int, string> $columns */
-            $columns = str_getcsv($line);
+            $columns = str_getcsv($line, ',', '"', '\\');
             if (count($columns) !== count($header)) {
                 continue;
             }

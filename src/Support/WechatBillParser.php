@@ -95,7 +95,7 @@ final class WechatBillParser
                 continue;
             }
 
-            $fields = str_getcsv($line, ',', '`');
+            $fields = str_getcsv($line, ',', '`', '\\');
             if (count($fields) < self::MIN_FIELDS) {
                 continue;
             }

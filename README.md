@@ -1,6 +1,6 @@
 # Kode Pays SDK
 
-Kode Pays 是一个面向 PHP 8.3+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、QQ 支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay、HitPay、Xendit 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
+Kode Pays 是一个面向 PHP 8.4+ 的企业级多平台聚合支付 SDK，支持微信、支付宝、云闪付、抖音支付、美团支付、京东支付、快手支付、QQ 支付、支付宝国际版、PayPal、Stripe、Square、Adyen、Amazon Pay、Klarna、Wise、Revolut、Payoneer、Apple Pay、Google Pay、HitPay、Xendit 等国内外主流支付渠道。采用事件驱动、管道中间件、门面模式等现代架构设计，让开发者能够快速、安全、可扩展地接入各种支付能力。
 
 ## 特性
 
@@ -12,7 +12,7 @@ Kode Pays 是一个面向 PHP 8.3+ 的企业级多平台聚合支付 SDK，支�
 - **事件驱动**：支付生命周期各阶段触发事件，解耦日志/监控/通知
 - **管道中间件**：请求参数通过中间件栈处理，支持签名、日志、加密、限流等
 - **熔断保护**：`CircuitBreakerMiddleware` 对不稳定通道进行故障隔离（closed/open/half-open 三态）
-- **类型安全**：充分利用 PHP 8.3+ 特性（`readonly`、`match`、`enum`、`typed class constants`）
+- **类型安全**：充分利用 PHP 8.4+ 特性（`readonly`、`match`、`enum`、`typed class constants`）
 - **枚举与值对象**：内置 `Currency` / `TradeStatus` / `TradeType` 枚举与不可变 `Money` 金额对象（含 `allocate` 分账、`distribute` 均分），消除状态字符串与浮点金额隐患
 - **响应类型化访问器**：`PayResponse` 直接提供 `getAmountMoney()` / `getCurrencyEnum()` / `getTradeTypeEnum()` 等类型安全访问器，免去手工解析与币种换算
 - **分账能力完善**：`ProfitSharingPlugin` 提供微信/支付宝/Stripe 的完整分账 API 集合（增删接收方、分账、回退、查询、配置查询、解冻），配套 `Receiver` 值对象（Money 承载金额）与 `Result` 归一化结果
@@ -25,7 +25,7 @@ Kode Pays 是一个面向 PHP 8.3+ 的企业级多平台聚合支付 SDK，支�
 
 ## 环境要求
 
-- PHP >= 8.3
+- PHP >= 8.4
 - ext-json
 - ext-openssl
 - Composer
