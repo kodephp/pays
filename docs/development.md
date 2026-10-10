@@ -13,7 +13,7 @@ cd pays
 composer install
 
 # 验证环境
-php -v          # 需要 PHP >= 8.3
+php -v          # 需要 PHP >= 8.4
 composer -V     # 需要 Composer 2.x
 ```
 

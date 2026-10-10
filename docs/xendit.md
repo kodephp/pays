@@ -4,7 +4,7 @@ Xendit 是东南亚领先的支付聚合平台，覆盖印度尼西亚、菲律�
 
 ## 环境要求
 
-- PHP 8.3+
+- PHP 8.4+
 - 有效的 Xendit 商户账户
 - Secret Key（私钥）和 Callback Token
 

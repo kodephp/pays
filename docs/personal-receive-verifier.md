@@ -22,7 +22,7 @@
 
 | 依赖项 | 版本 | 说明 |
 |--------|------|------|
-| PHP | 8.3+ | 使用 `readonly` 属性、`nullsafe`、union types 等语法 |
+| PHP | 8.4+ | 使用 `readonly` 属性、`nullsafe`、union types 等语法 |
 | `ext-json` | 内置 | 解析网关响应 |
 | `ext-pcntl` | 可选 | 仅 `monitorInBackground()` 需要，未安装时自动降级 |
 | `kode/pays` | 本包 | 主包 |

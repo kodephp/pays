@@ -4,7 +4,7 @@ HitPay 是新加坡本地支付聚合平台，支持东南亚多国的本地支�
 
 ## 环境要求
 
-- PHP 8.3+
+- PHP 8.4+
 - 有效的 HitPay 商户账户
 - API Key 和 Webhook Secret
 

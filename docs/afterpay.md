@@ -4,7 +4,7 @@ Afterpay（澳洲品牌，在美国/英国称为 Clearpay）是全球领先的�
 
 ## 环境要求
 
-- PHP 8.3+
+- PHP 8.4+
 - 有效的 Afterpay 商户账户
 - Merchant ID 和 Secret Key
 

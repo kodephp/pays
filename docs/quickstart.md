@@ -4,7 +4,7 @@
 
 ## 环境要求
 
-- PHP >= 8.3
+- PHP >= 8.4
 - ext-json
 - ext-openssl
 - Composer
