@@ -62,6 +62,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['secret_key']);
@@ -70,6 +71,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return self::PROD_BASE_URL;
@@ -89,6 +91,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount']);
@@ -132,6 +135,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = $this->resolveHeader();
@@ -146,6 +150,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = $this->resolveHeader();
@@ -163,6 +168,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['invoice_id', 'refund_amount']);
@@ -191,6 +197,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $headers = $this->resolveHeader();
@@ -204,6 +211,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         $callbackToken = $_SERVER['HTTP_X_CALLBACK_TOKEN'] ?? '';
@@ -224,6 +232,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @param array<string, string> $headers 请求头（含 X-Callback-Token）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $callbackToken = $this->webhookHeader($headers, 'X-Callback-Token');
@@ -241,6 +250,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -257,6 +267,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'xendit';
@@ -269,6 +280,7 @@ class XenditGateway extends AbstractGateway implements BalanceCapableInterface, 
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

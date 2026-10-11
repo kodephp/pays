@@ -31,6 +31,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['api_key', 'api_secret', 'program_id']);
@@ -39,6 +40,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('payoneer');
@@ -56,6 +58,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'amount', 'currency', 'payee_id']);
@@ -88,6 +91,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->get("payments/{$orderId}", [], [
@@ -104,6 +108,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->delete("payments/{$orderId}", [], [
@@ -120,6 +125,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['payment_id', 'amount']);
@@ -142,6 +148,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->get("payments/{$refundId}", [], [
@@ -157,6 +164,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Payoneer Webhook 使用 HMAC 签名验证
@@ -184,6 +192,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @param array<string, string> $headers 请求头（含 X-Payoneer-Signature）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -206,6 +215,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @param string $payload 原始请求体（JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = json_decode($payload, true) ?: [];
@@ -286,6 +296,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'payoneer';
@@ -298,6 +309,7 @@ class PayoneerGateway extends AbstractGateway implements BalanceCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

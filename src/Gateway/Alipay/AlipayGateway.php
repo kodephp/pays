@@ -51,6 +51,7 @@ class AlipayGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['app_id', 'private_key', 'public_key']);
@@ -59,6 +60,7 @@ class AlipayGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::SANDBOX_BASE_URL : self::PROD_BASE_URL;
@@ -71,6 +73,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'subject']);
@@ -106,6 +109,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $bizContent = [];
@@ -128,6 +132,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'refund_amount']);
@@ -156,6 +161,7 @@ class AlipayGateway extends AbstractGateway implements
      * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['sign'])) {
@@ -201,6 +207,7 @@ class AlipayGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（支付宝通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -216,6 +223,7 @@ class AlipayGateway extends AbstractGateway implements
      * @param string $payload 原始请求体（form-urlencoded 或 JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->parseAlipayNotify($payload);
@@ -236,6 +244,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $bizContent = [
@@ -256,6 +265,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function singleTransfer(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
@@ -289,6 +299,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function batchTransfer(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'transfer_detail_list']);
@@ -333,6 +344,7 @@ class AlipayGateway extends AbstractGateway implements
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function queryTransfer(string $outBizNo): array
     {
         $bizContent = [
@@ -357,6 +369,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed> 含回单查询元数据与（就绪时的）file_content
      * @throws PayException
      */
+    #[\Override]
     public function transferReceipt(string $outBizNo): array
     {
         $bizContent = ['out_biz_no' => $outBizNo];
@@ -386,6 +399,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function sendRedPacket(array $params): array
     {
         $this->validateRequired($params, [
@@ -421,6 +435,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function groupRedPacket(array $params): array
     {
         $this->validateRequired($params, [
@@ -462,6 +477,7 @@ class AlipayGateway extends AbstractGateway implements
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function queryRedPacket(string $mchBillNo): array
     {
         $bizContent = [
@@ -481,6 +497,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createQrCode(array $params): array
     {
         $this->validateRequired($params, ['amount', 'description']);
@@ -514,6 +531,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRecords(array $params): array
     {
         $bizContent = [
@@ -533,6 +551,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function withdraw(array $params): array
     {
         $this->validateRequired($params, ['amount', 'bank_card_no', 'real_name', 'out_biz_no']);
@@ -563,6 +582,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryWithdraw(string $outBizNo): array
     {
         $bizContent = [
@@ -586,6 +606,7 @@ class AlipayGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function applyRefund(array $params): array
     {
         $bizContent = [
@@ -615,6 +636,7 @@ class AlipayGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function queryRefund(string $outRefundNo): array
     {
         $requestParams = $this->buildRequestParams('alipay.trade.fastpay.refund.query', [
@@ -630,6 +652,7 @@ class AlipayGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function cancelRefund(string $outRefundNo): array
     {
         throw PayException::methodNotSupported('alipay', 'cancelRefund');
@@ -646,6 +669,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed> 含下载地址、原始响应、记录列表
      * @throws PayException
      */
+    #[\Override]
     public function downloadBill(array $params): array
     {
         $this->validateRequired($params, ['bill_date']);
@@ -770,6 +794,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed> 含 file_id / status / download_url / file_content（PDF 二进制）/ raw_data
      * @throws PayException
      */
+    #[\Override]
     public function downloadFundFlow(array $params): array
     {
         if (isset($params['file_id']) && $params['file_id'] !== '') {
@@ -901,6 +926,7 @@ class AlipayGateway extends AbstractGateway implements
      * @param string $rawData 原始对账单 CSV
      * @return array<int, array<string, mixed>> 解析后的交易记录列表
      */
+    #[\Override]
     public function parseBill(string $rawData): array
     {
         return $this->parseAlipayBill($rawData);
@@ -982,6 +1008,7 @@ class AlipayGateway extends AbstractGateway implements
      *                              total_amount（总余额，分）/ currency / raw
      * @throws PayException
      */
+    #[\Override]
     public function queryBalance(array $params = []): array
     {
         $bizContent = ['account_type' => $params['account_type'] ?? 'ACCTRANS_ACCOUNT'];
@@ -1016,6 +1043,7 @@ class AlipayGateway extends AbstractGateway implements
      * @param array<string, mixed> $params 可选参数
      * @throws PayException
      */
+    #[\Override]
     public function queryDayEndBalance(string $date, array $params = []): array
     {
         throw PayException::methodNotSupported('alipay', 'queryDayEndBalance');
@@ -1038,6 +1066,7 @@ class AlipayGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'alipay';
@@ -1050,6 +1079,7 @@ class AlipayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

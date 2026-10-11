@@ -402,6 +402,7 @@ final class Money
      *
      * @return string
      */
+    #[\Override]
     public function __toString(): string
     {
         return $this->format();

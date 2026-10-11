@@ -38,6 +38,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['merchant_id', 'access_key', 'secret_key', 'client_id']);
@@ -46,6 +47,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('amazon');
@@ -66,6 +68,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'currency', 'amazon_order_reference_id']);
@@ -111,6 +114,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->post('live/v2/getOrderReferenceDetails', [
@@ -128,6 +132,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['amazon_capture_id', 'refund_amount']);
@@ -150,6 +155,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->post('live/v2/getRefundDetails', [
@@ -166,6 +172,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['Signature'])) {
@@ -192,6 +199,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, string> $headers 请求头（Amazon IPN 签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -212,6 +220,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @param string $payload 原始请求体（JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = json_decode($payload, true);
@@ -232,6 +241,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->post('live/v2/closeOrderReference', [
@@ -245,6 +255,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'amazon';
@@ -257,6 +268,7 @@ class AmazonGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

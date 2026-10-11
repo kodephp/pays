@@ -29,6 +29,7 @@ class GoogleGateway extends AbstractGateway
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['merchant_id', 'merchant_name', 'gateway_merchant_id']);
@@ -37,6 +38,7 @@ class GoogleGateway extends AbstractGateway
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('google');
@@ -57,6 +59,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'currency', 'payment_token']);
@@ -86,6 +89,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->post('v1/paymentgateway/payment/query', [
@@ -103,6 +107,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'refund_amount']);
@@ -124,6 +129,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->post('v1/paymentgateway/payment/queryRefund', [
@@ -140,6 +146,7 @@ class GoogleGateway extends AbstractGateway
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['payment_token'])) {
@@ -158,6 +165,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->post('v1/paymentgateway/payment/close', [
@@ -171,6 +179,7 @@ class GoogleGateway extends AbstractGateway
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'google';
@@ -183,6 +192,7 @@ class GoogleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

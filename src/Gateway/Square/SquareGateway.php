@@ -37,6 +37,7 @@ class SquareGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['application_id', 'access_token']);
@@ -45,6 +46,7 @@ class SquareGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $env = $this->getConfig('environment');
@@ -63,6 +65,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['source_id', 'amount', 'currency']);
@@ -96,6 +99,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -110,6 +114,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['payment_id', 'amount', 'currency']);
@@ -139,6 +144,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -152,6 +158,7 @@ class SquareGateway extends AbstractGateway implements
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Square Webhook 验签依赖原始请求体，数组入参无法承载，统一引导走 verifyWebhook
@@ -168,6 +175,7 @@ class SquareGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（含 X-Square-Signature）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $signatureKey = $this->getConfig('webhook_signature_key', '');
@@ -192,6 +200,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException 报文非合法 JSON 时
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -212,6 +221,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -559,6 +569,7 @@ class SquareGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'square';
@@ -571,6 +582,7 @@ class SquareGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

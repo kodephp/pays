@@ -58,6 +58,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['mch_id', 'serial_no', 'private_key', 'api_key']);
@@ -66,6 +67,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::TEST_BASE_URL : self::PROD_BASE_URL;
@@ -78,6 +80,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'description', 'amount', 'notify_url']);
@@ -213,6 +216,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->signedGet("pay/transactions/out-trade-no/{$orderId}", [
@@ -227,6 +231,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->signedPost("pay/transactions/out-trade-no/{$orderId}/close", [
@@ -241,6 +246,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_refund_no', 'out_trade_no', 'amount']);
@@ -333,6 +339,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['signature'], $data['timestamp'], $data['nonce'], $data['serial'])) {
@@ -361,6 +368,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      *   （Wechatpay-Signature / Wechatpay-Timestamp / Wechatpay-Nonce / Wechatpay-Serial）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $signature = $this->webhookHeader($headers, 'Wechatpay-Signature');
@@ -387,6 +395,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException 报文非合法 JSON 或 resource 解密失败时
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -470,6 +479,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'wechat_v3';
@@ -1289,6 +1299,7 @@ class WechatPayV3Gateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         // V3 部分接口（如关单）成功时返回 204 No Content，空响应体即代表成功

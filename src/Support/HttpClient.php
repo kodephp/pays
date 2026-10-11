@@ -101,6 +101,7 @@ class HttpClient implements HttpClientInterface
      * @return string 响应体
      * @throws GuzzleException
      */
+    #[\Override]
     public function get(string $url, array $query = [], array $headers = []): string
     {
         return $this->requestWithRetry('GET', $url, [
@@ -118,6 +119,7 @@ class HttpClient implements HttpClientInterface
      * @return string 响应体
      * @throws GuzzleException
      */
+    #[\Override]
     public function post(string $url, array $data = [], array $headers = []): string
     {
         $options = ['headers' => $headers];
@@ -143,6 +145,7 @@ class HttpClient implements HttpClientInterface
      * @return string 响应体
      * @throws GuzzleException
      */
+    #[\Override]
     public function postRaw(string $url, string $body, array $headers = [], array $options = []): string
     {
         return $this->requestWithRetry('POST', $url, array_merge([
@@ -160,6 +163,7 @@ class HttpClient implements HttpClientInterface
      * @return string 响应体
      * @throws GuzzleException
      */
+    #[\Override]
     public function put(string $url, array $data = [], array $headers = []): string
     {
         $options = ['headers' => $headers];
@@ -184,6 +188,7 @@ class HttpClient implements HttpClientInterface
      * @return string 响应体
      * @throws GuzzleException
      */
+    #[\Override]
     public function delete(string $url, array $query = [], array $headers = []): string
     {
         return $this->requestWithRetry('DELETE', $url, [

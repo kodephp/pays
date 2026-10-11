@@ -29,6 +29,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['app_id', 'app_secret', 'merchant_id']);
@@ -37,6 +38,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('kuaishou');
@@ -54,6 +56,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'subject', 'notify_url']);
@@ -89,6 +92,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $requestData = [
@@ -111,6 +115,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'refund_amount']);
@@ -141,6 +146,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $requestData = [
@@ -162,6 +168,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['sign'])) {
@@ -184,6 +191,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, string> $headers 请求头（快手通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -199,6 +207,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @param string $payload 原始请求体（form-urlencoded 或 JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->parseNotifyPayload($payload);
@@ -219,6 +228,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $requestData = [
@@ -237,6 +247,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'kuaishou';
@@ -249,6 +260,7 @@ class KuaishouGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

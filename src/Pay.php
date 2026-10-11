@@ -41,6 +41,7 @@ class Pay extends \Kode\Pays\Facade\Pay
      * @return GatewayInterface 网关实例
      * @throws PayException
      */
+    #[\Override]
     public static function create(string $gateway, array $config, ?HttpClient $httpClient = null): GatewayInterface
     {
         return GatewayFactory::create($gateway, $config, $httpClient);
@@ -53,6 +54,7 @@ class Pay extends \Kode\Pays\Facade\Pay
      * @param class-string<GatewayInterface> $class 网关类全限定名
      * @throws PayException
      */
+    #[\Override]
     public static function register(string $name, string $class): void
     {
         GatewayFactory::register($name, $class);
@@ -63,6 +65,7 @@ class Pay extends \Kode\Pays\Facade\Pay
      *
      * @return string[]
      */
+    #[\Override]
     public static function getGateways(): array
     {
         return GatewayFactory::getNames();
@@ -74,6 +77,7 @@ class Pay extends \Kode\Pays\Facade\Pay
      * @param string $gateway 网关标识
      * @return bool
      */
+    #[\Override]
     public static function has(string $gateway): bool
     {
         return GatewayFactory::has($gateway);

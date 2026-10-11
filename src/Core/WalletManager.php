@@ -158,16 +158,13 @@ class WalletManager
             return ['success' => false, 'message' => '用户未绑定任何钱包'];
         }
 
-        $found = false;
+        $found = array_find(
+            $this->wallets[$userId],
+            static fn(array $wallet): bool => $wallet['id'] === $walletId
+        ) !== null;
         $this->wallets[$userId] = array_values(array_filter(
             $this->wallets[$userId],
-            function (array $wallet) use ($walletId, &$found): bool {
-                if ($wallet['id'] === $walletId) {
-                    $found = true;
-                    return false;
-                }
-                return true;
-            }
+            static fn(array $wallet): bool => $wallet['id'] !== $walletId
         ));
 
         return [

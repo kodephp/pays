@@ -67,11 +67,13 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         'DAI' => 'dai',
     ];
 
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['api_key']);
     }
 
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('coinbase');
@@ -82,6 +84,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         return 'https://api.commerce.coinbase.com/';
     }
 
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount']);
@@ -126,6 +129,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createCryptoOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'crypto_amount', 'crypto_currency']);
@@ -172,6 +176,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @param string $orderId Charge ID
      * @return array<string, array<string, mixed>> 各币种收款地址
      */
+    #[\Override]
     public function getPaymentAddresses(string $orderId): array
     {
         $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
@@ -195,6 +200,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @param string $orderId Charge ID
      * @return array<string, mixed> 各币种的确认数信息
      */
+    #[\Override]
     public function getConfirmations(string $orderId): array
     {
         $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
@@ -223,6 +229,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @param string $fiatCurrency 法币代码
      * @return array<string, mixed>
      */
+    #[\Override]
     public function getExchangeRate(string $cryptoCurrency, string $fiatCurrency = 'USD'): array
     {
         $response = $this->get('v2/exchange-rates', [
@@ -240,6 +247,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         ];
     }
 
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $response = $this->get("v2/charges/{$orderId}", [], $this->resolveHeader());
@@ -258,6 +266,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         ];
     }
 
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return [
@@ -267,6 +276,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         ];
     }
 
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['charge_id']);
@@ -277,11 +287,13 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         ], $this->resolveHeader());
     }
 
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->get("v2/charges/{$refundId}");
     }
 
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         $signature = $_SERVER['HTTP_X_CC_WEBHOOK_SIGNATURE'] ?? '';
@@ -305,6 +317,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @param array<string, string> $headers 请求头（含 X-Cc-Webhook-Signature）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $signature = $this->webhookHeader($headers, 'X-Cc-Webhook-Signature');
@@ -327,6 +340,7 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -340,11 +354,13 @@ class CoinbaseGateway extends AbstractGateway implements CryptoCapableInterface,
         ];
     }
 
+    #[\Override]
     public static function getName(): string
     {
         return 'coinbase';
     }
 
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

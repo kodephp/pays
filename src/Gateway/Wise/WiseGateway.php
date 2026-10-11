@@ -31,6 +31,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['api_key', 'profile_id']);
@@ -39,6 +40,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('wise');
@@ -56,6 +58,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @return array<string, mixed> 转账响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'source_currency', 'target_currency', 'amount']);
@@ -147,6 +150,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->get("v1/transfers/{$orderId}", [], [
@@ -161,6 +165,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->put("v1/transfers/{$orderId}/cancel", [], [
@@ -175,6 +180,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @param array<string, mixed> $params 退款参数
      * @return array<string, mixed>
      */
+    #[\Override]
     public function refund(array $params): array
     {
         return [
@@ -189,6 +195,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @param string $refundId 退款单号
      * @return array<string, mixed>
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return [
@@ -203,6 +210,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Wise Webhook 使用签名验证
@@ -230,6 +238,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @param array<string, string> $headers 请求头（含 X-Signature-SHA256）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -252,6 +261,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @param string $payload 原始请求体（JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = json_decode($payload, true) ?: [];
@@ -268,6 +278,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'wise';
@@ -328,6 +339,7 @@ class WiseGateway extends AbstractGateway implements BalanceCapableInterface, We
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

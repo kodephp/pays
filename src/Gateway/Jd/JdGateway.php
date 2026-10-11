@@ -43,6 +43,7 @@ class JdGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['merchant_no', 'des_key', 'md5_key']);
@@ -51,6 +52,7 @@ class JdGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('jd');
@@ -68,6 +70,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'subject', 'notify_url']);
@@ -106,6 +109,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $requestData = [
@@ -126,6 +130,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'refund_amount']);
@@ -154,6 +159,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $requestData = [
@@ -173,6 +179,7 @@ class JdGateway extends AbstractGateway implements
      * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['sign'])) {
@@ -195,6 +202,7 @@ class JdGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（京东通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -210,6 +218,7 @@ class JdGateway extends AbstractGateway implements
      * @param string $payload 原始请求体（form-urlencoded 或 JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->parseNotifyPayload($payload);
@@ -230,6 +239,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $requestData = [
@@ -246,6 +256,7 @@ class JdGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'jd';
@@ -258,6 +269,7 @@ class JdGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

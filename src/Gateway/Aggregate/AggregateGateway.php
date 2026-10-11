@@ -62,6 +62,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $lastException = null;
@@ -99,6 +100,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         // 优先使用创建订单时记录的渠道查询
@@ -118,6 +120,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $channel = $this->channels[0] ?? null;
@@ -136,6 +139,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $channel = $this->channels[0] ?? null;
@@ -155,6 +159,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         foreach ($this->channels as $channel) {
@@ -183,6 +188,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @param array<string, string> $headers 请求头
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         foreach ($this->channels as $channel) {
@@ -214,6 +220,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException 报文无法被任何子网关解析时
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         foreach ($this->channels as $channel) {
@@ -251,6 +258,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $channel = $this->channels[0] ?? null;
@@ -265,6 +273,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'aggregate';
@@ -278,6 +287,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @param \Kode\Pays\Event\EventDispatcher $dispatcher
      * @return void
      */
+    #[\Override]
     public function setDispatcher(\Kode\Pays\Event\EventDispatcher $dispatcher): void
     {
         // 聚合网关按渠道动态创建子网关，分发器在创建时由工厂注入或后续设置
@@ -292,6 +302,7 @@ class AggregateGateway implements GatewayInterface, WebhookCapableInterface
      * @param \Kode\Pays\Support\HttpClient $httpClient
      * @return void
      */
+    #[\Override]
     public function setHttpClient(\Kode\Pays\Support\HttpClient $httpClient): void
     {
         // 子网关在 GatewayFactory::create() 时使用各自配置创建

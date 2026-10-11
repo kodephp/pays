@@ -45,11 +45,13 @@ use Kode\Pays\Exception\GatewayException;
  */
 class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
 {
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['merchant_id', 'secret_key']);
     }
 
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('afterpay');
@@ -68,6 +70,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
         };
     }
 
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'consumer']);
@@ -110,6 +113,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $response = $this->get("v2/payments/{$orderId}", [], $this->resolveHeader());
@@ -138,6 +142,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
         ]);
     }
 
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['order_id']);
@@ -154,16 +159,19 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
         return $this->post('v2/payments/refund', $requestData, $this->resolveHeader());
     }
 
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->get("v2/payments/{$refundId}", [], $this->resolveHeader());
     }
 
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->post("v2/payments/{$orderId}/void", [], $this->resolveHeader());
     }
 
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Afterpay 使用 Basic Auth 验证回调（与运行时耦合的旧实现，保留以兼容 GatewayInterface）
@@ -189,6 +197,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, string> $headers 请求头（取 Authorization）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -211,6 +220,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
      * @param string $payload 原始请求体（JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = json_decode($payload, true);
@@ -224,11 +234,13 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public static function getName(): string
     {
         return 'afterpay';
     }
 
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

@@ -54,6 +54,7 @@ class AdyenGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['api_key', 'merchant_account']);
@@ -62,6 +63,7 @@ class AdyenGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $env = $this->getConfig('environment', 'test');
@@ -76,6 +78,7 @@ class AdyenGateway extends AbstractGateway implements
      * @return array<string, mixed> 会话响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['amount', 'currency', 'reference']);
@@ -118,6 +121,7 @@ class AdyenGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -134,6 +138,7 @@ class AdyenGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['original_reference', 'amount', 'currency']);
@@ -215,6 +220,7 @@ class AdyenGateway extends AbstractGateway implements
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Adyen 通知签名：对通知内容做 HMAC-SHA256，使用独立的 HMAC 密钥（非 api_key）
@@ -243,6 +249,7 @@ class AdyenGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（Adyen 签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -273,6 +280,7 @@ class AdyenGateway extends AbstractGateway implements
      * @param string $payload 原始请求体（form-urlencoded）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         parse_str($payload, $data);
@@ -298,6 +306,7 @@ class AdyenGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -946,6 +955,7 @@ class AdyenGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'adyen';
@@ -958,6 +968,7 @@ class AdyenGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

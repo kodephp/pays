@@ -82,6 +82,7 @@ class UnionPayGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['mer_id', 'cert_path', 'cert_pwd']);
@@ -90,6 +91,7 @@ class UnionPayGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::TEST_BASE_URL : self::PROD_BASE_URL;
@@ -102,6 +104,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['orderId', 'txnAmt', 'currency']);
@@ -136,6 +139,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $requestData = [
@@ -163,6 +167,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['orderId', 'origQryId', 'txnAmt']);
@@ -195,6 +200,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->queryOrder($refundId);
@@ -206,6 +212,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['signature'])) {
@@ -229,6 +236,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（银联通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -246,6 +254,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @param string $payload 原始请求体（form-urlencoded）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         parse_str($payload, $data);
@@ -267,6 +276,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         throw PayException::gatewayError('云闪付暂不支持主动关闭订单');
@@ -285,6 +295,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createProfitSharing(array $params): array
     {
         $this->validateRequired($params, ['out_order_no', 'transaction_id', 'receivers']);
@@ -320,6 +331,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestData = [
@@ -351,6 +363,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function returnProfitSharing(array $params): array
     {
         $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
@@ -387,6 +400,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryProfitSharingReturn(string $outReturnNo): array
     {
         $requestData = [
@@ -415,6 +429,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
         $requestData = [
@@ -628,6 +643,7 @@ class UnionPayGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'unionpay';
@@ -640,6 +656,7 @@ class UnionPayGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

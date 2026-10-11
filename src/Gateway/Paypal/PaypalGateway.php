@@ -46,6 +46,7 @@ class PaypalGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['client_id', 'client_secret']);
@@ -54,6 +55,7 @@ class PaypalGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::SANDBOX_BASE_URL : self::PROD_BASE_URL;
@@ -66,6 +68,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['intent', 'purchase_units']);
@@ -85,6 +88,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = [
@@ -101,6 +105,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['capture_id']);
@@ -126,6 +131,7 @@ class PaypalGateway extends AbstractGateway implements
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // 历史遗留占位在 v2.7.0 移除：已解析数组缺请求头/证书链，无法做真实验签，
@@ -259,6 +265,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = [
@@ -278,6 +285,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createPlan(array $params): array
     {
         $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
@@ -325,6 +333,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createSubscription(array $params): array
     {
         $this->validateRequired($params, ['plan_id']);
@@ -356,6 +365,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function cancelSubscription(string $subscriptionId): array
     {
         $headers = [
@@ -375,6 +385,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function pauseSubscription(string $subscriptionId): array
     {
         $headers = [
@@ -394,6 +405,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function resumeSubscription(string $subscriptionId): array
     {
         $headers = [
@@ -413,6 +425,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function getSubscription(string $subscriptionId): array
     {
         $headers = [
@@ -433,6 +446,7 @@ class PaypalGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function applyRefund(array $params): array
     {
         $captureId = $params['transaction_id'] ?? '';
@@ -465,6 +479,7 @@ class PaypalGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function queryRefund(string $outRefundNo): array
     {
         $headers = [
@@ -481,6 +496,7 @@ class PaypalGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function cancelRefund(string $outRefundNo): array
     {
         throw PayException::methodNotSupported('paypal', 'cancelRefund');
@@ -489,6 +505,7 @@ class PaypalGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'paypal';
@@ -501,6 +518,7 @@ class PaypalGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

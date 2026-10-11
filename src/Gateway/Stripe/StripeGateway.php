@@ -49,6 +49,7 @@ class StripeGateway extends AbstractGateway implements
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['secret_key']);
@@ -57,6 +58,7 @@ class StripeGateway extends AbstractGateway implements
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::TEST_BASE_URL : self::PROD_BASE_URL;
@@ -69,6 +71,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['amount', 'currency']);
@@ -104,6 +107,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -118,6 +122,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['payment_intent']);
@@ -145,6 +150,7 @@ class StripeGateway extends AbstractGateway implements
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Stripe webhook 头格式：Stripe-Signature: t=xxx,v1=yyy[,v1=zzz]
@@ -200,6 +206,7 @@ class StripeGateway extends AbstractGateway implements
      * @param array<string, string> $headers 请求头（含 Stripe-Signature）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $sigHeader = $this->webhookHeader($headers, 'Stripe-Signature');
@@ -248,6 +255,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -268,6 +276,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = $this->buildAuthHeaders();
@@ -322,6 +331,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function singleTransfer(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'amount', 'recipient']);
@@ -349,6 +359,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function batchTransfer(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'transfer_detail_list']);
@@ -382,6 +393,7 @@ class StripeGateway extends AbstractGateway implements
      *
      * @return array<string, mixed>
      */
+    #[\Override]
     public function queryTransfer(string $outBizNo): array
     {
         return $this->get('v1/payouts', [
@@ -396,6 +408,7 @@ class StripeGateway extends AbstractGateway implements
      *
      * @throws PayException
      */
+    #[\Override]
     public function transferReceipt(string $outBizNo): array
     {
         throw PayException::methodNotSupported('stripe', 'transferReceipt');
@@ -410,6 +423,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createPlan(array $params): array
     {
         $this->validateRequired($params, ['name', 'amount', 'currency', 'interval']);
@@ -434,6 +448,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createSubscription(array $params): array
     {
         $this->validateRequired($params, ['customer_id', 'plan_id']);
@@ -454,6 +469,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function cancelSubscription(string $subscriptionId): array
     {
         return $this->post("v1/subscriptions/{$subscriptionId}", [
@@ -468,6 +484,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function pauseSubscription(string $subscriptionId): array
     {
         return $this->post("v1/subscriptions/{$subscriptionId}", [
@@ -482,6 +499,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function resumeSubscription(string $subscriptionId): array
     {
         return $this->post("v1/subscriptions/{$subscriptionId}", [
@@ -496,6 +514,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function getSubscription(string $subscriptionId): array
     {
         return $this->get("v1/subscriptions/{$subscriptionId}", [], $this->buildAuthHeaders());
@@ -508,6 +527,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createQrCode(array $params): array
     {
         $this->validateRequired($params, ['amount', 'description']);
@@ -545,6 +565,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRecords(array $params): array
     {
         $startTime = strtotime($params['start_time'] ?? '-30 days');
@@ -568,6 +589,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function withdraw(array $params): array
     {
         $this->validateRequired($params, ['out_biz_no', 'amount']);
@@ -603,6 +625,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryWithdraw(string $outBizNo): array
     {
         if (str_starts_with($outBizNo, 'meta:')) {
@@ -631,6 +654,7 @@ class StripeGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function applyRefund(array $params): array
     {
         $requestData = [
@@ -654,6 +678,7 @@ class StripeGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function queryRefund(string $outRefundNo): array
     {
         return $this->get('v1/refunds', [
@@ -672,6 +697,7 @@ class StripeGateway extends AbstractGateway implements
      * @throws PayException
      */
 
+    #[\Override]
     public function cancelRefund(string $outRefundNo): array
     {
         $refunds = $this->queryRefund($outRefundNo);
@@ -706,6 +732,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed> Balance Transaction 列表
      * @throws PayException
      */
+    #[\Override]
     public function downloadBill(array $params): array
     {
         $this->validateRequired($params, ['bill_date']);
@@ -727,6 +754,7 @@ class StripeGateway extends AbstractGateway implements
      *
      * @throws PayException
      */
+    #[\Override]
     public function downloadFundFlow(array $params): array
     {
         throw PayException::methodNotSupported('stripe', 'downloadFundFlow');
@@ -738,6 +766,7 @@ class StripeGateway extends AbstractGateway implements
      * @param string $rawData 原始对账单 JSON
      * @return array<int, array<string, mixed>> 解析后的交易记录列表
      */
+    #[\Override]
     public function parseBill(string $rawData): array
     {
         return $this->parseStripeBill($rawData);
@@ -789,6 +818,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed> 含 available_amount / pending_amount / currency / raw
      * @throws PayException
      */
+    #[\Override]
     public function queryBalance(array $params = []): array
     {
         $response = $this->get('v1/balance', [], [
@@ -816,6 +846,7 @@ class StripeGateway extends AbstractGateway implements
      * @param array<string, mixed> $params 可选参数
      * @throws PayException
      */
+    #[\Override]
     public function queryDayEndBalance(string $date, array $params = []): array
     {
         throw PayException::methodNotSupported('stripe', 'queryDayEndBalance');
@@ -824,6 +855,7 @@ class StripeGateway extends AbstractGateway implements
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'stripe';
@@ -836,6 +868,7 @@ class StripeGateway extends AbstractGateway implements
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

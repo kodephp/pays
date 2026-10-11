@@ -37,6 +37,7 @@ class KlarnaGateway extends AbstractGateway
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['username', 'password']);
@@ -45,6 +46,7 @@ class KlarnaGateway extends AbstractGateway
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('klarna');
@@ -80,6 +82,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'currency', 'items']);
@@ -135,6 +138,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->get("ordermanagement/v1/orders/{$orderId}", [], $this->buildAuthHeaders());
@@ -147,6 +151,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['order_id', 'refund_amount']);
@@ -173,6 +178,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->get("ordermanagement/v1/refunds/{$refundId}", [], $this->buildAuthHeaders());
@@ -184,6 +190,7 @@ class KlarnaGateway extends AbstractGateway
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Klarna 异步通知不携带任何签名（仅经 HTTPS 传输），无法在网关侧做密码学验签；
@@ -198,6 +205,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->post("ordermanagement/v1/orders/{$orderId}/cancel", [], $this->buildAuthHeaders());
@@ -206,6 +214,7 @@ class KlarnaGateway extends AbstractGateway
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'klarna';
@@ -240,6 +249,7 @@ class KlarnaGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

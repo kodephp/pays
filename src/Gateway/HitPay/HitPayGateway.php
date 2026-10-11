@@ -58,6 +58,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['api_key']);
@@ -66,6 +67,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::TEST_BASE_URL : self::PROD_BASE_URL;
@@ -85,6 +87,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount']);
@@ -123,6 +126,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $headers = $this->resolveHeader();
@@ -137,6 +141,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $headers = $this->resolveHeader();
@@ -154,6 +159,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['payment_request_id', 'refund_amount']);
@@ -182,6 +188,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $headers = $this->resolveHeader();
@@ -195,6 +202,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         $signature = $_SERVER['HTTP_X_HITPAY_SIGNATURE'] ?? '';
@@ -218,6 +226,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, string> $headers 请求头（含 X-Hitpay-Signature）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         $signature = $this->webhookHeader($headers, 'X-Hitpay-Signature');
@@ -238,6 +247,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->decodeJson($payload);
@@ -254,6 +264,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'hitpay';
@@ -266,6 +277,7 @@ class HitPayGateway extends AbstractGateway implements WebhookCapableInterface
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

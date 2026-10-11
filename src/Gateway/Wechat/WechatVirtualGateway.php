@@ -132,6 +132,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
      */
     protected const REFUND_NO_PATTERN = '/^[A-Za-z0-9_\-]{8,31}$/';
 
+    #[\Override]
     public function createOrder(array $params): array
     {
         $mode = (string) ($params['mode'] ?? self::MODE_GOODS);
@@ -173,6 +174,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         ];
     }
 
+    #[\Override]
     public function queryVirtualOrder(string $orderId, array $context = []): array
     {
         if ($orderId === '') {
@@ -193,6 +195,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         return $this->requestXpay('/xpay/query_order', $payload, self::SIGN_PAY);
     }
 
+    #[\Override]
     public function refundVirtualOrder(array $params): array
     {
         $refundOrderId = $this->requireString($params, 'refund_order_id');
@@ -250,6 +253,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         return $this->requestXpay('/xpay/refund_order', $payload, self::SIGN_PAY);
     }
 
+    #[\Override]
     public function notifyProvideGoods(array $params): array
     {
         if (empty($params['order_id']) && empty($params['wx_order_id'])) {
@@ -265,6 +269,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         return $this->requestXpay('/xpay/notify_provide_goods', $payload, self::SIGN_NONE);
     }
 
+    #[\Override]
     public function queryTokenBalance(string $openid, array $context = []): array
     {
         return $this->requestXpay('/xpay/query_user_balance', [
@@ -274,6 +279,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         ], self::SIGN_BOTH);
     }
 
+    #[\Override]
     public function deductTokens(array $params): array
     {
         $amount = (int) ($params['amount'] ?? 0);
@@ -296,6 +302,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         ], self::SIGN_BOTH);
     }
 
+    #[\Override]
     public function refundTokens(array $params): array
     {
         $amount = (int) ($params['amount'] ?? 0);
@@ -321,6 +328,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         ], self::SIGN_BOTH);
     }
 
+    #[\Override]
     public function giftTokens(array $params): array
     {
         $amount = (int) ($params['amount'] ?? 0);
@@ -340,6 +348,7 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         ], self::SIGN_NONE);
     }
 
+    #[\Override]
     public function downloadVirtualBill(array $params): array
     {
         $beginDs = (int) ($params['begin_ds'] ?? 0);
@@ -451,16 +460,19 @@ class WechatVirtualGateway extends AbstractGateway implements VirtualPayCapableI
         return hash_equals(hash('sha1', implode('', $parts)), $candidate);
     }
 
+    #[\Override]
     public static function getName(): string
     {
         return 'wechat_virtual';
     }
 
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return rtrim((string) $this->getConfig('base_url', 'https://api.weixin.qq.com'), '/');
     }
 
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = json_decode($response, true);

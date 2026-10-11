@@ -41,6 +41,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
 {
     use WechatV3SigningTrait;
 
+    #[\Override]
     protected function initialize(): void
     {
         // QQ 支付基于微信 V3 协议，所有请求需 WECHATPAY2-SHA256-RSA2048 鉴权头
@@ -49,6 +50,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ]);
     }
 
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('qq');
@@ -61,6 +63,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
             : 'https://api.qpay.qq.com/';
     }
 
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'trade_type']);
@@ -103,6 +106,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         // QQ 支付支持通过 transaction_id 或 out_trade_no 查询
@@ -126,6 +130,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'out_refund_no', 'refund_fee', 'total_fee']);
@@ -150,6 +155,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $response = $this->signedV3Get("v3/refund/domestic/refunds/{$refundId}");
@@ -165,6 +171,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         $response = $this->signedV3Post("v3/pay/transaction/out-trade-no/{$orderId}/close", []);
@@ -181,6 +188,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<int|string, mixed> $data 通知数据（form-urlencoded 解析结果）
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // 验证 QQ 支付异步通知签名
@@ -216,6 +224,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
      * @param array<string, string> $headers 请求头（QQ 通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -233,6 +242,7 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
      * @param string $payload 原始请求体（form-urlencoded）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         parse_str($payload, $data);
@@ -246,11 +256,13 @@ class QQGateway extends AbstractGateway implements WebhookCapableInterface
         ];
     }
 
+    #[\Override]
     public static function getName(): string
     {
         return 'qq';
     }
 
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

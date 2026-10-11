@@ -29,6 +29,7 @@ class AppleGateway extends AbstractGateway
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, [
@@ -41,6 +42,7 @@ class AppleGateway extends AbstractGateway
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         $url = SandboxManager::getBaseUrl('apple');
@@ -61,6 +63,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'total_amount', 'currency', 'payment_token']);
@@ -89,6 +92,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         return $this->post('paymentservices/payment/query', [
@@ -106,6 +110,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_trade_no', 'refund_amount']);
@@ -127,6 +132,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         return $this->post('paymentservices/payment/queryRefund', [
@@ -146,6 +152,7 @@ class AppleGateway extends AbstractGateway
      * @param array<string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         // Apple Pay 主要通过前端回调，服务端验证需校验 paymentToken 签名
@@ -165,6 +172,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         return $this->post('paymentservices/payment/close', [
@@ -178,6 +186,7 @@ class AppleGateway extends AbstractGateway
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'apple';
@@ -190,6 +199,7 @@ class AppleGateway extends AbstractGateway
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);

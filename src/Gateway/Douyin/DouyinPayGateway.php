@@ -33,6 +33,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     /**
      * 初始化
      */
+    #[\Override]
     protected function initialize(): void
     {
         $this->validateRequired($this->config, ['app_id', 'merchant_id', 'salt']);
@@ -41,6 +42,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     /**
      * 获取基础 URL
      */
+    #[\Override]
     protected function getBaseUrl(): string
     {
         return $this->sandbox ? self::TEST_BASE_URL : self::PROD_BASE_URL;
@@ -53,6 +55,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed> 支付响应
      * @throws PayException
      */
+    #[\Override]
     public function createOrder(array $params): array
     {
         $this->validateRequired($params, ['out_order_no', 'total_amount', 'subject', 'body', 'valid_time']);
@@ -89,6 +92,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryOrder(string $orderId): array
     {
         $requestData = [
@@ -112,6 +116,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function refund(array $params): array
     {
         $this->validateRequired($params, ['out_refund_no', 'refund_amount', 'reason']);
@@ -151,6 +156,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryRefund(string $refundId): array
     {
         $requestData = [
@@ -173,6 +179,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @param array<int|string, mixed> $data 通知数据
      * @return bool
      */
+    #[\Override]
     public function verifyNotify(array $data): bool
     {
         if (!isset($data['sign'])) {
@@ -195,6 +202,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @param array<string, string> $headers 请求头（抖音通知签名在报文体内，未使用）
      * @return bool
      */
+    #[\Override]
     public function verifyWebhook(string $payload, array $headers = []): bool
     {
         if ($payload === '') {
@@ -210,6 +218,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @param string $payload 原始请求体（form-urlencoded 或 JSON）
      * @return array<string, mixed>
      */
+    #[\Override]
     public function parseWebhook(string $payload): array
     {
         $data = $this->parseNotifyPayload($payload);
@@ -230,6 +239,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function closeOrder(string $orderId): array
     {
         throw PayException::gatewayError('抖音支付暂不支持主动关闭订单');
@@ -254,6 +264,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function createProfitSharing(array $params): array
     {
         $this->validateRequired($params, ['out_order_no', 'transaction_id', 'receivers']);
@@ -294,6 +305,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryProfitSharing(string $outOrderNo, ?string $transactionId = null): array
     {
         $requestData = [
@@ -326,6 +338,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function returnProfitSharing(array $params): array
     {
         $this->validateRequired($params, ['out_order_no', 'out_return_no', 'return_amount']);
@@ -348,6 +361,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function queryProfitSharingReturn(string $outReturnNo): array
     {
         return $this->queryRefund($outReturnNo);
@@ -365,6 +379,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     public function unfreezeProfitSharing(string $transactionId, ?string $outOrderNo = null): array
     {
         $outSettleNo = $outOrderNo ?? ('UNFREEZE_' . $transactionId . '_' . time());
@@ -390,6 +405,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
     /**
      * 获取网关标识
      */
+    #[\Override]
     public static function getName(): string
     {
         return 'douyin';
@@ -402,6 +418,7 @@ class DouyinPayGateway extends AbstractGateway implements ProfitSharingCapableIn
      * @return array<string, mixed>
      * @throws PayException
      */
+    #[\Override]
     protected function parseResponse(string $response): array
     {
         $data = $this->decodeJson($response);
