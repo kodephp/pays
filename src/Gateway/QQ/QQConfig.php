@@ -22,7 +22,7 @@ readonly class QQConfig implements ConfigInterface
     public function __construct(
         public string $appId,
         public string $mchId,
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $notifyUrl = '',
         public bool $sandbox = false,
     ) {

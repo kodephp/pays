@@ -23,7 +23,7 @@ readonly class WiseConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $profileId,
         public bool $sandbox = false,
     ) {

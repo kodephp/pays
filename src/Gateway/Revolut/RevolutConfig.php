@@ -23,7 +23,7 @@ readonly class RevolutConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $merchantId,
         public bool $sandbox = false,
     ) {

@@ -135,7 +135,7 @@ class AfterpayGateway extends AbstractGateway implements WebhookCapableInterface
      * @param string $token 授权令牌
      * @return array<string, mixed> 捕获结果
      */
-    public function capture(string $token): array
+    public function capture(#[\SensitiveParameter] string $token): array
     {
         return $this->post('v2/payments/capture', [
             'token' => $token,

@@ -22,7 +22,7 @@ readonly class DouyinConfig implements ConfigInterface
     public function __construct(
         public string $appId,
         public string $merchantId,
-        public string $salt,
+        #[\SensitiveParameter] public string $salt,
         public bool $sandbox = false,
     ) {
     }

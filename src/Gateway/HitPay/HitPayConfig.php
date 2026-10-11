@@ -21,7 +21,7 @@ use Kode\Pays\Contract\ConfigInterface;
 readonly class HitPayConfig implements ConfigInterface
 {
     public function __construct(
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $webhookSecret = '',
         public bool $sandbox = false,
     ) {

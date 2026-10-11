@@ -27,8 +27,8 @@ readonly class AmazonConfig implements ConfigInterface
      */
     public function __construct(
         public string $merchantId,
-        public string $accessKey,
-        public string $secretKey,
+        #[\SensitiveParameter] public string $accessKey,
+        #[\SensitiveParameter] public string $secretKey,
         public string $clientId,
         public string $region = 'na',
         public bool $sandbox = false,

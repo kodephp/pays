@@ -21,7 +21,7 @@ readonly class StripeConfig implements ConfigInterface
      * @param bool $sandbox 是否使用测试环境
      */
     public function __construct(
-        public string $secretKey,
+        #[\SensitiveParameter] public string $secretKey,
         public ?string $publishableKey = null,
         public ?string $webhookSecret = null,
         public string $apiVersion = '2024-06-20',

@@ -68,7 +68,7 @@ class KodeLimitingAdapter
      * @param int $tokens 需要的令牌数
      * @return bool
      */
-    public static function allow(string $key, int $tokens = 1): bool
+    public static function allow(string $key, #[\SensitiveParameter] int $tokens = 1): bool
     {
         $limiter = self::$limiters[$key] ?? null;
 
@@ -91,7 +91,7 @@ class KodeLimitingAdapter
      * @param int $timeout 超时时间（秒）
      * @return bool
      */
-    public static function wait(string $key, int $tokens = 1, int $timeout = 10): bool
+    public static function wait(string $key, #[\SensitiveParameter] int $tokens = 1, int $timeout = 10): bool
     {
         $limiter = self::$limiters[$key] ?? null;
 

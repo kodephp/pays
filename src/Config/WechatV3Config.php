@@ -27,8 +27,8 @@ readonly class WechatV3Config implements ConfigInterface
     public function __construct(
         public string $mchId,
         public string $serialNo,
-        public string $privateKey,
-        public string $apiKey,
+        #[\SensitiveParameter] public string $privateKey,
+        #[\SensitiveParameter] public string $apiKey,
         public ?string $appId = null,
         public bool $sandbox = false,
         public ?string $jsapiAppId = null,

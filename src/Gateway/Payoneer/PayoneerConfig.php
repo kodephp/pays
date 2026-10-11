@@ -24,7 +24,7 @@ readonly class PayoneerConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $apiSecret,
         public string $programId,
         public bool $sandbox = false,

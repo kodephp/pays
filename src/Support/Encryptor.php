@@ -274,7 +274,7 @@ class Encryptor
      * @return string 明文
      * @throws PayException
      */
-    public static function rsaDecrypt(string $ciphertext, string $privateKey): string
+    public static function rsaDecrypt(string $ciphertext, #[\SensitiveParameter] string $privateKey): string
     {
         $success = openssl_private_decrypt(
             base64_decode($ciphertext),
@@ -299,7 +299,7 @@ class Encryptor
      * @return string 签名值（base64）
      * @throws PayException
      */
-    public static function rsaSign(string $data, string $privateKey, string $algorithm = 'sha256'): string
+    public static function rsaSign(string $data, #[\SensitiveParameter] string $privateKey, string $algorithm = 'sha256'): string
     {
         $algo = self::getOpensslAlgorithm($algorithm);
 

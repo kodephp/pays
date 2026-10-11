@@ -62,7 +62,7 @@ class Signer
      * @return string 签名结果（Base64）
      * @throws PayException
      */
-    public static function rsa(array $params, string $privateKey, bool $isFile = false): string
+    public static function rsa(array $params, #[\SensitiveParameter] string $privateKey, bool $isFile = false): string
     {
         $string = self::buildQueryString($params);
         $key = self::loadPrivateKey($privateKey, $isFile);
@@ -83,7 +83,7 @@ class Signer
      * @return string 签名结果（Base64）
      * @throws PayException
      */
-    public static function rsa2(array $params, string $privateKey, bool $isFile = false): string
+    public static function rsa2(array $params, #[\SensitiveParameter] string $privateKey, bool $isFile = false): string
     {
         $string = self::buildQueryString($params);
         $key = self::loadPrivateKey($privateKey, $isFile);
@@ -200,7 +200,7 @@ class Signer
      * @return \OpenSSLAsymmetricKey 私钥对象
      * @throws PayException
      */
-    protected static function loadPrivateKey(string $privateKey, bool $isFile): \OpenSSLAsymmetricKey
+    protected static function loadPrivateKey(#[\SensitiveParameter] string $privateKey, bool $isFile): \OpenSSLAsymmetricKey
     {
         if ($isFile) {
             if (!file_exists($privateKey)) {

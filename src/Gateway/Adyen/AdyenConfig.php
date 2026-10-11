@@ -20,7 +20,7 @@ readonly class AdyenConfig implements ConfigInterface
      * @param string $environment 环境（test/live）
      */
     public function __construct(
-        public string $apiKey,
+        #[\SensitiveParameter] public string $apiKey,
         public string $merchantAccount,
         public ?string $clientKey = null,
         public string $environment = 'test',

@@ -20,7 +20,7 @@ readonly class AfterpayConfig implements ConfigInterface
 {
     public function __construct(
         public string $merchantId,
-        public string $secretKey,
+        #[\SensitiveParameter] public string $secretKey,
         public string $region = 'US',
         public bool $sandbox = false,
     ) {

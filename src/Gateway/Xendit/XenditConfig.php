@@ -22,7 +22,7 @@ use Kode\Pays\Contract\ConfigInterface;
 readonly class XenditConfig implements ConfigInterface
 {
     public function __construct(
-        public string $secretKey,
+        #[\SensitiveParameter] public string $secretKey,
         public string $publicKey = '',
         public string $callbackToken = '',
         public bool $sandbox = false,

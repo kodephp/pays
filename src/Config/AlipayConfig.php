@@ -22,7 +22,7 @@ readonly class AlipayConfig implements ConfigInterface
      */
     public function __construct(
         public string $appId,
-        public string $privateKey,
+        #[\SensitiveParameter] public string $privateKey,
         public string $publicKey,
         public ?string $appAuthToken = null,
         public bool $sandbox = false,

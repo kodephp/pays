@@ -116,7 +116,7 @@ class KodeToolsCryptoAdapter
      * @return string 明文
      * @throws PayException
      */
-    public static function rsaDecrypt(string $ciphertext, string $privateKey): string
+    public static function rsaDecrypt(string $ciphertext, #[\SensitiveParameter] string $privateKey): string
     {
         if (class_exists(\Kode\Tools\Crypto\Rsa::class)) {
             return \Kode\Tools\Crypto\Rsa::decrypt($ciphertext, $privateKey);
@@ -134,7 +134,7 @@ class KodeToolsCryptoAdapter
      * @return string 签名值（base64）
      * @throws PayException
      */
-    public static function rsaSign(string $data, string $privateKey, string $algorithm = 'sha256'): string
+    public static function rsaSign(string $data, #[\SensitiveParameter] string $privateKey, string $algorithm = 'sha256'): string
     {
         if (class_exists(\Kode\Tools\Crypto\Rsa::class)) {
             return \Kode\Tools\Crypto\Rsa::sign($data, $privateKey, $algorithm);
