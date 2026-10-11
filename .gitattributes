@@ -1,0 +1,9 @@
+# Composer 分发归档导出规则：仅影响分发 zip，不影响 git 仓库内容。
+/tests/                export-ignore
+/docs/                 export-ignore
+/.github/              export-ignore
+/.gitignore            export-ignore
+/.gitattributes        export-ignore
+/phpunit.xml           export-ignore
+/.workbuddy/           export-ignore
+/phpunit.xml.dist      export-ignore
