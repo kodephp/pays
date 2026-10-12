@@ -187,13 +187,7 @@ class StripeGateway extends AbstractGateway implements
 
         // 计算期望签名：HMAC-SHA256("{timestamp}.{payload}", secret)
         $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
-        foreach ($signatures as $signature) {
-            if (hash_equals($expected, $signature)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($signatures, fn($signature) => hash_equals($expected, $signature));
     }
 
     /**
@@ -239,13 +233,7 @@ class StripeGateway extends AbstractGateway implements
         }
 
         $expected = hash_hmac('sha256', "{$timestamp}.{$payload}", $secret);
-        foreach ($signatures as $signature) {
-            if (hash_equals($expected, $signature)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($signatures, fn($signature) => hash_equals($expected, $signature));
     }
 
     /**

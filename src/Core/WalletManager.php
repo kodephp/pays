@@ -195,13 +195,7 @@ class WalletManager
     {
         $wallets = $this->getUserWallets($userId);
 
-        foreach ($wallets as $wallet) {
-            if ($wallet['type'] === $type && $wallet['status'] === 'active') {
-                return $wallet;
-            }
-        }
-
-        return null;
+        return array_find($wallets, fn($wallet) => $wallet['type'] === $type && $wallet['status'] === 'active');
     }
 
     /**
@@ -214,20 +208,9 @@ class WalletManager
     {
         $wallets = $this->getUserWallets($userId);
 
-        foreach ($wallets as $wallet) {
-            if ($wallet['is_default'] && $wallet['status'] === 'active') {
-                return $wallet;
-            }
-        }
-
-        // 如果没有默认账户，返回第一个活跃账户
-        foreach ($wallets as $wallet) {
-            if ($wallet['status'] === 'active') {
-                return $wallet;
-            }
-        }
-
-        return null;
+        // 优先默认账户；如果没有默认账户，返回第一个活跃账户
+        return array_find($wallets, fn($wallet) => $wallet['is_default'] && $wallet['status'] === 'active')
+            ?? array_find($wallets, fn($wallet) => $wallet['status'] === 'active');
     }
 
     /**

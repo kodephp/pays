@@ -103,13 +103,7 @@ class RetryMiddleware
      */
     protected function shouldRetry(\Throwable $exception, array $retryOn): bool
     {
-        foreach ($retryOn as $className) {
-            if ($exception instanceof $className) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($retryOn, fn($className) => $exception instanceof $className);
     }
 
     /**
