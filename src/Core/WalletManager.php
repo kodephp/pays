@@ -315,9 +315,13 @@ class WalletManager
 
     /**
      * 生成钱包账户 ID
+     *
+     * 返回 32 位十六进制随机 ID（bin2hex(random_bytes(16))）。
+     * 旧版为 md5(userId . type . microtime)，时间戳成分可被推算，
+     * 换随机值后 ID 不可预测、也不依赖创建时刻的时钟精度。
      */
     protected function generateWalletId(string $userId, string $type): string
     {
-        return md5($userId . $type . microtime(true));
+        return bin2hex(random_bytes(16));
     }
 }
