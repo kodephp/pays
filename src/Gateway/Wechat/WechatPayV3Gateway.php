@@ -1192,7 +1192,8 @@ class WechatPayV3Gateway extends AbstractGateway implements
         $decrypted = Encryptor::aesEcbDecryptRaw($raw, $key);
         $csv = $this->maybeGunzip($decrypted);
 
-        if ($hashValue !== null && $hashValue !== '' && strtolower(sha1($csv)) !== strtolower($hashValue)) {
+        if ($hashValue !== null && $hashValue !== ''
+            && !hash_equals(strtolower($hashValue), strtolower(sha1($csv)))) {
             throw PayException::gatewayError('资金账单哈希校验失败，文件可能被篡改或解密异常');
         }
 
