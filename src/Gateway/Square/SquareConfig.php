@@ -20,10 +20,10 @@ readonly class SquareConfig implements ConfigInterface
      * @param string $apiVersion API 版本（默认 2024-05-15）
      */
     public function __construct(
-        public string $applicationId,
+        public private(set) string $applicationId,
         public string $accessToken,
         public ?string $environment = null,
-        public string $apiVersion = '2024-05-15',
+        public private(set) string $apiVersion = '2024-05-15',
     ) {
     }
 

@@ -24,7 +24,7 @@ readonly class XenditConfig implements ConfigInterface
     public function __construct(
         #[\SensitiveParameter] public string $secretKey,
         public string $publicKey = '',
-        public string $callbackToken = '',
+        public private(set) string $callbackToken = '',
         public bool $sandbox = false,
     ) {
     }

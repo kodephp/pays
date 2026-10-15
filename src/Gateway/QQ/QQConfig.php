@@ -21,9 +21,9 @@ readonly class QQConfig implements ConfigInterface
 {
     public function __construct(
         public string $appId,
-        public string $mchId,
+        public private(set) string $mchId,
         #[\SensitiveParameter] public string $apiKey,
-        public string $notifyUrl = '',
+        public private(set) string $notifyUrl = '',
         public bool $sandbox = false,
     ) {
     }

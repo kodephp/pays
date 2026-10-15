@@ -20,7 +20,7 @@ readonly class PaypalConfig implements ConfigInterface
      */
     public function __construct(
         public string $clientId,
-        public string $clientSecret,
+        public private(set) string $clientSecret,
         public bool $sandbox = false,
     ) {
     }

@@ -26,11 +26,11 @@ readonly class AmazonConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $merchantId,
+        public private(set) string $merchantId,
         #[\SensitiveParameter] public string $accessKey,
         #[\SensitiveParameter] public string $secretKey,
         public string $clientId,
-        public string $region = 'na',
+        public private(set) string $region = 'na',
         public bool $sandbox = false,
     ) {
     }

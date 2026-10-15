@@ -29,8 +29,8 @@ readonly class AlipayGlobalConfig implements ConfigInterface
         public string $appId,
         #[\SensitiveParameter] public string $privateKey,
         public string $publicKey,
-        public string $gatewayUrl = 'https://globalmapi.alipay.com/gateway.do',
-        public string $signType = 'RSA2',
+        public private(set) string $gatewayUrl = 'https://globalmapi.alipay.com/gateway.do',
+        public private(set) string $signType = 'RSA2',
         public bool $sandbox = false,
     ) {
     }

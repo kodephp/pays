@@ -24,7 +24,7 @@ readonly class StripeConfig implements ConfigInterface
         #[\SensitiveParameter] public string $secretKey,
         public ?string $publishableKey = null,
         public ?string $webhookSecret = null,
-        public string $apiVersion = '2024-06-20',
+        public private(set) string $apiVersion = '2024-06-20',
         public bool $sandbox = false,
     ) {
     }

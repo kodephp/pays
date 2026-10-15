@@ -22,7 +22,7 @@ readonly class HitPayConfig implements ConfigInterface
 {
     public function __construct(
         #[\SensitiveParameter] public string $apiKey,
-        public string $webhookSecret = '',
+        public private(set) string $webhookSecret = '',
         public bool $sandbox = false,
     ) {
     }

@@ -24,7 +24,7 @@ readonly class WiseConfig implements ConfigInterface
      */
     public function __construct(
         #[\SensitiveParameter] public string $apiKey,
-        public string $profileId,
+        public private(set) string $profileId,
         public bool $sandbox = false,
     ) {
     }

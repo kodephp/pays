@@ -26,11 +26,11 @@ readonly class AppleConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $merchantIdentifier,
-        public string $merchantCertificate,
-        public string $merchantCertificateKey,
-        public string $applePayMerchantId,
-        public string $domainName,
+        public private(set) string $merchantIdentifier,
+        public private(set) string $merchantCertificate,
+        public private(set) string $merchantCertificateKey,
+        public private(set) string $applePayMerchantId,
+        public private(set) string $domainName,
         public bool $sandbox = false,
     ) {
     }

@@ -26,7 +26,7 @@ readonly class KlarnaConfig implements ConfigInterface
     public function __construct(
         public string $username,
         #[\SensitiveParameter] public string $password,
-        public string $region = 'eu',
+        public private(set) string $region = 'eu',
         public bool $sandbox = false,
     ) {
     }

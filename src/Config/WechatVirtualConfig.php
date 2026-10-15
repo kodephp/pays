@@ -38,9 +38,9 @@ readonly class WechatVirtualConfig implements ConfigInterface
      */
     public function __construct(
         public string $appId,
-        public string $appSecret,
-        public string $offerId,
-        public string $appKey,
+        public private(set) string $appSecret,
+        public private(set) string $offerId,
+        public private(set) string $appKey,
         public ?string $sandboxAppKey = null,
         public int $env = 0,
         public ?string $sessionKey = null,

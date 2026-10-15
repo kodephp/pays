@@ -25,8 +25,8 @@ readonly class MeituanConfig implements ConfigInterface
      */
     public function __construct(
         public string $appId,
-        public string $appSecret,
-        public string $merchantId,
+        public private(set) string $appSecret,
+        public private(set) string $merchantId,
         public bool $sandbox = false,
     ) {
     }

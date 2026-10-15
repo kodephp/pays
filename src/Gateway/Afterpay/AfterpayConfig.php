@@ -19,9 +19,9 @@ use Kode\Pays\Contract\ConfigInterface;
 readonly class AfterpayConfig implements ConfigInterface
 {
     public function __construct(
-        public string $merchantId,
+        public private(set) string $merchantId,
         #[\SensitiveParameter] public string $secretKey,
-        public string $region = 'US',
+        public private(set) string $region = 'US',
         public bool $sandbox = false,
     ) {
     }

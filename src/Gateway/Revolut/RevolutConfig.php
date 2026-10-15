@@ -24,7 +24,7 @@ readonly class RevolutConfig implements ConfigInterface
      */
     public function __construct(
         #[\SensitiveParameter] public string $apiKey,
-        public string $merchantId,
+        public private(set) string $merchantId,
         public bool $sandbox = false,
     ) {
     }

@@ -25,9 +25,9 @@ readonly class GoogleConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $merchantId,
-        public string $merchantName,
-        public string $gatewayMerchantId,
+        public private(set) string $merchantId,
+        public private(set) string $merchantName,
+        public private(set) string $gatewayMerchantId,
         public string $environment = 'TEST',
         public bool $sandbox = false,
     ) {

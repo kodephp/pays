@@ -26,7 +26,7 @@ readonly class PayoneerConfig implements ConfigInterface
     public function __construct(
         #[\SensitiveParameter] public string $apiKey,
         public string $apiSecret,
-        public string $programId,
+        public private(set) string $programId,
         public bool $sandbox = false,
     ) {
     }

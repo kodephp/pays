@@ -20,9 +20,9 @@ readonly class UnionPayConfig implements ConfigInterface
      * @param bool $sandbox 是否使用沙箱环境
      */
     public function __construct(
-        public string $merId,
-        public string $certPath,
-        public string $certPwd,
+        public private(set) string $merId,
+        public private(set) string $certPath,
+        public private(set) string $certPwd,
         public bool $sandbox = false,
     ) {
     }

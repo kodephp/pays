@@ -26,11 +26,11 @@ readonly class JdConfig implements ConfigInterface
      * @param bool $sandbox 是否沙箱环境
      */
     public function __construct(
-        public string $merchantNo,
-        public string $desKey,
-        public string $md5Key,
-        public string $rsaPrivateKey,
-        public string $rsaPublicKey,
+        public private(set) string $merchantNo,
+        public private(set) string $desKey,
+        public private(set) string $md5Key,
+        public private(set) string $rsaPrivateKey,
+        public private(set) string $rsaPublicKey,
         public bool $sandbox = false,
     ) {
     }

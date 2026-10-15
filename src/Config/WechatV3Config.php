@@ -25,8 +25,8 @@ readonly class WechatV3Config implements ConfigInterface
      *        必须与 openid 来源一致。设置后作为 JSAPI 场景的默认 appid（仍可被请求级 app_id 覆盖）。
      */
     public function __construct(
-        public string $mchId,
-        public string $serialNo,
+        public private(set) string $mchId,
+        public private(set) string $serialNo,
         #[\SensitiveParameter] public string $privateKey,
         #[\SensitiveParameter] public string $apiKey,
         public ?string $appId = null,
