@@ -730,10 +730,8 @@ class JdGateway extends AbstractGateway implements
             return [];
         }
 
+        // count($lines) >= 2 已保证非空，array_shift 必得 string
         $headerLine = array_shift($lines);
-        if ($headerLine === null) {
-            return [];
-        }
         /** @var array<int, string> $header */
         $header = str_getcsv($headerLine, ',', '"', '\\');
 

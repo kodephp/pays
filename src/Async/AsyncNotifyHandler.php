@@ -140,28 +140,19 @@ class AsyncNotifyHandler
             return $results;
         }
 
-        // 使用 PHP 原生 Fiber（PHP 8.1+）
-        if (PHP_VERSION_ID >= 80100 && class_exists(\Fiber::class)) {
-            $fibers = [];
+        // 使用 PHP 原生 Fiber（PHP ≥ 8.4 恒可用）
+        $fibers = [];
 
-            foreach ($tasks as $index => $task) {
-                $fiber = new \Fiber(function () use ($task, $callback): array {
-                    return $this->handle($task['gateway'], $task['data'], $callback);
-                });
-                $fiber->start();
-                $fibers[$index] = $fiber;
-            }
-
-            foreach ($fibers as $index => $fiber) {
-                $results[$index] = $fiber->getReturn();
-            }
-
-            return $results;
+        foreach ($tasks as $index => $task) {
+            $fiber = new \Fiber(function () use ($task, $callback): array {
+                return $this->handle($task['gateway'], $task['data'], $callback);
+            });
+            $fiber->start();
+            $fibers[$index] = $fiber;
         }
 
-        // 最终降级为串行
-        foreach ($tasks as $index => $task) {
-            $results[$index] = $this->handle($task['gateway'], $task['data'], $callback);
+        foreach ($fibers as $index => $fiber) {
+            $results[$index] = $fiber->getReturn();
         }
 
         return $results;
@@ -172,8 +163,7 @@ class AsyncNotifyHandler
      */
     protected function isCoroutineSupported(): bool
     {
-        return class_exists(\Kode\Fiber\Scheduler::class)
-            || extension_loaded('swoole')
-            || (PHP_VERSION_ID >= 80100 && class_exists(\Fiber::class));
+        // PHP ≥ 8.4 原生 Fiber 恒可用
+        return true;
     }
 }

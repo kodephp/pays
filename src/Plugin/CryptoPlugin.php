@@ -253,7 +253,6 @@ class CryptoPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var CryptoCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

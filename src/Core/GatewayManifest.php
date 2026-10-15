@@ -1113,7 +1113,7 @@ class GatewayManifest
 
             $operations[$capability] = [
                 'label' => self::CAPABILITY_LABELS[$capability] ?? $capability,
-                'methods' => array_values($methods),
+                'methods' => $methods,
             ];
         }
 
@@ -1350,7 +1350,8 @@ class GatewayManifest
         foreach ($constructor->getParameters() as $param) {
             $key = self::camelToSnake($param->getName());
             $type = $param->getType();
-            $typeName = $type instanceof \ReflectionNamedType ? $type->getName() : (is_string($type) ? $type : 'mixed');
+            // getType() 只返回 ?ReflectionType（不会是 string），NamedType 之外一律按 mixed 处理
+            $typeName = $type instanceof \ReflectionNamedType ? $type->getName() : 'mixed';
 
             $default = null;
             if ($param->isOptional() && !$param->isVariadic()) {

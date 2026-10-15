@@ -140,7 +140,6 @@ class RefundPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var RefundCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

@@ -242,7 +242,8 @@ class OrderMonitorDaemon
         $stats = ['completed' => 0, 'succeeded' => 0, 'failed' => 0, 'timed_out' => 0];
         $loop = 0;
 
-        while ($this->state === self::STATE_RUNNING) {
+        // state 可被外部 stop()/信号改写，跨执行边界静态不可见，保留循环护栏
+        while ($this->state === self::STATE_RUNNING) { // @phpstan-ignore identical.alwaysTrue (跨执行改写)
             if ($maxLoops > 0 && $loop >= $maxLoops) {
                 break;
             }

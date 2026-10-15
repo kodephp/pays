@@ -187,7 +187,6 @@ class TransferPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var TransferCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

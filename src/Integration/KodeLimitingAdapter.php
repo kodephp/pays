@@ -118,29 +118,39 @@ class KodeLimitingAdapter
     {
         try {
             $algorithm = $config['algorithm'] ?? 'token_bucket';
+            $capacity = (int) ($config['capacity'] ?? 10);
+            $rate = (float) ($config['rate'] ?? 1);
+            $window = (int) ($config['window'] ?? 60);
+            $store = new \Kode\Limiting\Store\MemoryStore();
 
-            return match ($algorithm) {
-                'token_bucket' => new \Kode\Limiting\TokenBucket(
-                    key: $key,
-                    capacity: $config['capacity'] ?? 10,
-                    rate: $config['rate'] ?? 1,
-                ),
-                'leaky_bucket' => new \Kode\Limiting\LeakyBucket(
-                    key: $key,
-                    capacity: $config['capacity'] ?? 10,
-                    rate: $config['rate'] ?? 1,
-                ),
-                'sliding_window' => new \Kode\Limiting\SlidingWindow(
-                    key: $key,
-                    capacity: $config['capacity'] ?? 10,
-                    window: $config['window'] ?? 60,
-                ),
-                'fixed_window' => new \Kode\Limiting\FixedWindow(
-                    key: $key,
-                    capacity: $config['capacity'] ?? 10,
-                    window: $config['window'] ?? 60,
-                ),
+            $limiter = match ($algorithm) {
+                'token_bucket' => new \Kode\Limiting\Algorithm\TokenBucket($store, $capacity, $rate),
+                'leaky_bucket' => new \Kode\Limiting\Algorithm\LeakyBucket($store, $capacity, $rate),
+                'sliding_window' => new \Kode\Limiting\Algorithm\SlidingWindow($store, $capacity, (float) $window),
+                'fixed_window' => new \Kode\Limiting\Algorithm\Counter($store, $capacity, $window),
                 default => throw PayException::configError("不支持的限流算法：{$algorithm}"),
+            };
+
+            // 外层按 key 绑定：适配 allow($tokens)/wait($tokens, $timeout) 的鸭子类型约定
+            return new class($limiter, $key)
+            {
+                public function __construct(private readonly object $inner, private readonly string $key)
+                {
+                }
+
+                public function allow(int $tokens = 1): bool
+                {
+                    return $this->inner->allow($this->key, $tokens);
+                }
+
+                public function wait(int $tokens = 1, int $timeout = 10): bool
+                {
+                    if (method_exists($this->inner, 'wait')) {
+                        return $this->inner->wait($this->key, $tokens, $timeout);
+                    }
+
+                    return $this->allow($tokens);
+                }
             };
         } catch (\Throwable $e) {
             throw PayException::configError('kode/limiting 限流器创建失败：' . $e->getMessage(), $e);

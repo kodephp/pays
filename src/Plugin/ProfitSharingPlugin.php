@@ -283,7 +283,7 @@ class ProfitSharingPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var mixed $gateway 允许转发可选方法（如 addProfitSharingReceiver / queryProfitSharingConfig） */
+        // 允许转发可选方法（如 addProfitSharingReceiver / queryProfitSharingConfig，上方 instanceof 守卫已收窄）
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

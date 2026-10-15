@@ -184,7 +184,6 @@ class RedPacketPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var RedPacketCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

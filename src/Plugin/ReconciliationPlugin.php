@@ -216,7 +216,6 @@ class ReconciliationPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var ReconciliationCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

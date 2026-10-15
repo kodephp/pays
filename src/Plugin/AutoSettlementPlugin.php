@@ -345,7 +345,7 @@ class AutoSettlementPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var mixed $gateway 允许转发接口声明之外的网关扩展结算方法 */
+        // 允许转发接口声明之外的网关扩展结算方法（上方 instanceof 守卫已收窄）
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

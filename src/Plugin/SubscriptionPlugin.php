@@ -259,7 +259,6 @@ class SubscriptionPlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var SubscriptionCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);

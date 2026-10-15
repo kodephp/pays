@@ -26,7 +26,7 @@ class KodeFiberAdapter
     public static function concurrent(array $tasks, int $timeout = 30): array
     {
         // 优先使用 kode/fibers
-        if (class_exists(\Kode\Fiber\Scheduler::class)) {
+        if (class_exists(\Kode\Fibers\Fibers::class)) {
             return self::runWithKode($tasks, $timeout);
         }
 
@@ -35,13 +35,8 @@ class KodeFiberAdapter
             return self::runWithSwoole($tasks, $timeout);
         }
 
-        // 降级到 PHP 原生 Fiber
-        if (PHP_VERSION_ID >= 80100 && class_exists(\Fiber::class)) {
-            return self::runWithNativeFiber($tasks);
-        }
-
-        // 最终降级为串行
-        return self::runSequential($tasks);
+        // 降级到 PHP 原生 Fiber（PHP ≥ 8.4 恒可用）
+        return self::runWithNativeFiber($tasks);
     }
 
     /**
@@ -53,11 +48,11 @@ class KodeFiberAdapter
      */
     protected static function runWithKode(array $tasks, int $timeout): array
     {
-        $scheduler = new \Kode\Fiber\Scheduler();
         $results = [];
+        $wrapped = [];
 
         foreach ($tasks as $index => $task) {
-            $scheduler->add(function () use ($task, $index, &$results): void {
+            $wrapped[$index] = function () use ($task, $index, &$results): void {
                 try {
                     $gateway = $task['gateway'];
                     $method = $task['method'];
@@ -65,10 +60,10 @@ class KodeFiberAdapter
                 } catch (\Throwable $e) {
                     $results[$index] = $e;
                 }
-            });
+            };
         }
 
-        $scheduler->run($timeout);
+        \Kode\Fibers\Fibers::concurrent($wrapped, (float) $timeout);
 
         return $results;
     }
@@ -134,35 +129,11 @@ class KodeFiberAdapter
     }
 
     /**
-     * 串行执行（降级方案）
-     *
-     * @param array<int, array{gateway: GatewayInterface, method: string, params: array<mixed>}> $tasks
-     * @return array<int, mixed>
-     */
-    protected static function runSequential(array $tasks): array
-    {
-        $results = [];
-
-        foreach ($tasks as $index => $task) {
-            try {
-                $gateway = $task['gateway'];
-                $method = $task['method'];
-                $results[$index] = $gateway->$method(...$task['params']);
-            } catch (\Throwable $e) {
-                $results[$index] = $e;
-            }
-        }
-
-        return $results;
-    }
-
-    /**
      * 判断是否支持协程
      */
     public static function isSupported(): bool
     {
-        return class_exists(\Kode\Fiber\Scheduler::class)
-            || extension_loaded('swoole')
-            || (PHP_VERSION_ID >= 80100 && class_exists(\Fiber::class));
+        // PHP ≥ 8.4 原生 Fiber 恒可用
+        return true;
     }
 }

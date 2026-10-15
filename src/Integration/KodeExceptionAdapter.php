@@ -115,7 +115,7 @@ class KodeExceptionAdapter
             'service' => 'kode-pays',
         ], $context);
 
-        \Kode\Exception\KodeException::report($exception, $extra);
+        \Kode\Exception\KodeException::log('error', $exception, $extra);
     }
 
     /**

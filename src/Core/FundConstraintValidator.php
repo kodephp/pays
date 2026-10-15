@@ -410,7 +410,8 @@ class FundConstraintValidator
         $startHour = $allowedHours[0] ?? 0;
         $endHour = $allowedHours[1] ?? 23;
 
-        if ($currentHour < $startHour || $currentHour > $endHour) {
+        // 允许时段来自运行期配置（任意 0-23 小时），不因当前值域静态可证而拆除护栏
+        if ($currentHour < $startHour || $currentHour > $endHour) { // @phpstan-ignore smaller.alwaysFalse, greater.alwaysFalse, booleanOr.alwaysFalse (配置驱动时段)
             return [
                 'valid' => false,
                 'message' => "当前时间不在允许操作的时间段内（{$startHour}:00 - {$endHour}:59）",

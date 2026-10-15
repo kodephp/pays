@@ -164,7 +164,6 @@ class PersonalReceivePlugin
             throw PayException::methodNotSupported($this->gateway::getName(), $method);
         }
 
-        /** @var PersonalReceiveCapableInterface $gateway */
         $gateway = $this->gateway;
 
         return $gateway->$method(...$args);
